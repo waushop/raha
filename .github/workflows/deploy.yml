@@ -1,0 +1,212 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js application
+        run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build
+          path: |
+            .next/standalone/
+            .next/static/
+            public/
+          include-hidden-files: true
+          retention-days: 1
+
+  package:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nextjs-build
+          path: .
+
+      - name: Verify build artifact
+        run: |
+          echo "Checking .next/standalone..."
+          ls -la .next/standalone/ | head -10
+          echo "Checking .next/static..."
+          ls -la .next/static/ | head -5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/waushop/raha
+          tags: |
+            type=sha,prefix=,format=short
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Ensure public directory exists
+        run: mkdir -p public
+
+      - name: Create runtime Dockerfile
+        run: |
+          cat > Dockerfile.runtime << 'EOF'
+          FROM node:20-alpine
+          WORKDIR /app
+          ENV NODE_ENV=production
+          LABEL org.opencontainers.image.source=https://github.com/waushop/raha
+          COPY .next/standalone /app/
+          COPY .next/static /app/.next/static
+          COPY public /app/public/
+          EXPOSE 3000
+          CMD ["node", "server.js"]
+          EOF
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.runtime
+          push: true
+          platforms: linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/waushop/raha
+            ${{ steps.meta.outputs.labels }}
+          no-cache: true
+
+  deploy:
+    needs: package
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.12.3
+
+      - name: Set up Kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set Kubernetes Context
+        run: |
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > kubeconfig.yaml
+          chmod 600 kubeconfig.yaml
+
+      - name: Check for in-progress Helm operations
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+
+          RELEASE_EXISTS=$(helm list -n raha -f web -q | grep -q web && echo "true" || echo "false")
+
+          if [[ "$RELEASE_EXISTS" == "true" ]]; then
+            RELEASE_STATUS=$(helm status web -n raha -o json | jq -r '.info.status' 2>/dev/null || echo "unknown")
+            echo "Current release status: $RELEASE_STATUS"
+
+            if [[ "$RELEASE_STATUS" != "deployed" ]]; then
+              echo "Release is not in deployed state. Forcing cleanup..."
+              kubectl delete secret -n raha -l owner=helm,name=web --ignore-not-found || true
+              sleep 5
+              helm uninstall web -n raha --no-hooks --wait=false || true
+              sleep 10
+              kubectl get secrets -n raha | grep "sh.helm.release.v1.web" | awk '{print $1}' | xargs -r kubectl delete secret -n raha --ignore-not-found
+              sleep 5
+            fi
+          else
+            echo "No existing Helm release found."
+          fi
+
+      - name: Set up namespace and image pull secret
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+          kubectl create namespace raha --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace raha \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --docker-email=${{ github.actor }}@users.noreply.github.com \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to Kubernetes
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+
+          echo "Validating Helm chart..."
+          helm lint ./deploy
+
+          echo "Verifying Kubernetes API access..."
+          kubectl cluster-info
+          kubectl get namespace raha
+
+          UNIQUE_TAG="$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          echo "Using unique tag: $UNIQUE_TAG"
+
+          echo "Deploying to Kubernetes..."
+          helm upgrade --install web ./deploy \
+            --namespace raha \
+            --set image.repository=ghcr.io/waushop/raha \
+            --set image.tag=latest \
+            --set deploymentAnnotations.forceRestart="$UNIQUE_TAG" \
+            --set imagePullSecrets[0].name=ghcr-pull-secret \
+            --wait --timeout 10m \
+            --atomic \
+            --debug
+
+          echo "Checking rollout status..."
+          kubectl rollout status deployment/web -n raha --timeout=5m
+
+          echo "Pod status:"
+          kubectl get pods -n raha

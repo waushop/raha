@@ -73,7 +73,7 @@ export async function copyFromPreviousMonth(targetMonth: string) {
 
 export async function getRecentNames(category: string): Promise<{ NAME: string; AMOUNT: number }[]> {
   const [rows] = await db.execute(
-    `SELECT NAME, CAST(AMOUNT AS DOUBLE) AS AMOUNT FROM EXPENSES
+    `SELECT NAME, CAST(MAX(AMOUNT) AS DOUBLE) AS AMOUNT FROM EXPENSES
      WHERE CATEGORY = ? AND DELETED_AT IS NULL
      GROUP BY NAME ORDER BY MAX(CREATED_AT) DESC LIMIT 15`,
     [category]

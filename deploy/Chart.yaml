@@ -1,0 +1,6 @@
+apiVersion: v2
+name: raha
+description: Tühi Rahakott — personal expense tracker
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
