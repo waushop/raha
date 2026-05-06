@@ -126,8 +126,15 @@ export default async function DashboardPage() {
   );
   const heatmapData = (heatmapRows as { MONTH: string; TOTAL: number }[]).map(r => ({ month: r.MONTH, total: r.TOTAL }));
 
-  // Check if brand new (no expenses at all)
-  const isNewUser = thisTotal === 0 && prevTotal === 0 && heatmapData.length === 0;
+  // Welcome screen is for *truly* fresh installs — no expenses AND no groups
+  // yet. Once the user has any groups, drop the Welcome and render the regular
+  // dashboard (zeros + 0-row cards) so they can navigate to / and start adding.
+  const [groupCountRows] = await db.execute(
+    "SELECT COUNT(*) AS CNT FROM EXPENSE_GROUP WHERE DELETED_AT IS NULL"
+  );
+  const groupCount = (groupCountRows as Array<{ CNT: number }>)[0]?.CNT ?? 0;
+  const isNewUser =
+    thisTotal === 0 && prevTotal === 0 && heatmapData.length === 0 && groupCount === 0;
 
   if (isNewUser) {
     return (
