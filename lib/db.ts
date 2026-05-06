@@ -29,7 +29,11 @@ const db = {
     const stmt = getDb().prepare(sql);
     const args = params as never[];
     if (isSelect(sql)) {
-      return Promise.resolve([stmt.all(...args) as Row[], undefined]);
+      // node:sqlite returns rows with a null prototype, which React Server
+      // Components refuse to serialize to Client Components ("Only plain
+      // objects … can be passed"). Re-wrap each row so it has Object.prototype.
+      const rows = stmt.all(...args) as Row[];
+      return Promise.resolve([rows.map((r) => ({ ...r })), undefined]);
     }
     const info = stmt.run(...args);
     return Promise.resolve([
