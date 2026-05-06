@@ -53,6 +53,66 @@ export async function undoDeleteExpense(id: string) {
   revalidatePath("/");
 }
 
+// Bulk-copy every expense from `sourceMonth` into each of `targetMonths`.
+// Skips targets where an expense with the same NAME+AMOUNT already exists,
+// so re-running is a no-op. Returns total rows inserted.
+export async function backfillMonth(sourceMonth: string, targetMonths: string[]) {
+  if (!sourceMonth || targetMonths.length === 0) return 0;
+
+  const [rows] = await db.execute(
+    `SELECT CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS
+     FROM EXPENSE WHERE MONTH = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`,
+    [sourceMonth],
+  );
+  const source = rows as Array<{
+    CATEGORY: string;
+    GROUP_ID: string | null;
+    NAME: string;
+    AMOUNT: number;
+    NOTES: string | null;
+    IS_RECURRING: number;
+    TAGS: string | null;
+  }>;
+  if (source.length === 0) return 0;
+
+  let inserted = 0;
+  for (const month of targetMonths) {
+    if (month === sourceMonth) continue;
+    for (const row of source) {
+      const [existing] = await db.execute(
+        "SELECT 1 FROM EXPENSE WHERE NAME = ? AND AMOUNT = ? AND MONTH = ? AND DELETED_AT IS NULL LIMIT 1",
+        [row.NAME, row.AMOUNT, month],
+      );
+      if ((existing as Array<unknown>).length > 0) continue;
+      await db.execute(
+        `INSERT INTO EXPENSE (ID, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          randomUUID(),
+          row.CATEGORY,
+          row.GROUP_ID,
+          row.NAME,
+          row.AMOUNT,
+          month,
+          row.NOTES,
+          row.IS_RECURRING,
+          row.TAGS,
+        ],
+      );
+      inserted++;
+    }
+  }
+  revalidatePath("/");
+  return inserted;
+}
+
+export async function listMonths(): Promise<string[]> {
+  const [rows] = await db.execute(
+    "SELECT DISTINCT MONTH FROM EXPENSE WHERE DELETED_AT IS NULL ORDER BY MONTH DESC",
+  );
+  return (rows as Array<{ MONTH: string }>).map((r) => r.MONTH);
+}
+
 export async function copyFromPreviousMonth(targetMonth: string) {
   const [y, m] = targetMonth.split("-").map(Number);
   const prevDate = new Date(y, m - 2, 1);

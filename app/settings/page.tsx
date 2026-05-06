@@ -5,12 +5,15 @@ import { CATEGORY_BUDGETS, TOTAL_BUDGET } from "@/lib/budgets";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
 import BackupRestore from "@/components/BackupRestore";
 import ChangePin from "@/components/ChangePin";
+import BackfillMonth from "@/components/BackfillMonth";
+import { listMonths } from "@/app/actions";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default async function SettingsPage() {
   await connection();
+  const existingMonths = await listMonths();
   // Stats
   const [statsRows] = await db.execute(
     `SELECT COUNT(*) AS TOTAL_EXPENSES,
@@ -129,6 +132,20 @@ export default async function SettingsPage() {
             Change PIN
           </h2>
           <ChangePin />
+        </div>
+
+        {/* Backfill */}
+        <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.095s" }}>
+          <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
+              <path d="M16 3h5v5" /><path d="M21 3l-7 7" /><path d="M8 21H3v-5" /><path d="M3 21l7-7" />
+            </svg>
+            Copy month
+          </h2>
+          <p className="text-xs text-[#5a6380] mb-4">
+            Clone every expense from one month into one or more other months. Skips entries that already exist.
+          </p>
+          <BackfillMonth existingMonths={existingMonths} />
         </div>
 
         {/* Backup & Restore */}
