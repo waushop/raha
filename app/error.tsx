@@ -11,13 +11,13 @@ export default function Error({ error, reset }: { error: Error; reset: () => voi
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
         </div>
-        <h2 className="text-lg font-bold text-white mb-2">Midagi läks valesti</h2>
-        <p className="text-sm text-[#8892b0] mb-6">{error.message || "Proovi uuesti laadida"}</p>
+        <h2 className="text-lg font-bold text-white mb-2">Something went wrong</h2>
+        <p className="text-sm text-[#9ca3c0] mb-6">{error.message || "Try reloading"}</p>
         <button
           onClick={reset}
           className="px-6 py-2.5 rounded-xl gradient-pink text-white text-sm font-bold shadow-lg shadow-pink-500/20 btn-press hover:opacity-90 transition-opacity"
         >
-          Proovi uuesti
+          Try again
         </button>
       </div>
     </main>

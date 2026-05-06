@@ -39,7 +39,7 @@ export default function AnimatedNumber({ value, duration = 600, className = "", 
 
   return (
     <span className={`tabular-nums ${className}`}>
-      {display.toLocaleString("et-EE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      {display.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       {suffix}
     </span>
   );

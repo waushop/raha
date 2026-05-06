@@ -1,0 +1,11 @@
+# Runtime image for the Next.js standalone build. CI builds the app first
+# (npm run build), this just packages the resulting .next/standalone +
+# .next/static + public into a small node:alpine image.
+FROM node:24-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+EXPOSE 3000
+COPY .next/standalone /app/
+COPY .next/static /app/.next/static
+COPY public /app/public
+CMD ["node", "server.js"]

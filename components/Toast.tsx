@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl bg-[#1f2940]/95 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/40 ${
+            className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-xl bg-[#1c2237] border border-white/[0.08] shadow-2xl shadow-black/40 ${
               toast.exiting ? "toast-exit" : "toast-enter"
             }`}
           >

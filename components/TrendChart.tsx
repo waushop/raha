@@ -7,14 +7,14 @@ type Props = {
 
 function shortMonth(month: string): string {
   const [y, m] = month.split("-").map(Number);
-  const label = new Date(y, m - 1, 1).toLocaleString("et-EE", { month: "short" });
+  const label = new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short" });
   return label.replace(".", "").slice(0, 3);
 }
 
 const fmt = (n: number) =>
   n >= 1000
     ? `${(n / 1000).toFixed(1)}k`
-    : n.toLocaleString("et-EE", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    : n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 export default function TrendChart({ data, currentMonth }: Props) {
   if (data.length < 2) return null;
@@ -82,13 +82,13 @@ export default function TrendChart({ data, currentMonth }: Props) {
           </svg>
         </span>
         <h2 className="text-sm font-bold text-white">Trend</h2>
-        <span className="text-[10px] text-[#4a5568] font-medium ml-auto">{data.length} kuud</span>
+        <span className="text-[10px] text-[#5a6380] font-medium ml-auto">{data.length} kuud</span>
       </div>
 
       {/* Quick insight */}
       <div className="flex items-center gap-3 mb-3 ml-10">
-        <span className="text-[10px] text-[#4a5568]">
-          Keskmine: <span className="font-mono text-[#8892b0] font-semibold">{fmt(avg)} €</span>
+        <span className="text-[10px] text-[#5a6380]">
+          Keskmine: <span className="font-mono text-[#9ca3c0] font-semibold">{fmt(avg)} €</span>
         </span>
         {currentData && Math.abs(diffFromAvg) > 1 && (
           <span className={`text-[10px] font-bold ${diffFromAvg > 0 ? "text-red-400/60" : "text-teal-400/60"}`}>

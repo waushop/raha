@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -75,7 +75,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to the Container registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -93,25 +93,8 @@ jobs:
             type=ref,event=pr
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Ensure public directory exists
-        run: mkdir -p public
-
-      - name: Create runtime Dockerfile
-        run: |
-          cat > Dockerfile.runtime << 'EOF'
-          FROM node:20-alpine
-          WORKDIR /app
-          ENV NODE_ENV=production
-          LABEL org.opencontainers.image.source=https://github.com/waushop/raha
-          COPY .next/standalone /app/
-          COPY .next/static /app/.next/static
-          COPY public /app/public/
-          EXPOSE 3000
-          CMD ["node", "server.js"]
-          EOF
-
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.runtime
@@ -121,92 +104,81 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/waushop/raha
             ${{ steps.meta.outputs.labels }}
-          no-cache: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-  deploy:
-    needs: package
+  bump-wauhost:
+    # Commits the new short-SHA image tag to wauhost/services/raha/values.yaml
+    # so Flux deploys only this app. Requires Actions secret WAUHOST_DEPLOY_KEY
+    # (private half of the write-enabled deploy key registered on wauhost).
+    name: Bump wauhost image tag
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
+    needs: package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 5
+    concurrency:
+      # Serialize bumps from THIS repo. Cross-repo races on wauhost main are
+      # handled by the rebase-retry in the push step below.
+      group: bump-wauhost
+      cancel-in-progress: false
     steps:
-      - name: Checkout repository
+      - name: Compute short SHA
+        id: sha
+        run: echo "short=$(echo "${{ github.sha }}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout wauhost
         uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
         with:
-          version: v3.12.3
+          repository: waushop/wauhost
+          ssh-key: ${{ secrets.WAUHOST_DEPLOY_KEY }}
+          path: wauhost
 
-      - name: Set up Kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Set Kubernetes Context
+      - name: Install yq
         run: |
-          echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > kubeconfig.yaml
-          chmod 600 kubeconfig.yaml
+          sudo curl -sSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
 
-      - name: Check for in-progress Helm operations
+      - name: Bump image tag
+        working-directory: wauhost
         run: |
-          export KUBECONFIG=kubeconfig.yaml
+          tag='${{ steps.sha.outputs.short }}'
+          yq -i ".image.tag = \"$tag\"" services/raha/values.yaml
+          echo "--- diff ---"
+          git --no-pager diff services/raha/values.yaml
 
-          RELEASE_EXISTS=$(helm list -n raha -f web -q | grep -q web && echo "true" || echo "false")
-
-          if [[ "$RELEASE_EXISTS" == "true" ]]; then
-            RELEASE_STATUS=$(helm status web -n raha -o json | jq -r '.info.status' 2>/dev/null || echo "unknown")
-            echo "Current release status: $RELEASE_STATUS"
-
-            if [[ "$RELEASE_STATUS" != "deployed" ]]; then
-              echo "Release is not in deployed state. Forcing cleanup..."
-              kubectl delete secret -n raha -l owner=helm,name=web --ignore-not-found || true
-              sleep 5
-              helm uninstall web -n raha --no-hooks --wait=false || true
-              sleep 10
-              kubectl get secrets -n raha | grep "sh.helm.release.v1.web" | awk '{print $1}' | xargs -r kubectl delete secret -n raha --ignore-not-found
-              sleep 5
-            fi
-          else
-            echo "No existing Helm release found."
+      - name: Commit + push
+        working-directory: wauhost
+        run: |
+          git config user.name  'raha-ci'
+          git config user.email 'raha-ci@users.noreply.github.com'
+          if git diff --quiet services/raha/values.yaml; then
+            echo "No tag change — skipping commit."
+            exit 0
           fi
+          git add services/raha/values.yaml
+          git commit -m "chore(raha): bump image tag to ${{ steps.sha.outputs.short }}
 
-      - name: Set up namespace and image pull secret
+          Auto-bumped by raha deploy.yml after building image
+          ghcr.io/waushop/raha:${{ steps.sha.outputs.short }}.
+          Flux reconciles within 5m."
+          for i in 1 2 3 4 5; do
+            git push origin main && exit 0
+            echo "push rejected (attempt $i), rebasing onto latest main…"
+            git pull --rebase origin main
+            sleep $((i * 2))
+          done
+          echo "✗ push failed after 5 attempts"
+          exit 1
+
+      - name: Summary
         run: |
-          export KUBECONFIG=kubeconfig.yaml
-          kubectl create namespace raha --dry-run=client -o yaml | kubectl apply -f -
-          kubectl create secret docker-registry ghcr-pull-secret \
-            --namespace raha \
-            --docker-server=ghcr.io \
-            --docker-username=${{ github.actor }} \
-            --docker-password=${{ secrets.GITHUB_TOKEN }} \
-            --docker-email=${{ github.actor }}@users.noreply.github.com \
-            --dry-run=client -o yaml | kubectl apply -f -
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Deploy
 
-      - name: Deploy to Kubernetes
-        run: |
-          export KUBECONFIG=kubeconfig.yaml
+          - Image tag: \`${{ steps.sha.outputs.short }}\`
+          - Wauhost: https://github.com/waushop/wauhost (commit pushed to bump tag)
 
-          echo "Validating Helm chart..."
-          helm lint ./deploy
-
-          echo "Verifying Kubernetes API access..."
-          kubectl cluster-info
-          kubectl get namespace raha
-
-          UNIQUE_TAG="$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
-          echo "Using unique tag: $UNIQUE_TAG"
-
-          echo "Deploying to Kubernetes..."
-          helm upgrade --install web ./deploy \
-            --namespace raha \
-            --set image.repository=ghcr.io/waushop/raha \
-            --set image.tag=latest \
-            --set deploymentAnnotations.forceRestart="$UNIQUE_TAG" \
-            --set imagePullSecrets[0].name=ghcr-pull-secret \
-            --wait --timeout 10m \
-            --atomic \
-            --debug
-
-          echo "Checking rollout status..."
-          kubectl rollout status deployment/web -n raha --timeout=5m
-
-          echo "Pod status:"
-          kubectl get pods -n raha
+          Flux reconciles within 5m. Force now:
+          \`flux reconcile helmrelease raha -n flux-system --with-source\`
+          EOF

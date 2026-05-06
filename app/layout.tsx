@@ -2,16 +2,20 @@ import type { Metadata, Viewport } from "next";
 import { ToastProvider } from "@/components/Toast";
 import KeyboardHints from "@/components/KeyboardHints";
 import ScrollToTop from "@/components/ScrollToTop";
+import { Suspense } from "react";
+import Sidebar from "@/components/Sidebar";
+import CommandPalette from "@/components/CommandPalette";
+import ServiceWorker from "@/components/ServiceWorker";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Meie Raha",
-  description: "Laste ühised kulud",
+  title: "Empty Wallet",
+  description: "Personal expense tracker",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Meie Raha",
+    title: "Empty Wallet",
   },
   icons: {
     icon: [
@@ -44,8 +48,11 @@ export default function RootLayout({
       <body className="bg-dark-mesh min-h-screen antialiased">
         <ToastProvider>
           {children}
+          <Suspense><Sidebar /></Suspense>
           <KeyboardHints />
+          <Suspense><CommandPalette /></Suspense>
           <ScrollToTop />
+          <ServiceWorker />
         </ToastProvider>
       </body>
     </html>

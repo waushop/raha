@@ -1,5 +1,7 @@
+import { connection } from "next/server";
 import db from "@/lib/db";
-import type { Expense, Category } from "@/types/expense";
+import type { Expense, ExpenseGroup, CategoryKey } from "@/types/expense";
+import { getGroups } from "@/app/actions";
 import MonthNav from "@/components/MonthNav";
 import ExpenseTable from "@/components/ExpenseTable";
 import TrendChart from "@/components/TrendChart";
@@ -24,60 +26,68 @@ export default async function Page({
 }: {
   searchParams: Promise<{ month?: string }>;
 }) {
+  await connection();
   const { month: monthParam } = await searchParams;
   const month = monthParam ?? previousMonth();
 
+  // Fetch expenses with group info
   const [rows] = await db.execute(
-    "SELECT ID, CATEGORY, CAST(AMOUNT AS DOUBLE) AS AMOUNT, PAID_BY, SIIM_PCT, MONTH, NAME, CREATED_AT FROM EXPENSES WHERE MONTH = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT",
+    `SELECT e.ID, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NAME,
+            e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.CREATED_AT,
+            g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
+     FROM EXPENSE e
+     LEFT JOIN EXPENSE_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
+     WHERE e.MONTH = ? AND e.DELETED_AT IS NULL
+     ORDER BY g.SORT_ORDER, g.NAME, e.CREATED_AT`,
     [month]
   );
   const expenses = rows as Expense[];
 
+  // Fetch groups
+  const groups = await getGroups();
+
   // Fetch 6-month trend data
   const { start } = getMonthRange(month, 5);
   const [trendRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS DOUBLE) AS TOTAL FROM EXPENSES WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH ORDER BY MONTH",
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM EXPENSE WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH ORDER BY MONTH",
     [start, month]
   );
   const trendData = trendRows as { MONTH: string; TOTAL: number }[];
 
-  // Recurring expense names (appeared in 3+ months)
-  const [recurringRows] = await db.execute(
-    "SELECT NAME FROM EXPENSES WHERE DELETED_AT IS NULL GROUP BY NAME HAVING COUNT(DISTINCT MONTH) >= 3"
-  );
-  const recurringNames = new Set((recurringRows as { NAME: string }[]).map(r => r.NAME));
-
-  // Quick-add presets: recurring expenses NOT yet added this month
+  // Quick-add presets
   const existingNames = new Set(expenses.map(e => e.NAME));
   const [presetRows] = await db.execute(
-    `SELECT NAME, CATEGORY, CAST(AMOUNT AS DOUBLE) AS AMOUNT, PAID_BY, SIIM_PCT,
+    `SELECT NAME, CATEGORY, GROUP_ID, CAST(AMOUNT AS REAL) AS AMOUNT,
             COUNT(DISTINCT MONTH) AS MONTHS
-     FROM EXPENSES WHERE DELETED_AT IS NULL
-     GROUP BY NAME, CATEGORY, AMOUNT, PAID_BY, SIIM_PCT
+     FROM EXPENSE WHERE DELETED_AT IS NULL
+     GROUP BY NAME, CATEGORY, GROUP_ID, AMOUNT
      HAVING MONTHS >= 3
      ORDER BY MONTHS DESC
      LIMIT 20`
   );
-  const quickPresets = (presetRows as Array<{ NAME: string; CATEGORY: Category; AMOUNT: number; PAID_BY: "siim" | "janne"; SIIM_PCT: number }>)
+  const quickPresets = (presetRows as Array<{ NAME: string; CATEGORY: CategoryKey; GROUP_ID: string | null; AMOUNT: number }>)
     .filter(p => !existingNames.has(p.NAME))
     .slice(0, 10);
 
   return (
-    <main className="min-h-screen py-6 px-4 sm:py-10 pb-20">
+    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 sm:py-10 pb-20">
       <SwipeContainer month={month}>
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 flex items-center justify-between animate-fade-up sticky top-3 z-30">
           <div>
             <h1 className="text-4xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight" style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
-              Tühi Rahakott
+              Empty Wallet
             </h1>
             {expenses.length > 0 && (
-              <p className="text-[10px] sm:text-xs text-[#4a5568] mt-0.5">
-                <span className="inline-flex items-center bg-white/5 rounded-full px-1.5 py-0.5 text-[9px] tracking-normal">
-                  {expenses.length} kulu
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-sm font-mono font-bold text-white/80 tabular-nums">
+                  {expenses.reduce((s, e) => s + e.AMOUNT, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} €
                 </span>
-              </p>
+                <span className="text-[9px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">
+                  {expenses.length} expenses
+                </span>
+              </div>
             )}
           </div>
           <MonthNav month={month} />
@@ -102,19 +112,18 @@ export default async function Page({
 
         {/* Expense cards */}
         <div className="animate-fade-up" style={{ animationDelay: "0.1s" }}>
-          <ExpenseTable expenses={expenses} month={month} recurringNames={recurringNames} />
+          <ExpenseTable expenses={expenses} month={month} groups={groups} />
         </div>
 
         {/* Footer */}
-        <footer className="flex items-center justify-center gap-4 pt-6 pb-2 animate-fade-up" style={{ animationDelay: "0.14s" }}>
-          <a href={`/year?year=${month.split("-")[0]}`} className="text-[10px] text-[#4a5568] hover:text-pink-400/70 transition-colors tracking-wider font-medium inline-flex items-center gap-1">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            Aasta ülevaade
-          </a>
-          <span className="text-[#4a5568]/20">|</span>
-          <span className="text-[10px] text-[#4a5568]/30 tracking-wider font-medium">v2.0</span>
+        <footer className="flex items-center justify-center gap-3 pt-6 pb-2 animate-fade-up" style={{ animationDelay: "0.14s" }}>
+          <a href="/dashboard" className="text-[10px] text-[#5a6380] hover:text-pink-400/70 transition-colors font-medium">Dashboard</a>
+          <span className="text-[#5a6380]/20">·</span>
+          <a href={`/year?year=${month.split("-")[0]}`} className="text-[10px] text-[#5a6380] hover:text-pink-400/70 transition-colors font-medium">Year</a>
+          <span className="text-[#5a6380]/20">·</span>
+          <a href="/analytics" className="text-[10px] text-[#5a6380] hover:text-pink-400/70 transition-colors font-medium">Analytics</a>
+          <span className="text-[#5a6380]/20">·</span>
+          <a href={`/api/export?month=${month}`} className="text-[10px] text-[#5a6380] hover:text-pink-400/70 transition-colors font-medium">CSV</a>
         </footer>
       </div>
       </SwipeContainer>

@@ -25,7 +25,7 @@ export default function CollapsibleCard({ header, children, defaultOpen = true, 
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full px-4 py-3 border-b border-white/5 flex items-center justify-between cursor-pointer select-none"
+        className="w-full px-4 py-3 border-b border-white/[0.06] flex items-center justify-between cursor-pointer select-none"
       >
         {header}
         <svg
@@ -37,7 +37,7 @@ export default function CollapsibleCard({ header, children, defaultOpen = true, 
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={`text-[#4a5568] transition-transform duration-300 ml-2 shrink-0 ${open ? "rotate-180" : ""}`}
+          className={`text-[#5a6380] transition-transform duration-300 ml-2 shrink-0 ${open ? "rotate-180" : ""}`}
         >
           <path d="M6 9l6 6 6-6" />
         </svg>
