@@ -106,6 +106,20 @@ export async function backfillMonth(sourceMonth: string, targetMonths: string[])
   return inserted;
 }
 
+export async function setBudget(category: string, amount: number | null) {
+  const { setBudgetAmount } = await import("@/lib/budgets");
+  await setBudgetAmount(category, amount);
+  revalidatePath("/dashboard");
+  revalidatePath("/settings");
+}
+
+export async function resetAllBudgets() {
+  const { resetBudgets } = await import("@/lib/budgets");
+  await resetBudgets();
+  revalidatePath("/dashboard");
+  revalidatePath("/settings");
+}
+
 export async function listMonths(): Promise<string[]> {
   const [rows] = await db.execute(
     "SELECT DISTINCT MONTH FROM EXPENSE WHERE DELETED_AT IS NULL ORDER BY MONTH DESC",

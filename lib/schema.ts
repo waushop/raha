@@ -42,6 +42,13 @@ const STATEMENTS = [
     VALUE      TEXT NOT NULL,
     UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
+  // BUDGET.CATEGORY uses the category key from types/expense.ts, except for
+  // the pseudo-key "_total" which holds the overall monthly cap.
+  `CREATE TABLE IF NOT EXISTS BUDGET (
+    CATEGORY   TEXT NOT NULL PRIMARY KEY,
+    AMOUNT     REAL NOT NULL,
+    UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
   // Triggers replicate MySQL's ON UPDATE CURRENT_TIMESTAMP. Using AFTER UPDATE OF
   // a non-timestamp column avoids the recursive trigger that would fire when the
   // trigger itself updates UPDATED_AT.
@@ -62,6 +69,12 @@ const STATEMENTS = [
    ON APP_SETTING
    BEGIN
      UPDATE APP_SETTING SET UPDATED_AT = CURRENT_TIMESTAMP WHERE NAME = NEW.NAME;
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS TRG_BUDGET_UPDATED_AT
+   AFTER UPDATE OF AMOUNT
+   ON BUDGET
+   BEGIN
+     UPDATE BUDGET SET UPDATED_AT = CURRENT_TIMESTAMP WHERE CATEGORY = NEW.CATEGORY;
    END`,
 ];
 

@@ -1,11 +1,12 @@
 import { connection } from "next/server";
 import Link from "next/link";
 import db from "@/lib/db";
-import { CATEGORY_BUDGETS, TOTAL_BUDGET } from "@/lib/budgets";
+import { getBudgets, DEFAULT_CATEGORY_BUDGETS, DEFAULT_TOTAL_BUDGET } from "@/lib/budgets";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
 import BackupRestore from "@/components/BackupRestore";
 import ChangePin from "@/components/ChangePin";
 import BackfillMonth from "@/components/BackfillMonth";
+import BudgetEditor from "@/components/BudgetEditor";
 import { listMonths } from "@/app/actions";
 
 const fmt = (n: number) =>
@@ -14,6 +15,7 @@ const fmt = (n: number) =>
 export default async function SettingsPage() {
   await connection();
   const existingMonths = await listMonths();
+  const budgets = await getBudgets();
   // Stats
   const [statsRows] = await db.execute(
     `SELECT COUNT(*) AS TOTAL_EXPENSES,
@@ -99,27 +101,12 @@ export default async function SettingsPage() {
             </svg>
             Budget targets
           </h2>
-          <p className="text-xs text-[#5a6380] mb-3">Edit in file <code className="bg-white/5 px-1.5 py-0.5 rounded text-[10px]">lib/budgets.ts</code></p>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between py-2 border-b border-white/[0.06]">
-              <span className="text-xs font-bold text-white">Total</span>
-              <span className="text-xs font-mono text-amber-400 tabular-nums">{fmt(TOTAL_BUDGET)} €/kuu</span>
-            </div>
-            {CATEGORY_KEYS.map(cat => {
-              const budget = CATEGORY_BUDGETS[cat];
-              if (!budget) return null;
-              const meta = CATEGORIES[cat];
-              return (
-                <div key={cat} className="flex items-center justify-between py-1">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="text-xs">{meta.icon}</span>
-                    <span className={`text-xs font-semibold ${"text-white/70"}`}>{meta.label}</span>
-                  </span>
-                  <span className="text-xs font-mono text-white/50 tabular-nums">{fmt(budget)} €</span>
-                </div>
-              );
-            })}
-          </div>
+          <BudgetEditor
+            initialTotal={budgets.total}
+            initialCategories={budgets.categories}
+            defaultTotal={DEFAULT_TOTAL_BUDGET}
+            defaultCategories={DEFAULT_CATEGORY_BUDGETS}
+          />
         </div>
 
         {/* Security */}

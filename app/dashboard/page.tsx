@@ -6,6 +6,7 @@ import Link from "next/link";
 import SpendingHeatmap from "@/components/SpendingHeatmap";
 import Insights from "@/components/Insights";
 import Welcome from "@/components/Welcome";
+import { getBudgets } from "@/lib/budgets";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -88,6 +89,36 @@ export default async function DashboardPage() {
   for (const r of prevCatRows as { CATEGORY: string; TOTAL: number }[]) {
     prevCatMap.set(r.CATEGORY, r.TOTAL);
   }
+
+  // Budgets + per-category pacing (this month).
+  const budgets = await getBudgets();
+  const budgetCatList = (Object.entries(budgets.categories) as Array<[CategoryKey, number]>)
+    .filter(([, amt]) => amt > 0)
+    .map(([cat, amt]) => {
+      const spent = categories.find((r) => r.CATEGORY === cat)?.TOTAL ?? 0;
+      const expected = amt * (dayOfMonth / totalDays);
+      const pct = amt > 0 ? (spent / amt) * 100 : 0;
+      const status: "ahead" | "ok" | "behind" | "over" =
+        spent > amt
+          ? "over"
+          : spent > expected * 1.05
+            ? "ahead"
+            : spent < expected * 0.85
+              ? "behind"
+              : "ok";
+      return { category: cat, budget: amt, spent, expected, pct, status };
+    })
+    .sort((a, b) => b.pct - a.pct);
+  const totalExpected = budgets.total * (dayOfMonth / totalDays);
+  const totalPct = budgets.total > 0 ? (thisTotal / budgets.total) * 100 : 0;
+  const totalStatus: "ahead" | "ok" | "behind" | "over" =
+    thisTotal > budgets.total
+      ? "over"
+      : thisTotal > totalExpected * 1.05
+        ? "ahead"
+        : thisTotal < totalExpected * 0.85
+          ? "behind"
+          : "ok";
 
   // Recurring expenses not yet added this month
   const [recurringRows] = await db.execute(
@@ -225,6 +256,110 @@ export default async function DashboardPage() {
               <span className="font-mono tabular-nums">{fmt(thisTotal)} €</span>
               <span className="font-mono tabular-nums">average: {fmt(avgMonthly)} €</span>
             </div>
+          </div>
+        )}
+
+        {/* Budget pacing */}
+        {budgets.total > 0 && (
+          <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.075s" }}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+                Budget
+              </h2>
+              <Link href="/settings" className="text-[10px] text-[#5a6380] hover:text-pink-400 transition-colors">Edit →</Link>
+            </div>
+
+            {/* Total */}
+            <div className="mb-4 pb-4 border-b border-white/[0.06]">
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="text-xs font-bold text-white">Total</span>
+                <span className="text-xs font-mono tabular-nums">
+                  <span className={
+                    totalStatus === "over" ? "text-red-400" :
+                    totalStatus === "ahead" ? "text-amber-400" :
+                    totalStatus === "behind" ? "text-teal-400" : "text-white/80"
+                  }>
+                    {fmt(thisTotal)}
+                  </span>
+                  <span className="text-[#5a6380]"> / {fmt(budgets.total)} €</span>
+                </span>
+              </div>
+              <div className="relative h-2 rounded-full overflow-hidden bg-white/5">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    totalStatus === "over"
+                      ? "bg-gradient-to-r from-red-500 to-pink-500"
+                      : totalStatus === "ahead"
+                        ? "bg-gradient-to-r from-amber-500 to-pink-500"
+                        : "bg-gradient-to-r from-purple-500 to-pink-500"
+                  }`}
+                  style={{ width: `${Math.min(totalPct, 100)}%` }}
+                />
+                {/* Day-of-month marker */}
+                <div
+                  className="absolute top-0 h-full w-0.5 bg-white/40 rounded-full"
+                  style={{ left: `${(dayOfMonth / totalDays) * 100}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5 text-[10px]">
+                <span className={
+                  totalStatus === "over" ? "text-red-400 font-bold" :
+                  totalStatus === "ahead" ? "text-amber-400 font-bold" :
+                  totalStatus === "behind" ? "text-teal-400 font-bold" : "text-[#5a6380]"
+                }>
+                  {totalStatus === "over" ? "Over budget" :
+                   totalStatus === "ahead" ? "Ahead of pace" :
+                   totalStatus === "behind" ? "Under pace" : "On pace"}
+                </span>
+                <span className="text-[#5a6380] font-mono tabular-nums">
+                  expected: {fmt(totalExpected)} €
+                </span>
+              </div>
+            </div>
+
+            {/* Per-category */}
+            {budgetCatList.length > 0 && (
+              <div className="space-y-2.5">
+                {budgetCatList.map((b) => {
+                  const meta = CATEGORIES[b.category];
+                  return (
+                    <div key={b.category}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs">{meta.icon}</span>
+                        <span className="text-xs font-semibold text-white/70 flex-1 truncate">{meta.label}</span>
+                        <span className="text-[10px] font-mono tabular-nums">
+                          <span className={
+                            b.status === "over" ? "text-red-400" :
+                            b.status === "ahead" ? "text-amber-400" :
+                            b.status === "behind" ? "text-teal-400" : "text-white/60"
+                          }>
+                            {fmt(b.spent)}
+                          </span>
+                          <span className="text-[#5a6380]"> / {fmt(b.budget)}</span>
+                        </span>
+                      </div>
+                      <div className="relative h-1.5 rounded-full overflow-hidden bg-white/5">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ${
+                            b.status === "over"
+                              ? "bg-red-500/70"
+                              : b.status === "ahead"
+                                ? "bg-amber-500/70"
+                                : b.status === "behind"
+                                  ? "bg-teal-500/50"
+                                  : "bg-purple-500/60"
+                          }`}
+                          style={{ width: `${Math.min(b.pct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
