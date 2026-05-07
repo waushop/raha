@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       if (!month || !name || isNaN(amount)) { skipped++; continue; }
 
       await db.execute(
-        "INSERT INTO EXPENSE (ID, CATEGORY, NAME, AMOUNT, MONTH) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO LEDGER (ID, CATEGORY, NAME, AMOUNT, MONTH) VALUES (?, ?, ?, ?, ?)",
         [randomUUID(), category, name, amount, month]
       );
       imported++;

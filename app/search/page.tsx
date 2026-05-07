@@ -24,8 +24,8 @@ export default async function SearchPage({
     const [rows] = await db.execute(
       `SELECT e.ID, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NOTES, e.IS_RECURRING, e.TAGS,
               e.GROUP_ID, g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
-       FROM EXPENSE e
-       LEFT JOIN EXPENSE_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
+       FROM LEDGER e
+       LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
        WHERE e.DELETED_AT IS NULL AND (e.NAME LIKE ? OR e.NOTES LIKE ? OR e.TAGS LIKE ?)
        ORDER BY e.MONTH DESC, e.AMOUNT DESC
        LIMIT 50`,
@@ -34,7 +34,7 @@ export default async function SearchPage({
     results = rows as Expense[];
 
     const [countRows] = await db.execute(
-      "SELECT COUNT(*) AS CNT FROM EXPENSE WHERE DELETED_AT IS NULL AND (NAME LIKE ? OR NOTES LIKE ? OR TAGS LIKE ?)",
+      "SELECT COUNT(*) AS CNT FROM LEDGER WHERE DELETED_AT IS NULL AND (NAME LIKE ? OR NOTES LIKE ? OR TAGS LIKE ?)",
       [`%${query}%`, `%${query}%`, `%${query}%`]
     );
     totalFound = (countRows as Array<{ CNT: number }>)[0]?.CNT ?? 0;

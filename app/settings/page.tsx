@@ -23,7 +23,7 @@ export default async function SettingsPage() {
             CAST(SUM(AMOUNT) AS REAL) AS TOTAL_AMOUNT,
             MIN(MONTH) AS FIRST_MONTH,
             MAX(MONTH) AS LAST_MONTH
-     FROM EXPENSE WHERE DELETED_AT IS NULL`
+     FROM LEDGER WHERE DELETED_AT IS NULL`
   );
   const stats = (statsRows as Array<{
     TOTAL_EXPENSES: number;
@@ -34,12 +34,12 @@ export default async function SettingsPage() {
   }>)[0];
 
   const [recurringCount] = await db.execute(
-    "SELECT COUNT(DISTINCT NAME) AS CNT FROM EXPENSE WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL"
+    "SELECT COUNT(DISTINCT NAME) AS CNT FROM LEDGER WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL"
   );
   const recurring = (recurringCount as Array<{ CNT: number }>)[0]?.CNT ?? 0;
 
   const [deletedCount] = await db.execute(
-    "SELECT COUNT(*) AS CNT FROM EXPENSE WHERE DELETED_AT IS NOT NULL"
+    "SELECT COUNT(*) AS CNT FROM LEDGER WHERE DELETED_AT IS NOT NULL"
   );
   const deleted = (deletedCount as Array<{ CNT: number }>)[0]?.CNT ?? 0;
 

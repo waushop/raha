@@ -35,8 +35,8 @@ export default async function Page({
     `SELECT e.ID, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NAME,
             e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.CREATED_AT,
             g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
-     FROM EXPENSE e
-     LEFT JOIN EXPENSE_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
+     FROM LEDGER e
+     LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
      WHERE e.MONTH = ? AND e.DELETED_AT IS NULL
      ORDER BY g.SORT_ORDER, g.NAME, e.CREATED_AT`,
     [month]
@@ -49,7 +49,7 @@ export default async function Page({
   // Fetch 6-month trend data
   const { start } = getMonthRange(month, 5);
   const [trendRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM EXPENSE WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH ORDER BY MONTH",
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH ORDER BY MONTH",
     [start, month]
   );
   const trendData = trendRows as { MONTH: string; TOTAL: number }[];
@@ -59,7 +59,7 @@ export default async function Page({
   const [presetRows] = await db.execute(
     `SELECT NAME, CATEGORY, GROUP_ID, CAST(AMOUNT AS REAL) AS AMOUNT,
             COUNT(DISTINCT MONTH) AS MONTHS
-     FROM EXPENSE WHERE DELETED_AT IS NULL
+     FROM LEDGER WHERE DELETED_AT IS NULL
      GROUP BY NAME, CATEGORY, GROUP_ID, AMOUNT
      HAVING MONTHS >= 3
      ORDER BY MONTHS DESC

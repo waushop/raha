@@ -43,7 +43,7 @@ export default async function DashboardPage() {
   // This month totals
   const [thisRows] = await db.execute(
     `SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT
-     FROM EXPENSE WHERE MONTH = ? AND DELETED_AT IS NULL`,
+     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL`,
     [thisMonth]
   );
   const thisData = (thisRows as Array<{ TOTAL: number | null; CNT: number }>)[0];
@@ -53,7 +53,7 @@ export default async function DashboardPage() {
   // Previous month totals
   const [prevRows] = await db.execute(
     `SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT
-     FROM EXPENSE WHERE MONTH = ? AND DELETED_AT IS NULL`,
+     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL`,
     [prevMonth]
   );
   const prevData = (prevRows as Array<{ TOTAL: number | null; CNT: number }>)[0];
@@ -64,15 +64,29 @@ export default async function DashboardPage() {
   const sixMonthStart = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`;
   const [avgRows] = await db.execute(
     `SELECT CAST(SUM(AMOUNT) / COUNT(DISTINCT MONTH) AS REAL) AS AVG_MONTHLY
-     FROM EXPENSE WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?`,
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?`,
     [sixMonthStart, thisMonth]
   );
+
+  // Income: this month + last month + net.
+  const [thisIncomeRows] = await db.execute(
+    "SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE MONTH = ? AND KIND = 'income' AND DELETED_AT IS NULL",
+    [thisMonth],
+  );
+  const thisIncome = (thisIncomeRows as Array<{ TOTAL: number | null }>)[0]?.TOTAL ?? 0;
+  const [prevIncomeRows] = await db.execute(
+    "SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE MONTH = ? AND KIND = 'income' AND DELETED_AT IS NULL",
+    [prevMonth],
+  );
+  const prevIncome = (prevIncomeRows as Array<{ TOTAL: number | null }>)[0]?.TOTAL ?? 0;
+  const thisNet = thisIncome - thisTotal;
+  const prevNet = prevIncome - prevTotal;
   const avgMonthly = (avgRows as Array<{ AVG_MONTHLY: number | null }>)[0]?.AVG_MONTHLY ?? 0;
 
   // This month categories
   const [catRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM EXPENSE WHERE MONTH = ? AND DELETED_AT IS NULL
+     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
     [thisMonth]
   );
@@ -81,7 +95,7 @@ export default async function DashboardPage() {
   // Previous month categories (for comparison)
   const [prevCatRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM EXPENSE WHERE MONTH = ? AND DELETED_AT IS NULL
+     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
     [prevMonth]
   );
@@ -123,22 +137,22 @@ export default async function DashboardPage() {
   // Recurring expenses not yet added this month
   const [recurringRows] = await db.execute(
     `SELECT e.NAME, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT
-     FROM EXPENSE e
-     WHERE e.IS_RECURRING = 1 AND e.DELETED_AT IS NULL
-       AND e.MONTH = (SELECT MAX(MONTH) FROM EXPENSE WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL AND MONTH < ?)
-       AND e.NAME NOT IN (SELECT NAME FROM EXPENSE WHERE MONTH = ? AND DELETED_AT IS NULL)
+     FROM LEDGER e
+     WHERE e.IS_RECURRING = 1 AND e.KIND = 'expense' AND e.DELETED_AT IS NULL
+       AND e.MONTH = (SELECT MAX(MONTH) FROM LEDGER WHERE IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH < ?)
+       AND e.NAME NOT IN (SELECT NAME FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL)
      GROUP BY e.NAME, e.CATEGORY, e.AMOUNT`,
     [thisMonth, thisMonth]
   );
   const missingRecurring = recurringRows as { NAME: string; CATEGORY: CategoryKey; AMOUNT: number }[];
 
-  // Recent expenses (last 5)
+  // Recent entries (last 5, both kinds — visual indicator below)
   const [recentRows] = await db.execute(
-    `SELECT NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT
-     FROM EXPENSE WHERE DELETED_AT IS NULL
+    `SELECT NAME, CATEGORY, KIND, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT
+     FROM LEDGER WHERE DELETED_AT IS NULL
      ORDER BY CREATED_AT DESC LIMIT 5`
   );
-  const recentExpenses = recentRows as { NAME: string; CATEGORY: CategoryKey; AMOUNT: number; MONTH: string; CREATED_AT: string }[];
+  const recentExpenses = recentRows as { NAME: string; CATEGORY: CategoryKey; KIND: "expense" | "income"; AMOUNT: number; MONTH: string; CREATED_AT: string }[];
 
   // Spending pace
   const expectedSpend = avgMonthly * (dayOfMonth / totalDays);
@@ -151,9 +165,9 @@ export default async function DashboardPage() {
 
   const missingRecurringCount = missingRecurring.length;
 
-  // Heatmap data (all months)
+  // Heatmap data (all months, expenses only)
   const [heatmapRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM EXPENSE WHERE DELETED_AT IS NULL GROUP BY MONTH ORDER BY MONTH"
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL GROUP BY MONTH ORDER BY MONTH"
   );
   const heatmapData = (heatmapRows as { MONTH: string; TOTAL: number }[]).map(r => ({ month: r.MONTH, total: r.TOTAL }));
 
@@ -161,7 +175,7 @@ export default async function DashboardPage() {
   // yet. Once the user has any groups, drop the Welcome and render the regular
   // dashboard (zeros + 0-row cards) so they can navigate to / and start adding.
   const [groupCountRows] = await db.execute(
-    "SELECT COUNT(*) AS CNT FROM EXPENSE_GROUP WHERE DELETED_AT IS NULL"
+    "SELECT COUNT(*) AS CNT FROM CATEGORY_GROUP WHERE DELETED_AT IS NULL"
   );
   const groupCount = (groupCountRows as Array<{ CNT: number }>)[0]?.CNT ?? 0;
   const isNewUser =
@@ -190,6 +204,35 @@ export default async function DashboardPage() {
             Today is day {dayOfMonth}, {daysLeft} days left.
           </p>
         </div>
+
+        {/* Income + Net (only renders if user has any income tracked) */}
+        {(thisIncome > 0 || prevIncome > 0) && (
+          <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.04s" }}>
+            <div className="card rounded-2xl p-4">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Income (this)</p>
+              <p className="text-xl font-bold text-teal-400 font-mono tabular-nums">{fmt(thisIncome)} €</p>
+              {prevIncome > 0 && (
+                <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">prev: {fmt(prevIncome)}</p>
+              )}
+            </div>
+            <div className="card rounded-2xl p-4">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Spent (this)</p>
+              <p className="text-xl font-bold text-pink-400 font-mono tabular-nums">{fmt(thisTotal)} €</p>
+              {prevTotal > 0 && (
+                <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">prev: {fmt(prevTotal)}</p>
+              )}
+            </div>
+            <div className="card rounded-2xl p-4">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Net (this)</p>
+              <p className={`text-xl font-bold font-mono tabular-nums ${thisNet >= 0 ? "text-teal-400" : "text-red-400"}`}>
+                {thisNet >= 0 ? "+" : ""}{fmt(thisNet)} €
+              </p>
+              {prevTotal > 0 && (
+                <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">prev: {prevNet >= 0 ? "+" : ""}{fmt(prevNet)}</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Key metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-up" style={{ animationDelay: "0.05s" }}>

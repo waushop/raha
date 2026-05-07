@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import db from "@/lib/db";
 import { randomUUID } from "crypto";
 
-// GET: Export all data as JSON
+// GET: Export all live ledger rows (both expenses and income) as JSON.
 export async function GET() {
   const [rows] = await db.execute(
-    `SELECT ID, CATEGORY, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, CREATED_AT
-     FROM EXPENSE WHERE DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`
+    `SELECT ID, KIND, CATEGORY, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, CREATED_AT
+     FROM LEDGER WHERE DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`
   );
 
   const data = {
-    version: 2,
+    version: 3, // bumped from 2: adds KIND ('expense' | 'income') per row
     exported_at: new Date().toISOString(),
-    expenses: rows,
+    expenses: rows, // legacy field name kept for backwards-compat with v2 importers
   };
 
   return new NextResponse(JSON.stringify(data, null, 2), {
@@ -23,7 +23,7 @@ export async function GET() {
   });
 }
 
-// POST: Import data from JSON backup
+// POST: Import data from JSON backup. Accepts both v2 (no KIND) and v3 (with KIND).
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
@@ -34,13 +34,15 @@ export async function POST(request: NextRequest) {
   let imported = 0;
   for (const expense of body.expenses) {
     const id = randomUUID();
+    const kind = expense.KIND === "income" ? "income" : "expense";
     await db.execute(
-      `INSERT INTO EXPENSE (ID, CATEGORY, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO LEDGER (ID, KIND, CATEGORY, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(ID) DO NOTHING`,
       [
         id,
-        expense.CATEGORY ?? "muu",
+        kind,
+        expense.CATEGORY ?? "other",
         expense.NAME,
         expense.AMOUNT,
         expense.MONTH,

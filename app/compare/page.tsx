@@ -33,8 +33,8 @@ export default async function ComparePage({
   // Group totals for both months
   const [groupRows] = await db.execute(
     `SELECT g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR, e.MONTH, CAST(SUM(e.AMOUNT) AS REAL) AS TOTAL
-     FROM EXPENSE e
-     LEFT JOIN EXPENSE_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
+     FROM LEDGER e
+     LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
      WHERE e.DELETED_AT IS NULL AND e.MONTH IN (?, ?)
      GROUP BY g.NAME, g.EMOJI, g.COLOR, e.MONTH
      ORDER BY TOTAL DESC`,
@@ -45,7 +45,7 @@ export default async function ComparePage({
   // Category totals
   const [catRows] = await db.execute(
     `SELECT CATEGORY, MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM EXPENSE WHERE DELETED_AT IS NULL AND MONTH IN (?, ?)
+     FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH IN (?, ?)
      GROUP BY CATEGORY, MONTH ORDER BY TOTAL DESC`,
     [m1, m2]
   );
@@ -53,7 +53,7 @@ export default async function ComparePage({
 
   // Month totals
   const [totalRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT FROM EXPENSE WHERE DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
     [m1, m2]
   );
   const totals = totalRows as { MONTH: string; TOTAL: number; CNT: number }[];
@@ -69,7 +69,7 @@ export default async function ComparePage({
 
   // Available months for selectors
   const [monthsRows] = await db.execute(
-    "SELECT DISTINCT MONTH FROM EXPENSE WHERE DELETED_AT IS NULL ORDER BY MONTH DESC"
+    "SELECT DISTINCT MONTH FROM LEDGER WHERE DELETED_AT IS NULL ORDER BY MONTH DESC"
   );
   const availableMonths = (monthsRows as { MONTH: string }[]).map(r => r.MONTH);
 

@@ -25,7 +25,7 @@ export default async function ActivityPage() {
   // Recent additions
   const [addedRows] = await db.execute(
     `SELECT NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT
-     FROM EXPENSE WHERE DELETED_AT IS NULL
+     FROM LEDGER WHERE DELETED_AT IS NULL
      ORDER BY CREATED_AT DESC LIMIT 30`
   );
   const added = addedRows as { NAME: string; CATEGORY: CategoryKey; AMOUNT: number; MONTH: string; CREATED_AT: string }[];
@@ -33,7 +33,7 @@ export default async function ActivityPage() {
   // Recent deletions
   const [deletedRows] = await db.execute(
     `SELECT NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DELETED_AT
-     FROM EXPENSE WHERE DELETED_AT IS NOT NULL
+     FROM LEDGER WHERE DELETED_AT IS NOT NULL
      ORDER BY DELETED_AT DESC LIMIT 15`
   );
   const deleted = deletedRows as { NAME: string; CATEGORY: CategoryKey; AMOUNT: number; MONTH: string; DELETED_AT: string }[];
@@ -41,7 +41,7 @@ export default async function ActivityPage() {
   // Recent updates
   const [updatedRows] = await db.execute(
     `SELECT NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, UPDATED_AT, CREATED_AT
-     FROM EXPENSE WHERE DELETED_AT IS NULL AND UPDATED_AT > CREATED_AT
+     FROM LEDGER WHERE DELETED_AT IS NULL AND UPDATED_AT > CREATED_AT
      ORDER BY UPDATED_AT DESC LIMIT 15`
   );
   const updated = updatedRows as { NAME: string; CATEGORY: CategoryKey; AMOUNT: number; MONTH: string; UPDATED_AT: string; CREATED_AT: string }[];

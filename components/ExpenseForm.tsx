@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition, useEffect } from "react";
 import { createExpense, updateExpense, getRecentNames } from "@/app/actions";
-import type { Expense, CategoryKey, ExpenseGroup } from "@/types/expense";
+import type { Expense, CategoryKey, ExpenseGroup, Kind } from "@/types/expense";
 import { CATEGORIES, CATEGORY_KEYS, GROUP_COLOR_CLASSES } from "@/types/expense";
 
 type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; onDone: () => void };
@@ -11,6 +11,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const [kind, setKind] = useState<Kind>(editing?.KIND ?? "expense");
   const [category, setCategory] = useState<CategoryKey>(editing?.CATEGORY ?? "other");
   const [groupId, setGroupId] = useState<string>(editing?.GROUP_ID ?? "");
   const [isRecurring, setIsRecurring] = useState(editing?.IS_RECURRING === 1);
@@ -25,6 +26,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const data = new FormData(formRef.current!);
+    data.set("kind", kind);
     data.set("is_recurring", isRecurring ? "1" : "0");
     data.set("tags", tags || "");
     data.set("group_id", groupId || "");
@@ -44,6 +46,32 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-4">
       <input type="hidden" name="month" value={month} />
+
+      {/* Direction (expense vs income) */}
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => setKind("expense")}
+          className={`flex-1 border rounded-lg px-3 py-2 text-xs font-bold transition-all ${
+            kind === "expense"
+              ? "border-pink-500/40 bg-pink-500/10 text-pink-300"
+              : "border-white/[0.06] text-[#5a6380] hover:border-white/15"
+          }`}
+        >
+          ↓ Expense
+        </button>
+        <button
+          type="button"
+          onClick={() => setKind("income")}
+          className={`flex-1 border rounded-lg px-3 py-2 text-xs font-bold transition-all ${
+            kind === "income"
+              ? "border-teal-500/40 bg-teal-500/10 text-teal-300"
+              : "border-white/[0.06] text-[#5a6380] hover:border-white/15"
+          }`}
+        >
+          ↑ Income
+        </button>
+      </div>
 
       {/* Group selector */}
       <div className="flex flex-col gap-1.5">

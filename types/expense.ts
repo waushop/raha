@@ -1,5 +1,6 @@
 // ============================================
-// STANDARD EXPENSE CATEGORIES (predefined, with icons)
+// STANDARD CATEGORIES (predefined, with icons). Used for both expenses
+// and income — pick the one that fits.
 // ============================================
 export const CATEGORIES = {
   housing:       { label: "Housing",         icon: "🏠" },
@@ -32,8 +33,12 @@ export const CATEGORIES = {
 export type CategoryKey = keyof typeof CATEGORIES;
 export const CATEGORY_KEYS = Object.keys(CATEGORIES) as CategoryKey[];
 
+// Common income-category shortcut keys. These are still standard CategoryKey
+// values; this list is purely a UX hint for the form.
+export const INCOME_CATEGORY_HINTS: CategoryKey[] = ["other", "savings"];
+
 // ============================================
-// CUSTOM GROUPS (user-created, stored in DB)
+// CUSTOM CATEGORY GROUPS (user-created, stored in DB)
 // ============================================
 export type ExpenseGroup = {
   ID: string;
@@ -63,13 +68,16 @@ export const GROUP_COLOR_CLASSES: Record<string, { text: string; bg: string; bor
 };
 
 // ============================================
-// EXPENSE TYPE
+// LEDGER TYPE — both expenses and income live here, distinguished by KIND.
 // ============================================
+export type Kind = "expense" | "income";
+
 export type Expense = {
   ID: string;
   CREATED_AT: string;
   UPDATED_AT: string;
   DELETED_AT: string | null;
+  KIND: Kind;
   CATEGORY: CategoryKey;
   GROUP_ID: string | null;
   NAME: string;

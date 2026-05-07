@@ -40,7 +40,7 @@ export default async function YearPage({
     `SELECT MONTH,
             CAST(SUM(AMOUNT) AS REAL) AS TOTAL,
             COUNT(*) AS COUNT
-     FROM EXPENSE
+     FROM LEDGER
      WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY MONTH ORDER BY MONTH`,
     [`${year}-01`, `${year}-12`]
@@ -50,7 +50,7 @@ export default async function YearPage({
   // Category totals for the year
   const [catRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM EXPENSE
+     FROM LEDGER
      WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
     [`${year}-01`, `${year}-12`]
