@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
-import type { Expense, CategoryKey } from "@/types/expense";
+import type { Expense } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
 import SearchInput from "@/components/SearchInput";
@@ -22,7 +22,7 @@ export default async function SearchPage({
 
   if (query.length >= 2) {
     const [rows] = await db.execute(
-      `SELECT e.ID, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NOTES, e.IS_RECURRING, e.TAGS,
+      `SELECT e.ID, e.KIND, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NOTES, e.IS_RECURRING, e.TAGS,
               e.GROUP_ID, g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
        FROM LEDGER e
        LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
@@ -54,7 +54,7 @@ export default async function SearchPage({
           <Link href="/dashboard" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Search
           </h1>
@@ -93,7 +93,7 @@ export default async function SearchPage({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-white/90 truncate">{e.NAME}</span>
-                          <span className="text-sm font-mono font-semibold text-white/80 ml-2 shrink-0 tabular-nums">{fmt(e.AMOUNT)} €</span>
+                          <span className={`text-sm font-mono font-semibold ml-2 shrink-0 tabular-nums ${e.KIND === "income" ? "text-teal-400" : "text-white/80"}`}>{e.KIND === "income" ? "+" : ""}{fmt(e.AMOUNT)} €</span>
                         </div>
                         {e.NOTES && <p className="text-[10px] text-[#5a6380] truncate mt-0.5">{e.NOTES}</p>}
                       </div>

@@ -9,13 +9,14 @@ const fmt = (n: number) =>
 type Props = {
   expenseId: string;
   amount: number;
+  tone?: "expense" | "income";
 };
 
-export default function InlineAmount({ expenseId, amount }: Props) {
+export default function InlineAmount({ expenseId, amount, tone = "expense" }: Props) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(amount.toString());
   const inputRef = useRef<HTMLInputElement>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   useEffect(() => {
     if (editing) {
@@ -60,10 +61,10 @@ export default function InlineAmount({ expenseId, amount }: Props) {
   return (
     <button
       onClick={() => setEditing(true)}
-      className="text-sm font-mono font-semibold text-white/80 tabular-nums hover:text-purple-400 transition-colors cursor-text"
+      className={`text-sm font-mono font-semibold tabular-nums hover:text-purple-400 transition-colors cursor-text ${tone === "income" ? "text-teal-400" : "text-white/80"}`}
       title="Click to edit"
     >
-      {fmt(amount)} €
+      {tone === "income" ? "+" : ""}{fmt(amount)} €
     </button>
   );
 }

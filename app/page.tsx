@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
-import type { Expense, ExpenseGroup, CategoryKey } from "@/types/expense";
+import type { Expense, CategoryKey } from "@/types/expense";
 import { getGroups } from "@/app/actions";
 import MonthNav from "@/components/MonthNav";
 import ExpenseTable from "@/components/ExpenseTable";
@@ -32,7 +32,7 @@ export default async function Page({
 
   // Fetch expenses with group info
   const [rows] = await db.execute(
-    `SELECT e.ID, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NAME,
+    `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NAME,
             e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.CREATED_AT,
             g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
@@ -49,7 +49,7 @@ export default async function Page({
   // Fetch 6-month trend data
   const { start } = getMonthRange(month, 5);
   const [trendRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH ORDER BY MONTH",
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH ORDER BY MONTH",
     [start, month]
   );
   const trendData = trendRows as { MONTH: string; TOTAL: number }[];
@@ -59,7 +59,7 @@ export default async function Page({
   const [presetRows] = await db.execute(
     `SELECT NAME, CATEGORY, GROUP_ID, CAST(AMOUNT AS REAL) AS AMOUNT,
             COUNT(DISTINCT MONTH) AS MONTHS
-     FROM LEDGER WHERE DELETED_AT IS NULL
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL
      GROUP BY NAME, CATEGORY, GROUP_ID, AMOUNT
      HAVING MONTHS >= 3
      ORDER BY MONTHS DESC
@@ -76,7 +76,7 @@ export default async function Page({
         {/* Header */}
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 flex items-center justify-between animate-fade-up sticky top-3 z-30">
           <div>
-            <h1 className="text-4xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight" style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+            <h1 className="text-4xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight" style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}>
               Empty Wallet
             </h1>
             {expenses.length > 0 && (

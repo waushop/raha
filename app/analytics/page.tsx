@@ -25,7 +25,7 @@ export default async function AnalyticsPage() {
   // Monthly totals
   const [monthRows] = await db.execute(
     `SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY MONTH ORDER BY MONTH`,
     [startMonth, endMonth]
   );
@@ -34,7 +34,7 @@ export default async function AnalyticsPage() {
   // Category per month
   const [catMonthRows] = await db.execute(
     `SELECT CATEGORY, MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY CATEGORY, MONTH ORDER BY CATEGORY, MONTH`,
     [startMonth, endMonth]
   );
@@ -43,7 +43,7 @@ export default async function AnalyticsPage() {
   // Category totals (12 months)
   const [catTotalRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT
-     FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
     [startMonth, endMonth]
   );
@@ -52,7 +52,7 @@ export default async function AnalyticsPage() {
   // Top 10 most expensive individual items
   const [topItems] = await db.execute(
     `SELECT NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH
-     FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      ORDER BY AMOUNT DESC LIMIT 10`,
     [startMonth, endMonth]
   );
@@ -62,7 +62,7 @@ export default async function AnalyticsPage() {
   const [recurringRows] = await db.execute(
     `SELECT NAME, CATEGORY, CAST(AVG(AMOUNT) AS REAL) AS AVG_AMOUNT,
             COUNT(DISTINCT MONTH) AS MONTHS, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY NAME, CATEGORY ORDER BY TOTAL DESC LIMIT 15`,
     [startMonth, endMonth]
   );
@@ -83,7 +83,7 @@ export default async function AnalyticsPage() {
 
   // All-time stats
   const [allTimeRows] = await db.execute(
-    "SELECT COUNT(*) AS CNT, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(DISTINCT MONTH) AS MONTHS FROM LEDGER WHERE DELETED_AT IS NULL"
+    "SELECT COUNT(*) AS CNT, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(DISTINCT MONTH) AS MONTHS FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL"
   );
   const allTime = (allTimeRows as Array<{ CNT: number; TOTAL: number | null; MONTHS: number }>)[0];
   const allTimeTotal = allTime?.TOTAL ?? 0;
@@ -109,7 +109,7 @@ export default async function AnalyticsPage() {
               <Link href="/" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
               <h1
                 className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1"
-                style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+                style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
               >
                 Analytics
               </h1>

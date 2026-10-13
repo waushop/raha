@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
 import type { CategoryKey } from "@/types/expense";
-import { CATEGORIES, GROUP_COLOR_CLASSES } from "@/types/expense";
+import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
 import MonthSelector from "@/components/MonthSelector";
 
@@ -12,8 +12,6 @@ function monthLabel(month: string): string {
   const [y, m] = month.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" });
 }
-
-type GroupRow = { GROUP_NAME: string | null; GROUP_EMOJI: string | null; GROUP_COLOR: string | null; MONTH: string; TOTAL: number };
 
 export default async function ComparePage({
   searchParams,
@@ -30,22 +28,10 @@ export default async function ComparePage({
   const m1 = params.m1 ?? prevMonth;
   const m2 = params.m2 ?? thisMonth;
 
-  // Group totals for both months
-  const [groupRows] = await db.execute(
-    `SELECT g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR, e.MONTH, CAST(SUM(e.AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER e
-     LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
-     WHERE e.DELETED_AT IS NULL AND e.MONTH IN (?, ?)
-     GROUP BY g.NAME, g.EMOJI, g.COLOR, e.MONTH
-     ORDER BY TOTAL DESC`,
-    [m1, m2]
-  );
-  const groupData = groupRows as GroupRow[];
-
   // Category totals
   const [catRows] = await db.execute(
     `SELECT CATEGORY, MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH IN (?, ?)
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH IN (?, ?)
      GROUP BY CATEGORY, MONTH ORDER BY TOTAL DESC`,
     [m1, m2]
   );
@@ -53,15 +39,12 @@ export default async function ComparePage({
 
   // Month totals
   const [totalRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT FROM LEDGER WHERE DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
     [m1, m2]
   );
   const totals = totalRows as { MONTH: string; TOTAL: number; CNT: number }[];
   const t1 = totals.find(r => r.MONTH === m1);
   const t2 = totals.find(r => r.MONTH === m2);
-
-  // Unique group names
-  const groupNames = [...new Set(groupData.map(r => r.GROUP_NAME ?? "Ungrouped"))];
 
   // Unique categories
   const catKeys = [...new Set(catData.map(r => r.CATEGORY))];
@@ -82,7 +65,7 @@ export default async function ComparePage({
           <Link href="/dashboard" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Compare
           </h1>

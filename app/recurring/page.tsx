@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
-import type { Expense, CategoryKey } from "@/types/expense";
+import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES, GROUP_COLOR_CLASSES } from "@/types/expense";
 import Link from "next/link";
 
@@ -18,7 +18,7 @@ export default async function RecurringPage() {
             CAST(SUM(e.AMOUNT) AS REAL) AS TOTAL_SPENT
      FROM LEDGER e
      LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
-     WHERE e.IS_RECURRING = 1 AND e.DELETED_AT IS NULL
+     WHERE e.IS_RECURRING = 1 AND e.KIND = 'expense' AND e.DELETED_AT IS NULL
      GROUP BY e.NAME, e.CATEGORY, e.AMOUNT, e.GROUP_ID, g.NAME, g.EMOJI, g.COLOR
      ORDER BY e.AMOUNT DESC`
   );
@@ -38,7 +38,7 @@ export default async function RecurringPage() {
           <Link href="/dashboard" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Recurring
           </h1>

@@ -23,7 +23,7 @@ export default async function SettingsPage() {
             CAST(SUM(AMOUNT) AS REAL) AS TOTAL_AMOUNT,
             MIN(MONTH) AS FIRST_MONTH,
             MAX(MONTH) AS LAST_MONTH
-     FROM LEDGER WHERE DELETED_AT IS NULL`
+     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL`
   );
   const stats = (statsRows as Array<{
     TOTAL_EXPENSES: number;
@@ -34,7 +34,7 @@ export default async function SettingsPage() {
   }>)[0];
 
   const [recurringCount] = await db.execute(
-    "SELECT COUNT(DISTINCT NAME) AS CNT FROM LEDGER WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL"
+    "SELECT COUNT(DISTINCT NAME) AS CNT FROM LEDGER WHERE IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL"
   );
   const recurring = (recurringCount as Array<{ CNT: number }>)[0]?.CNT ?? 0;
 
@@ -51,7 +51,7 @@ export default async function SettingsPage() {
           <Link href="/dashboard" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Settings
           </h1>

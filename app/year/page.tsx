@@ -41,7 +41,7 @@ export default async function YearPage({
             CAST(SUM(AMOUNT) AS REAL) AS TOTAL,
             COUNT(*) AS COUNT
      FROM LEDGER
-     WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY MONTH ORDER BY MONTH`,
     [`${year}-01`, `${year}-12`]
   );
@@ -51,7 +51,7 @@ export default async function YearPage({
   const [catRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
      FROM LEDGER
-     WHERE DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
     [`${year}-01`, `${year}-12`]
   );
@@ -73,7 +73,7 @@ export default async function YearPage({
             <Link href="/" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">
               ← Back
             </Link>
-            <h1 className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1" style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+            <h1 className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1" style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}>
               Year overview
             </h1>
           </div>

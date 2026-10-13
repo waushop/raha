@@ -25,7 +25,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Expense | undefined>();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [isCopying, startCopyTransition] = useTransition();
   const toast = useToast();
 
@@ -70,12 +70,16 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
   }, [toast]);
 
   const visible = expenses.filter(e => !deletedIds.has(e.ID));
+  const income = visible.filter(e => e.KIND === "income");
+  const spending = visible.filter(e => e.KIND !== "income");
+  const spentTotal = spending.reduce((s, e) => s + e.AMOUNT, 0);
+  const incomeTotal = income.reduce((s, e) => s + e.AMOUNT, 0);
 
-  // Group by GROUP_ID
+  // Group spending by GROUP_ID; income gets its own card below
   type Section = { groupId: string | null; name: string; emoji: string | null; color: string; items: Expense[]; total: number };
   const sections: Section[] = [];
   const buckets = new Map<string, Expense[]>();
-  for (const e of visible) {
+  for (const e of spending) {
     const key = e.GROUP_ID ?? "__none__";
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key)!.push(e);
@@ -113,6 +117,28 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
         </div>
       )}
 
+      {income.length > 0 && (
+        <CollapsibleCard
+          className="card rounded-2xl overflow-hidden border-t-2 border-teal-500/30 animate-fade-in cat-card-hover"
+          header={<>
+            <span className="inline-flex items-center gap-2">
+              <span className="text-sm">💵</span>
+              <span className="text-sm font-bold text-teal-400">Income</span>
+              <span className="text-[10px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">{income.length}</span>
+            </span>
+            <span className="text-sm font-mono font-bold text-teal-400/80 tabular-nums">+{fmt(incomeTotal)} €</span>
+          </>}
+        >
+          <div className="divide-y divide-white/[0.04]">
+            {[...income].sort((a, b) => b.AMOUNT - a.AMOUNT).map(e => (
+              <SwipeRow key={e.ID} onSwipeLeft={() => handleDelete(e.ID, e.NAME)} onSwipeRight={() => openEdit(e)}>
+                <ExpenseRow expense={e} onEdit={openEdit} onDelete={handleDelete} onDuplicate={handleDuplicate} onToggleRecurring={handleToggleRecurring} />
+              </SwipeRow>
+            ))}
+          </div>
+        </CollapsibleCard>
+      )}
+
       {sections.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {sections.map((s) => {
@@ -143,10 +169,27 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
         </div>
       )}
 
-      {visible.length > 0 && (
+      {visible.length > 0 && income.length === 0 && (
         <div className="card rounded-2xl px-4 sm:px-5 py-3 flex items-center justify-between">
           <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#9ca3c0]">Total</span>
-          <span className="text-sm font-mono font-bold text-white tabular-nums">{fmt(visible.reduce((s, e) => s + e.AMOUNT, 0))} €</span>
+          <span className="text-sm font-mono font-bold text-white tabular-nums">{fmt(spentTotal)} €</span>
+        </div>
+      )}
+
+      {visible.length > 0 && income.length > 0 && (
+        <div className="card rounded-2xl px-4 sm:px-5 py-3 grid grid-cols-3 gap-3">
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380]">Spent</p>
+            <p className="text-sm font-mono font-bold text-white tabular-nums">{fmt(spentTotal)} €</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380]">Income</p>
+            <p className="text-sm font-mono font-bold text-teal-400 tabular-nums">+{fmt(incomeTotal)} €</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380]">Net</p>
+            <p className={`text-sm font-mono font-bold tabular-nums ${incomeTotal - spentTotal >= 0 ? "text-teal-400" : "text-red-400"}`}>{incomeTotal - spentTotal >= 0 ? "+" : "−"}{fmt(Math.abs(incomeTotal - spentTotal))} €</p>
+          </div>
         </div>
       )}
 
@@ -214,7 +257,7 @@ function ExpenseRow({ expense: e, onEdit, onDelete, onDuplicate, onToggleRecurri
               </svg>
             )}
           </span>
-          <span className="ml-2 shrink-0"><InlineAmount expenseId={e.ID} amount={e.AMOUNT} /></span>
+          <span className="ml-2 shrink-0"><InlineAmount expenseId={e.ID} amount={e.AMOUNT} tone={e.KIND === "income" ? "income" : "expense"} /></span>
         </div>
         {e.NOTES && <p className="text-[10px] text-[#5a6380] mt-0.5 truncate">{e.NOTES}</p>}
       </div>
