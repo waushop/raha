@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exportCsv } from "@/app/actions";
+import { isAuthenticated } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
+  if (!(await isAuthenticated())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { searchParams } = request.nextUrl;
   const month = searchParams.get("month") ?? undefined;
   const year = searchParams.get("year") ?? undefined;

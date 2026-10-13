@@ -19,7 +19,10 @@ export default function BackupRestore() {
       const res = await fetch("/api/backup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
       if (!res.ok) throw new Error();
       const result = await res.json();
-      toast.show(`${result.imported} expenses imported from JSON`);
+      const parts = [`${result.imported} added`];
+      if (result.updated) parts.push(`${result.updated} restored`);
+      if (result.skipped) parts.push(`${result.skipped} skipped`);
+      toast.show(`Backup applied: ${parts.join(", ")}`);
       window.location.reload();
     } catch { toast.show("JSON import error - check file format"); }
     finally { setImporting(false); }
@@ -73,7 +76,8 @@ export default function BackupRestore() {
           </label>
         </div>
         <p className="text-[10px] text-[#5a6380] mt-2">
-          CSV format: Month, Category, Name, Amount (header row required)
+          Restore JSON puts every row in the backup back to its backed-up values (including deleted ones); rows that exist only here are left alone.
+          CSV format: Month, Category, Name, Amount (header row required).
         </p>
       </div>
     </div>
