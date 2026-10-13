@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Empty Wallet (raha)
 
-## Getting Started
+A small, fast, single-user expense and income tracker. Next.js 16 + React 19 on the front, SQLite (`node:sqlite`) underneath, no ORM, no external services. Runs as one container with one volume.
 
-First, run the development server:
+## Features
+
+- Monthly ledger grouped by your own category groups, with income shown separately and a Spent / Income / Net summary
+- Dashboard with budgets and pacing, forecasting, insights and a spending heatmap
+- Year overview, 12-month analytics, side-by-side month comparison, global search, activity timeline
+- Recurring items with one-click "add recurring" and "copy last month"
+- Bank CSV import (Swedbank Estonia auto-detected, generic `Date,Name,Amount` otherwise) with learnable categorisation patterns
+- JSON backup/restore of everything (ledger, groups, budgets, import patterns) and CSV export
+- 6-digit PIN login, light/dark theme, installable PWA
+
+## Running locally
+
+Requires Node 24+.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000 — the SQLite file is created on first request
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+On first boot the login page asks you to choose a PIN. Everything is stored in `./raha.sqlite` (override with `DB_PATH`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run check      # lint (zero warnings) + tsc + unit tests
+npm test           # unit tests only (node:test via tsx)
+npx next build     # production build
+```
 
-## Learn More
+CI runs the same three gates before building the image, so a failing lint or test blocks a deploy.
 
-To learn more about Next.js, take a look at the following resources:
+## Configuration
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable        | Default          | Purpose |
+|-----------------|------------------|---------|
+| `DB_PATH`       | `./raha.sqlite`  | Path to the SQLite database. The session-signing secret is stored beside it as `.auth-secret`. |
+| `AUTH_PIN_HASH` | unset            | Optional SHA-256 of a bootstrap PIN. Only consulted until a PIN exists in the database. |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How auth works
 
-## Deploy on Vercel
+- The PIN hash lives in the `APP_SETTING` table.
+- A successful login sets an HMAC-signed, one-year session cookie. The signing key is 32 random bytes in `<DB dir>/.auth-secret`, generated on first use.
+- `proxy.ts` verifies the signature on every request before any route runs; every Server Action and API route also calls `requireAuth()` itself.
+- Changing the PIN rotates the secret, which logs out every other device while re-issuing a cookie to the one that made the change.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Data
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- One table, `LEDGER`, holds both expenses and income, distinguished by `KIND`. Spending views filter `KIND = 'expense'`.
+- Deletes are soft (`DELETED_AT`), and the activity page shows them.
+- Schema and idempotent migrations live in `lib/schema.ts` and run at startup.
+- Multi-row writes use `db.transaction()` so a failed import or restore leaves nothing half-applied.
+
+## Deploying
+
+Push to `main`. GitHub Actions lints, type-checks, tests, builds the standalone bundle, packages it into `ghcr.io/waushop/raha`, and bumps the image tag in the `wauhost` repo for Flux to roll out. The Helm chart in `deploy/` mounts a PVC at `/data` and can run a Litestream sidecar for off-site SQLite replication.

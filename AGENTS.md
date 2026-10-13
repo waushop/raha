@@ -9,14 +9,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## Code Style
 - TypeScript strict mode, no `any`
 - Server Components by default, `"use client"` only when needed
-- Server Actions for all data mutations (no API routes for CRUD)
+- Server Actions for all data mutations (no API routes for CRUD); every action starts with `await requireAuth()`
+- Multi-row writes go through `db.transaction((tx) => …)` with the synchronous `tx.run` / `tx.all` — never `await` inside
 - Tailwind CSS only — no CSS modules, no styled-components
 - All strings in English
 
 ## Database
 - Table/column names in UPPERCASE
 - Always filter `DELETED_AT IS NULL` in queries
-- Use `CAST(AMOUNT AS DOUBLE)` when selecting amounts
+- Spending aggregates must also filter `KIND = 'expense'`; income rows live in the same LEDGER table
+- Use `CAST(AMOUNT AS REAL)` when selecting amounts (SQLite has no DOUBLE)
 - Generate UUIDs with `crypto.randomUUID()`, not MySQL UUID()
 - Soft delete: set `DELETED_AT=CURRENT_TIMESTAMP`, never hard delete
 
@@ -35,6 +37,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Haptic feedback on mobile: `navigator.vibrate?.(10)`
 
 ## Testing & Deploy
-- Build check: `npx next build` must pass with zero errors
+- Before pushing: `npm run check` (lint with zero warnings, `tsc --noEmit`, `node --test`) and `npx next build` must pass. CI runs the same gates.
 - Deploy: push to `main` → GitHub Actions builds Docker image → Helm deploys to K8s
 - Production URL: raha.vaus.ee
