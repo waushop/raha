@@ -41,8 +41,12 @@ export default function CommandPalette() {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
 
-  // Close on navigation
-  useEffect(() => { setOpen(false); }, [pathname]);
+  // Close on navigation (state adjusted during render, not in an effect)
+  const [seenPath, setSeenPath] = useState(pathname);
+  if (seenPath !== pathname) {
+    setSeenPath(pathname);
+    setOpen(false);
+  }
 
   if (!open) return null;
 

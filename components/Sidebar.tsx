@@ -37,19 +37,14 @@ export default function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const isLoginPage = pathname === "/login";
-  const currentMonth = searchParams.get("month") ?? previousMonth();
-  const isYearPage = pathname === "/year";
-
-  // Don't render on login page
-  if (isLoginPage) return null;
-  const currentYear = searchParams.get("year") ?? String(new Date().getFullYear());
-  const months = generateMonths();
-
-  // Close on route change
-  useEffect(() => {
+  // Close on route change. Adjusting state during render (instead of in an
+  // effect) avoids an extra render pass and satisfies the hooks lint rules.
+  const routeKey = `${pathname}?${searchParams.toString()}`;
+  const [seenRouteKey, setSeenRouteKey] = useState(routeKey);
+  if (seenRouteKey !== routeKey) {
+    setSeenRouteKey(routeKey);
     setOpen(false);
-  }, [pathname, searchParams]);
+  }
 
   // Close on Escape
   useEffect(() => {
@@ -59,6 +54,14 @@ export default function Sidebar() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Hooks above this line must run on every render, including on /login.
+  if (pathname === "/login") return null;
+
+  const currentMonth = searchParams.get("month") ?? previousMonth();
+  const isYearPage = pathname === "/year";
+  const currentYear = searchParams.get("year") ?? String(new Date().getFullYear());
+  const months = generateMonths();
 
   return (
     <>
@@ -89,7 +92,7 @@ export default function Sidebar() {
           <div className="flex items-center justify-between">
             <h2
               className="text-2xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent"
-              style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+              style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
             >
               Empty Wallet
             </h2>

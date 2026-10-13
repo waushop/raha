@@ -1,5 +1,4 @@
 import type { CategoryKey } from "@/types/expense";
-import { CATEGORY_KEYS } from "@/types/expense";
 
 export type ParsedTransaction = {
   date: string;          // YYYY-MM-DD

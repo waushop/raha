@@ -67,7 +67,7 @@ export default async function ActivityPage() {
           <Link href="/dashboard" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Activity
           </h1>

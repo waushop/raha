@@ -1,11 +1,11 @@
 import { connection } from "next/server";
-import { getImportPatterns, getGroups } from "@/app/actions";
+import { getImportPatterns } from "@/app/actions";
 import Link from "next/link";
 import ImportFlow from "./ImportFlow";
 
 export default async function ImportPage() {
   await connection();
-  const [patterns, groups] = await Promise.all([getImportPatterns(), getGroups()]);
+  const patterns = await getImportPatterns();
 
   return (
     <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 sm:py-10 pb-20">
@@ -14,7 +14,7 @@ export default async function ImportPage() {
           <Link href="/dashboard" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mt-1"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Import
           </h1>
@@ -22,7 +22,7 @@ export default async function ImportPage() {
         </div>
 
         <div className="animate-fade-up" style={{ animationDelay: "0.05s" }}>
-          <ImportFlow patterns={patterns} groups={groups} />
+          <ImportFlow patterns={patterns} />
         </div>
       </div>
     </main>

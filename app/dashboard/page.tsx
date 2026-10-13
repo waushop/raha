@@ -11,9 +11,6 @@ import { getBudgets } from "@/lib/budgets";
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const fmtShort = (n: number) =>
-  n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(0);
-
 function currentMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -196,7 +193,7 @@ export default async function DashboardPage() {
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-fade-up">
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Empty Wallet
           </h1>

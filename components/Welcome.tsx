@@ -6,7 +6,7 @@ export default function Welcome() {
       <div className="text-6xl mb-4">💸</div>
       <h2
         className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mb-2"
-        style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+        style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
       >
         Welcome to Empty Wallet
       </h2>

@@ -6,17 +6,17 @@ import type { ImportPatternRow } from "@/app/actions";
 import type { ParsedTransaction } from "@/lib/import-parser";
 import { parseGenericCSV, classifyTransactions } from "@/lib/import-parser";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
-import type { CategoryKey, ExpenseGroup } from "@/types/expense";
+import type { CategoryKey } from "@/types/expense";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 
 type Props = {
   patterns: ImportPatternRow[];
-  groups: ExpenseGroup[];
 };
 
 type Step = "upload" | "preview" | "done";
 
-export default function ImportFlow({ patterns: initialPatterns, groups }: Props) {
+export default function ImportFlow({ patterns: initialPatterns }: Props) {
   const [step, setStep] = useState<Step>("upload");
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -157,9 +157,9 @@ export default function ImportFlow({ patterns: initialPatterns, groups }: Props)
           {skippedCount > 0 && <p className="text-xs text-[#5a6380] mt-1">{skippedCount} duplicates skipped</p>}
         </div>
         <div className="flex gap-2 justify-center pt-2">
-          <a href="/" className="gradient-pink text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-90 transition-all btn-press shadow-lg shadow-pink-500/20">
+          <Link href="/" className="gradient-pink text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-90 transition-all btn-press shadow-lg shadow-pink-500/20">
             View expenses
-          </a>
+          </Link>
           <button onClick={() => { setStep("upload"); setTransactions([]); }} className="px-5 py-2.5 text-sm font-medium border border-white/[0.08] rounded-xl text-[#9ca3c0] hover:bg-white/5 hover:text-white transition-all btn-press">
             Import more
           </button>

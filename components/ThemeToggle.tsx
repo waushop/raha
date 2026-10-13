@@ -1,23 +1,46 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 
+type Theme = "dark" | "light";
+
+const STORAGE_KEY = "theme";
+const CHANGE_EVENT = "themechange";
+
+function readTheme(): Theme {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
+function subscribe(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(CHANGE_EVENT, onChange);
+  };
+}
+
+// localStorage is the source of truth; the inline script in app/layout.tsx
+// applies it before paint, and this component just mirrors it. Using an
+// external store (rather than setState in an effect) keeps hydration clean:
+// the server snapshot is always "dark".
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
-  useEffect(() => {
-    const saved = localStorage.getItem("theme") as "dark" | "light" | null;
-    if (saved) {
-      setTheme(saved);
-      document.documentElement.setAttribute("data-theme", saved);
-    }
-  }, []);
+  const theme = useSyncExternalStore(subscribe, readTheme, () => "dark" as Theme);
 
   function toggle() {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    localStorage.setItem("theme", next);
-    document.documentElement.setAttribute("data-theme", next);
+    const next: Theme = theme === "dark" ? "light" : "dark";
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      // Private mode or storage disabled: still switch for this page view.
+    }
+    if (next === "light") document.documentElement.setAttribute("data-theme", "light");
+    else document.documentElement.removeAttribute("data-theme");
+    window.dispatchEvent(new Event(CHANGE_EVENT));
   }
 
   return (

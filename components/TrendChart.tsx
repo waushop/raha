@@ -70,7 +70,6 @@ export default function TrendChart({ data, currentMonth }: Props) {
 
   // Current month stats
   const currentData = data.find(d => d.month === currentMonth);
-  const prevData = data.length >= 2 ? data[data.length - 2] : null;
   const diffFromAvg = currentData ? ((currentData.total - avg) / avg) * 100 : 0;
 
   return (

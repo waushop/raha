@@ -19,7 +19,7 @@ export default async function LoginPage() {
           </div>
           <h1
             className="text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
-            style={{ fontFamily: "'Caveat', cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Empty Wallet
           </h1>

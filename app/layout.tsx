@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Caveat } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
 import KeyboardHints from "@/components/KeyboardHints";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -7,6 +8,19 @@ import Sidebar from "@/components/Sidebar";
 import CommandPalette from "@/components/CommandPalette";
 import ServiceWorker from "@/components/ServiceWorker";
 import "./globals.css";
+
+// Self-hosted by next/font: no runtime request to Google, no layout shift.
+// Headings reference it through the --font-hand CSS variable.
+const caveat = Caveat({
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  variable: "--font-hand",
+  display: "swap",
+});
+
+// Applies the saved theme before first paint so a light-mode user doesn't
+// see a dark flash. Mirrors ThemeToggle, which owns the toggle itself.
+const THEME_INIT = `try{if(localStorage.getItem("theme")==="light")document.documentElement.setAttribute("data-theme","light")}catch(e){}`;
 
 export const metadata: Metadata = {
   title: "Empty Wallet",
@@ -39,11 +53,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="et">
+    // suppressHydrationWarning: THEME_INIT may add data-theme before React hydrates.
+    <html lang="et" className={caveat.variable} suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet" />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
       <body className="bg-dark-mesh min-h-screen antialiased">
         <ToastProvider>

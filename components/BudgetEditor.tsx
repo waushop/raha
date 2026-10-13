@@ -13,9 +13,6 @@ type Props = {
   defaultCategories: Partial<Record<CategoryKey, number>>;
 };
 
-const fmt = (n: number) =>
-  n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-
 export default function BudgetEditor({
   initialTotal,
   initialCategories,
