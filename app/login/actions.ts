@@ -1,27 +1,18 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   PIN_REGEX,
+  clearSessionCookie,
   constantTimeEqual,
-  generateAuthToken,
   getPinHash,
   hashPin,
+  issueSessionCookie,
   persistEnvHashIfNeeded,
+  requireAuth,
   setPinHash,
 } from "@/lib/auth";
-
-async function setAuthCookie() {
-  const cookieStore = await cookies();
-  cookieStore.set("auth", generateAuthToken(), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 365,
-    path: "/",
-  });
-}
+import { rotateSessionSecret } from "@/lib/session";
 
 export async function login(formData: FormData) {
   const pin = formData.get("pin") as string;
@@ -34,7 +25,7 @@ export async function login(formData: FormData) {
   if (!constantTimeEqual(candidate, expected)) return { error: "Wrong PIN" };
 
   await persistEnvHashIfNeeded(candidate);
-  await setAuthCookie();
+  await issueSessionCookie();
   redirect("/dashboard");
 }
 
@@ -50,11 +41,13 @@ export async function setupInitialPin(formData: FormData) {
   if (pin !== confirm) return { error: "PINs don't match" };
 
   await setPinHash(hashPin(pin));
-  await setAuthCookie();
+  await issueSessionCookie();
   redirect("/dashboard");
 }
 
 export async function changePin(formData: FormData) {
+  await requireAuth();
+
   const current = formData.get("current") as string;
   const next = formData.get("next") as string;
   const confirm = formData.get("confirm") as string;
@@ -68,12 +61,14 @@ export async function changePin(formData: FormData) {
   if (next === current) return { error: "New PIN must differ from current" };
 
   await setPinHash(hashPin(next));
+  // Changing the PIN logs out every other device: rotate the signing secret
+  // (invalidating all tokens) and re-issue a token for this browser only.
+  rotateSessionSecret();
+  await issueSessionCookie();
   return { ok: true };
 }
 
 export async function logout() {
-  const cookieStore = await cookies();
-  cookieStore.delete("auth");
+  await clearSessionCookie();
   redirect("/login");
 }
-

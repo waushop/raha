@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# session signing secret (generated next to the SQLite file)
+.auth-secret
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

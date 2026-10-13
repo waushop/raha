@@ -1,18 +1,18 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { cookies } from "next/headers";
 import db from "./db";
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  createSessionToken,
+  getSessionSecret,
+  verifySessionTokenWithCurrentSecret,
+} from "./session";
 
 const PIN_KEY = "pin_hash";
 
 export function hashPin(pin: string): string {
   return createHash("sha256").update(pin).digest("hex");
-}
-
-export function generateAuthToken(): string {
-  // The cookie stores the SHA-256 of a 32-byte random value, the same
-  // double-step the original auth used. Middleware just checks length, so
-  // this is opaque to it; the hash makes the cookie value indistinguishable
-  // from random if it ever leaks into a log.
-  return createHash("sha256").update(randomBytes(32)).digest("hex");
 }
 
 export function constantTimeEqual(a: string, b: string): boolean {
@@ -55,4 +55,42 @@ export async function setPinHash(hash: string): Promise<void> {
 export async function persistEnvHashIfNeeded(verifiedHash: string): Promise<void> {
   if (await isPinSetInDb()) return;
   await setPinHash(verifiedHash);
+}
+
+// ============================================
+// SESSION COOKIE
+// ============================================
+
+/** Mints a fresh signed token and stores it in the session cookie. */
+export async function issueSessionCookie(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, createSessionToken(getSessionSecret()), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: SESSION_TTL_SECONDS,
+    path: "/",
+  });
+}
+
+export async function clearSessionCookie(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE);
+}
+
+/** True when the request carries a validly signed, unexpired session cookie. */
+export async function isAuthenticated(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return verifySessionTokenWithCurrentSecret(cookieStore.get(SESSION_COOKIE)?.value);
+}
+
+/**
+ * Guard for Server Actions and route handlers. The proxy already rejects
+ * unauthenticated requests, but Next.js recommends verifying inside every
+ * server function too, so a future matcher change can't expose a mutation.
+ */
+export async function requireAuth(): Promise<void> {
+  if (!(await isAuthenticated())) {
+    throw new Error("Unauthorized");
+  }
 }
