@@ -29,14 +29,18 @@ async function clientKey(): Promise<string> {
 }
 
 const seconds = (ms: number) => Math.ceil(ms / 1000);
+const lockedMessage = (ms: number) =>
+  ms >= 3_600_000
+    ? `Locked for ${Math.ceil(ms / 3_600_000)} hours after repeated attempts — an admin can unlock from Settings`
+    : `Too many attempts. Try again in ${seconds(ms)}s`;
 
 async function checkPin(pin: string, expected: string): Promise<{ error: string } | null> {
   const key = await clientKey();
   const locked = lockoutRemainingMs(key);
-  if (locked > 0) return { error: `Too many attempts. Try again in ${seconds(locked)}s` };
+  if (locked > 0) return { error: lockedMessage(locked) };
   if (!verifyPin(pin, expected)) {
     const lock = recordFailure(key);
-    return { error: lock > 0 ? `Wrong PIN. Locked for ${seconds(lock)}s` : "Wrong PIN" };
+    return { error: lock > 0 ? lockedMessage(lock) : "Wrong PIN" };
   }
   clearFailures(key);
   return null;
@@ -48,13 +52,13 @@ export async function login(formData: FormData) {
 
   const key = await clientKey();
   const locked = lockoutRemainingMs(key);
-  if (locked > 0) return { error: `Too many attempts. Try again in ${seconds(locked)}s` };
+  if (locked > 0) return { error: lockedMessage(locked) };
 
   // The PIN picks the user. No user matches → one failed attempt against the IP.
   const user = await findUserByPin(pin);
   if (!user) {
     const lock = recordFailure(key);
-    return { error: lock > 0 ? `Wrong PIN. Locked for ${seconds(lock)}s` : "Wrong PIN" };
+    return { error: lock > 0 ? lockedMessage(lock) : "Wrong PIN" };
   }
   clearFailures(key);
 

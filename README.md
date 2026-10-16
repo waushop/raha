@@ -45,7 +45,7 @@ CI runs the same three gates before building the image, so a failing lint or tes
 
 - Each user's PIN hash lives on the `USER` row as salted scrypt. A database from before multi-user is migrated on first start: the old PIN becomes the "Owner" admin and all existing data becomes that user's workspace. Older unsalted SHA-256 hashes (and the `AUTH_PIN_HASH` bootstrap) still verify and are upgraded in place on the next successful login.
 - Data is partitioned by workspace. Every user has a personal one; nothing is shared between users yet.
-- Five wrong PINs from one client IP lock it out for a minute, doubling per further failure up to fifteen minutes (`lib/ratelimit.ts`, in-memory).
+- Five wrong PINs from one client IP lock it for a minute. Hitting the limit a second time within the hour locks it for 24 hours; an hour without attempts resets the count, and admins can unlock a client from Settings (`lib/ratelimit.ts`, in-memory).
 - Sessions slide: the proxy re-issues the cookie once it is past half its one-year life, so an active device is never logged out. Changing your PIN signs out your other devices only; other users are unaffected.
 - A successful login sets an HMAC-signed, one-year session cookie. The signing key is 32 random bytes in `<DB dir>/.auth-secret`, generated on first use.
 - `proxy.ts` verifies the signature on every request before any route runs; every Server Action and API route also calls `requireAuth()` itself.

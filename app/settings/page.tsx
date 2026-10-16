@@ -3,6 +3,8 @@ import Link from "next/link";
 import db from "@/lib/db";
 import { currentContext, listUsers } from "@/lib/auth";
 import UserManager from "@/components/UserManager";
+import LockList from "@/components/LockList";
+import { listLocks } from "@/lib/ratelimit";
 import pkg from "@/package.json";
 import { getBudgets, DEFAULT_CATEGORY_BUDGETS, DEFAULT_TOTAL_BUDGET } from "@/lib/budgets";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
@@ -123,6 +125,13 @@ export default async function SettingsPage() {
           </h2>
           <p className="text-xs text-[#5a6380] mb-4">Each user has a private ledger and their own PIN. Signed in as <span className="text-white/80">{ctx.name}</span>.</p>
           <UserManager users={users} currentUserId={ctx.userId} isAdmin={ctx.isAdmin} />
+          {ctx.isAdmin && (
+            <div className="mt-4 pt-4 border-t border-white/[0.06]">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380] mb-2">Sign-in locks</p>
+              <p className="text-[10px] text-[#5a6380] mb-2">5 wrong PINs lock a device for a minute; a second time in the same hour locks it for 24 hours. An hour of quiet resets the count.</p>
+              <LockList locks={listLocks()} />
+            </div>
+          )}
         </div>
 
         {/* Security */}

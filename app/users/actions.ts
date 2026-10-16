@@ -5,6 +5,7 @@ import db from "@/lib/db";
 import { PIN_REGEX, createUserWithWorkspace, hashPin, pinTaken, requireAuth } from "@/lib/auth";
 import { parseId, parseName } from "@/lib/validate";
 import type { ActionResult } from "@/app/actions";
+import { unlock } from "@/lib/ratelimit";
 
 // Admin-only user management. Every user gets their own workspace; removing
 // a user keeps their data (soft delete) so it can be restored by hand.
@@ -45,6 +46,13 @@ export async function resetUserPin(id: string, pin: string): Promise<ActionResul
   if (!PIN_REGEX.test(pin)) return { ok: false, error: "PIN must be 6 digits" };
   if (await pinTaken(pin, target)) return { ok: false, error: "That PIN is already used by another user — pick a different one" };
   await db.execute("UPDATE USER SET PIN_HASH = ?, SESSION_VERSION = SESSION_VERSION + 1 WHERE ID = ? AND DELETED_AT IS NULL", [hashPin(pin), target]);
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+export async function unlockClient(key: string): Promise<ActionResult> {
+  await requireAdmin();
+  unlock(String(key).slice(0, 100));
   revalidatePath("/settings");
   return { ok: true };
 }
