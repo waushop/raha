@@ -11,7 +11,7 @@ A small, fast, single-user expense and income tracker. Next.js 16 + React 19 on 
 - Recurring items with one-click "add recurring" and "copy last month"; a subscription tracker with charge day, price changes and yearly cost
 - Bank CSV import (Swedbank Estonia auto-detected, generic `Date,Name,Amount` otherwise) with learnable patterns plus a classifier trained on your own history
 - JSON backup/restore of everything (ledger, groups, budgets, import patterns) and CSV export
-- 6-digit PIN login, light/dark theme, installable PWA
+- Multiple users, each with a private ledger and their own 6-digit PIN; admins manage users from Settings. Light/dark theme, installable PWA
 
 ## Running locally
 
@@ -22,7 +22,7 @@ npm install
 npm run dev        # http://localhost:3000 — the SQLite file is created on first request
 ```
 
-On first boot the login page asks you to choose a PIN. Everything is stored in `./raha.sqlite` (override with `DB_PATH`).
+On first boot the login page asks for your name and a PIN; that first user is the admin and can add more users (each gets an empty ledger of their own). Everything is stored in `./raha.sqlite` (override with `DB_PATH`).
 
 ## Checks
 
@@ -43,9 +43,10 @@ CI runs the same three gates before building the image, so a failing lint or tes
 
 ## How auth works
 
-- The PIN hash lives in the `APP_SETTING` table as salted scrypt. Older unsalted SHA-256 hashes (and the `AUTH_PIN_HASH` bootstrap) still verify and are upgraded in place on the next successful login.
+- Each user's PIN hash lives on the `USER` row as salted scrypt. A database from before multi-user is migrated on first start: the old PIN becomes the "Owner" admin and all existing data becomes that user's workspace. Older unsalted SHA-256 hashes (and the `AUTH_PIN_HASH` bootstrap) still verify and are upgraded in place on the next successful login.
+- Data is partitioned by workspace. Every user has a personal one; nothing is shared between users yet.
 - Five wrong PINs from one client IP lock it out for a minute, doubling per further failure up to fifteen minutes (`lib/ratelimit.ts`, in-memory).
-- Sessions slide: the proxy re-issues the cookie once it is past half its one-year life, so an active device is never logged out.
+- Sessions slide: the proxy re-issues the cookie once it is past half its one-year life, so an active device is never logged out. Changing your PIN signs out your other devices only; other users are unaffected.
 - A successful login sets an HMAC-signed, one-year session cookie. The signing key is 32 random bytes in `<DB dir>/.auth-secret`, generated on first use.
 - `proxy.ts` verifies the signature on every request before any route runs; every Server Action and API route also calls `requireAuth()` itself.
 - Changing the PIN rotates the secret, which logs out every other device while re-issuing a cookie to the one that made the change.
