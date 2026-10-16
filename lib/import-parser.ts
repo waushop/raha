@@ -1,4 +1,5 @@
 import type { CategoryKey } from "@/types/expense";
+import { predict, type ClassifierModel } from "./classifier";
 
 export type ParsedTransaction = {
   date: string;          // YYYY-MM-DD
@@ -8,8 +9,9 @@ export type ParsedTransaction = {
   currency: string;
   isIncome: boolean;
   category: CategoryKey;
-  confidence: "pattern" | "guess" | "manual" | "none";
+  confidence: "pattern" | "learned" | "guess" | "manual" | "none";
   patternId?: string;    // which pattern matched
+  groupId?: string | null; // suggested by a pattern or the learned model
 };
 
 export type ImportPattern = {
@@ -137,7 +139,8 @@ export function parseGenericCSV(csv: string): ParsedTransaction[] {
  */
 export function classifyTransactions(
   transactions: ParsedTransaction[],
-  patterns: ImportPattern[]
+  patterns: ImportPattern[],
+  model?: ClassifierModel | null,
 ): ParsedTransaction[] {
   // Sort by priority descending
   const sorted = [...patterns].sort((a, b) => b.PRIORITY - a.PRIORITY);
@@ -153,6 +156,7 @@ export function classifyTransactions(
             category: p.CATEGORY as CategoryKey,
             confidence: "pattern",
             patternId: p.ID,
+            groupId: p.GROUP_ID,
           };
         }
       } catch {
@@ -163,8 +167,17 @@ export function classifyTransactions(
             category: p.CATEGORY as CategoryKey,
             confidence: "pattern",
             patternId: p.ID,
+            groupId: p.GROUP_ID,
           };
         }
+      }
+    }
+
+    // Learned from the user's own history (beats generic keyword guesses).
+    if (model) {
+      const learned = predict(model, tx.description);
+      if (learned) {
+        return { ...tx, category: learned.category as CategoryKey, confidence: "learned", groupId: learned.groupId };
       }
     }
 

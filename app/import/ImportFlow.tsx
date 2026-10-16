@@ -4,6 +4,7 @@ import { useState, useTransition, useCallback } from "react";
 import { importTransactions, createImportPattern, deleteImportPattern } from "@/app/actions";
 import type { ImportPatternRow } from "@/app/actions";
 import type { ParsedTransaction } from "@/lib/import-parser";
+import type { ClassifierModel } from "@/lib/classifier";
 import { parseGenericCSV, classifyTransactions } from "@/lib/import-parser";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
 import type { CategoryKey } from "@/types/expense";
@@ -12,11 +13,12 @@ import { useToast } from "@/components/Toast";
 
 type Props = {
   patterns: ImportPatternRow[];
+  model: ClassifierModel;
 };
 
 type Step = "upload" | "preview" | "done";
 
-export default function ImportFlow({ patterns: initialPatterns }: Props) {
+export default function ImportFlow({ patterns: initialPatterns, model }: Props) {
   const [step, setStep] = useState<Step>("upload");
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -37,13 +39,13 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
         return;
       }
       // Income rows (credits) are kept and imported as income.
-      const classified = classifyTransactions(parsed, patterns);
+      const classified = classifyTransactions(parsed, patterns, model);
       setTransactions(classified);
       setSelected(new Set(classified.map((_, i) => i)));
       setStep("preview");
     };
     reader.readAsText(file, "UTF-8");
-  }, [patterns, toast]);
+  }, [patterns, model, toast]);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -111,8 +113,8 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
       const res = await importTransactions(
         toImport.map(tx => ({
           category: tx.category,
-          // A learned pattern can carry a group; apply it when it matched.
-          groupId: patterns.find(p => p.ID === tx.patternId)?.GROUP_ID ?? null,
+          // Group suggested by the matching pattern or the learned model.
+          groupId: tx.groupId ?? null,
           name: tx.description,
           amount: tx.amount,
           month: tx.month,
@@ -276,6 +278,9 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
                         <span className="text-[10px] text-[#5a6380]">{tx.date}</span>
                         {tx.confidence === "pattern" && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400">auto</span>
+                        )}
+                        {tx.confidence === "learned" && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-400" title="Learned from your past entries">learned</span>
                         )}
                         {tx.confidence === "guess" && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">guess</span>
