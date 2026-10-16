@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySessionTokenWithCurrentSecret } from "@/lib/session";
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  createSessionToken,
+  getSessionSecret,
+  sessionCookieOptions,
+  sessionTokenExpiry,
+  verifySessionTokenWithCurrentSecret,
+} from "@/lib/session";
 
 // Proxy runs on the Node.js runtime in Next 16, so we can verify the HMAC
 // cookie here and reject forged sessions before any route executes.
@@ -7,14 +15,19 @@ import { SESSION_COOKIE, verifySessionTokenWithCurrentSecret } from "@/lib/sessi
 // themselves (see lib/auth.ts), as Next recommends — a matcher change must
 // never silently open a mutation.
 
-const PUBLIC_PATHS = new Set(["/login", "/manifest.json", "/favicon.ico", "/sw.js"]);
+const PUBLIC_PATHS = new Set([
+  "/login", "/manifest.json", "/favicon.ico", "/sw.js",
+  "/icon.svg", "/icon-192.png", "/icon-512.png",
+]);
 
 function isPublic(pathname: string): boolean {
-  if (PUBLIC_PATHS.has(pathname)) return true;
-  if (pathname.startsWith("/_next/")) return true;
-  if (pathname.startsWith("/icon")) return true;
-  return false;
+  return PUBLIC_PATHS.has(pathname) || pathname.startsWith("/_next/");
 }
+
+// Sliding expiry: once a token is past the halfway point of its life, hand
+// the browser a fresh one. A device that visits at least every six months
+// never gets logged out; one that doesn't, does.
+const REFRESH_WHEN_REMAINING_MS = SESSION_TTL_SECONDS * 500;
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -25,7 +38,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
   if (isPublic(pathname) || authenticated) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    if (authenticated && token) {
+      const exp = sessionTokenExpiry(token);
+      if (exp !== null && exp * 1000 - Date.now() < REFRESH_WHEN_REMAINING_MS) {
+        response.cookies.set(SESSION_COOKIE, createSessionToken(getSessionSecret()), sessionCookieOptions(process.env.NODE_ENV === "production"));
+      }
+    }
+    return response;
   }
 
   if (pathname.startsWith("/api/")) {

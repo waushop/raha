@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import Link from "next/link";
 import db from "@/lib/db";
+import pkg from "@/package.json";
 import { getBudgets, DEFAULT_CATEGORY_BUDGETS, DEFAULT_TOTAL_BUDGET } from "@/lib/budgets";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
 import BackupRestore from "@/components/BackupRestore";
@@ -44,7 +45,7 @@ export default async function SettingsPage() {
   const deleted = (deletedCount as Array<{ CNT: number }>)[0]?.CNT ?? 0;
 
   return (
-    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 sm:py-10 pb-20">
+    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-20">
       <div className="max-w-3xl mx-auto space-y-5">
         {/* Header */}
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-fade-up">
@@ -166,7 +167,7 @@ export default async function SettingsPage() {
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.14s" }}>
           <h2 className="text-sm font-bold text-white mb-3">Application</h2>
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between"><span className="text-[#5a6380]">Version</span><span className="text-white/60">2.0</span></div>
+            <div className="flex justify-between"><span className="text-[#5a6380]">Version</span><span className="text-white/60">{pkg.version}</span></div>
             <div className="flex justify-between"><span className="text-[#5a6380]">Framework</span><span className="text-white/60">Next.js 16</span></div>
             <div className="flex justify-between"><span className="text-[#5a6380]">Database</span><span className="text-white/60">SQLite</span></div>
             <div className="flex justify-between"><span className="text-[#5a6380]">Styling</span><span className="text-white/60">Tailwind CSS v4</span></div>

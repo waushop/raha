@@ -10,6 +10,7 @@ import {
   getSessionSecret,
   rotateSessionSecret,
   sessionSecretPath,
+  sessionTokenExpiry,
   verifySessionTokenWithCurrentSecret,
   SESSION_TTL_SECONDS,
 } from "@/lib/session";
@@ -22,6 +23,13 @@ describe("session tokens (pure)", () => {
     const token = createSessionToken(secret, now);
     assert.equal(verifySessionToken(secret, token, now), true);
     assert.match(token, /^v1\.\d+\.[0-9a-f]{32}\.[0-9a-f]{64}$/);
+  });
+
+  test("sessionTokenExpiry reads the embedded expiry without verifying", () => {
+    const token = createSessionToken(secret, now, 3600);
+    assert.equal(sessionTokenExpiry(token), Math.floor(now / 1000) + 3600);
+    assert.equal(sessionTokenExpiry("nope"), null);
+    assert.equal(sessionTokenExpiry(undefined), null);
   });
 
   test("rejects a token signed with a different secret", () => {

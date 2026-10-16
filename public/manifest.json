@@ -1,7 +1,7 @@
 {
-  "name": "Meie Raha",
-  "short_name": "Raha",
-  "description": "Laste ühised kulud",
+  "name": "Empty Wallet",
+  "short_name": "Wallet",
+  "description": "Personal expense tracker",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a2e",

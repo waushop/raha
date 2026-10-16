@@ -3,36 +3,24 @@
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/login/actions";
+import { listMonths } from "@/app/actions";
+import { addMonths, currentMonth, monthLabel } from "@/lib/months";
 import ThemeToggle from "./ThemeToggle";
 
-const MONTH_NAMES = [
-  "Jaanuar", "Veebruar", "Märts", "Aprill", "Mai", "Juuni",
-  "Juuli", "August", "September", "Oktoober", "November", "Detsember",
-];
-
-function previousMonth(): string {
-  const now = new Date();
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function generateMonths(): { value: string; label: string }[] {
+// Current month back to `minMonth`, newest first. Always shows at least a
+// year so a fresh install still has somewhere to click.
+function generateMonths(minMonth: string): { value: string; label: string }[] {
   const months: { value: string; label: string }[] = [];
-  const now = new Date();
-  // From current month back to Jan 2026
-  let d = new Date(now.getFullYear(), now.getMonth(), 1);
-  const min = new Date(2026, 0, 1);
-  while (d >= min) {
-    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-    months.push({ value, label });
-    d = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const floor = minMonth < addMonths(currentMonth(), -11) ? minMonth : addMonths(currentMonth(), -11);
+  for (let m = currentMonth(); m >= floor; m = addMonths(m, -1)) {
+    months.push({ value: m, label: monthLabel(m) });
   }
   return months;
 }
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false);
+  const [oldestMonth, setOldestMonth] = useState<string>(currentMonth());
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -55,20 +43,27 @@ export default function Sidebar() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Oldest month with data decides how far back the month list goes. Not on
+  // /login: the action requires auth.
+  useEffect(() => {
+    if (pathname === "/login") return;
+    listMonths().then((ms) => { const oldest = ms.at(-1); if (oldest) setOldestMonth(oldest); }).catch(() => {});
+  }, [pathname]);
+
   // Hooks above this line must run on every render, including on /login.
   if (pathname === "/login") return null;
 
-  const currentMonth = searchParams.get("month") ?? previousMonth();
+  const activeMonth = searchParams.get("month") ?? currentMonth();
   const isYearPage = pathname === "/year";
   const currentYear = searchParams.get("year") ?? String(new Date().getFullYear());
-  const months = generateMonths();
+  const months = generateMonths(oldestMonth);
 
   return (
     <>
-      {/* Hamburger button */}
+      {/* Hamburger button — mobile/tablet only; on lg+ the panel is always open */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed top-5 left-4 z-40 w-10 h-10 rounded-xl bg-white/5 border border-white/10 backdrop-blur-lg flex items-center justify-center text-[#9ca3c0] hover:text-white hover:bg-white/10 transition-all btn-press sm:top-7 sm:left-6"
+        className="lg:hidden fixed top-5 left-4 z-40 w-10 h-10 rounded-xl bg-white/5 border border-white/10 backdrop-blur-lg flex items-center justify-center text-[#9ca3c0] hover:text-white hover:bg-white/10 transition-all btn-press sm:top-7 sm:left-6"
         aria-label="Menu"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -78,12 +73,12 @@ export default function Sidebar() {
 
       {/* Backdrop */}
       {open && (
-        <div className="fixed inset-0 bg-black/50 z-40 animate-backdrop" onClick={() => setOpen(false)} />
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40 animate-backdrop" onClick={() => setOpen(false)} />
       )}
 
       {/* Sidebar panel */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-50 w-72 bg-[#1c2237] border-r border-white/[0.08] flex flex-col transition-transform duration-300 ease-out ${
+        className={`fixed top-0 left-0 bottom-0 z-50 w-72 panel border-r border-white/[0.08] flex flex-col transition-transform duration-300 ease-out lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -98,7 +93,7 @@ export default function Sidebar() {
             </h2>
             <button
               onClick={() => setOpen(false)}
-              className="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center text-[#5a6380] hover:text-white transition-colors"
+              className="lg:hidden w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center text-[#5a6380] hover:text-white transition-colors"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M18 6L6 18M6 6l12 12" />
@@ -132,7 +127,7 @@ export default function Sidebar() {
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#5a6380] px-2 mb-2">Months</p>
             <div className="space-y-0.5">
               {months.map(({ value, label }) => {
-                const isActive = !isYearPage && currentMonth === value;
+                const isActive = !isYearPage && activeMonth === value;
                 return (
                   <button
                     key={value}
@@ -270,7 +265,7 @@ export default function Sidebar() {
           <div>
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#5a6380] px-2 mb-2">Export</p>
             <a
-              href={`/api/export?month=${currentMonth}`}
+              href={`/api/export?month=${activeMonth}`}
               className="w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 text-[#9ca3c0] hover:bg-white/5 hover:text-white"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

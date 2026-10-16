@@ -21,6 +21,7 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [patterns, setPatterns] = useState(initialPatterns);
+  const [openPicker, setOpenPicker] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
@@ -30,16 +31,19 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
     const reader = new FileReader();
     reader.onload = (e) => {
       const csv = e.target?.result as string;
-      const parsed = parseGenericCSV(csv);
-      // Filter to expenses only (debit), skip income
-      const expenses = parsed.filter(tx => !tx.isIncome);
-      const classified = classifyTransactions(expenses, patterns);
+      const parsed = parseGenericCSV(csv).filter(tx => tx.month);
+      if (parsed.length === 0) {
+        toast.showError("No transactions found in that file. Expected Swedbank CSV or Date,Name,Amount.");
+        return;
+      }
+      // Income rows (credits) are kept and imported as income.
+      const classified = classifyTransactions(parsed, patterns);
       setTransactions(classified);
       setSelected(new Set(classified.map((_, i) => i)));
       setStep("preview");
     };
     reader.readAsText(file, "UTF-8");
-  }, [patterns]);
+  }, [patterns, toast]);
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -68,7 +72,7 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
 
   function updateCategory(i: number, category: CategoryKey) {
     setTransactions(prev => prev.map((tx, idx) =>
-      idx === i ? { ...tx, category, confidence: "pattern" as const } : tx
+      idx === i ? { ...tx, category, confidence: "manual" as const, patternId: undefined } : tx
     ));
   }
 
@@ -78,7 +82,9 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
     if (!keyword) return;
 
     startTransition(async () => {
-      const id = await createImportPattern(keyword, category);
+      const res = await createImportPattern(keyword, category);
+      if (!res.ok) { toast.showError(res.error); return; }
+      const id = res.id;
       const newPattern = { ID: id, PATTERN: keyword, CATEGORY: category, GROUP_ID: null, PRIORITY: 0 };
       setPatterns(prev => [...prev, newPattern]);
       // Re-classify unmatched transactions with new pattern
@@ -102,16 +108,21 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
   function handleImport() {
     const toImport = transactions.filter((_, i) => selected.has(i));
     startTransition(async () => {
-      const count = await importTransactions(
+      const res = await importTransactions(
         toImport.map(tx => ({
           category: tx.category,
-          groupId: null,
+          // A learned pattern can carry a group; apply it when it matched.
+          groupId: patterns.find(p => p.ID === tx.patternId)?.GROUP_ID ?? null,
           name: tx.description,
           amount: tx.amount,
           month: tx.month,
           notes: `Imported from bank CSV (${tx.date})`,
+          kind: tx.isIncome ? "income" as const : "expense" as const,
+          day: /^\d{4}-\d{2}-\d{2}$/.test(tx.date) ? Number(tx.date.slice(8, 10)) : null,
         }))
       );
+      if (!res.ok) { toast.showError(res.error); return; }
+      const count = res.count;
       setImportedCount(count);
       setSkippedCount(toImport.length - count);
       setStep("done");
@@ -240,13 +251,14 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
                     </button>
 
                     {/* Category icon + selector */}
-                    <div className="relative group/cat shrink-0">
-                      <button className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center text-base hover:bg-white/10 transition-colors">
+                    <div className="relative shrink-0">
+                      <button type="button" onClick={() => setOpenPicker(openPicker === i ? null : i)} aria-label="Change category" aria-expanded={openPicker === i}
+                        className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center text-base hover:bg-white/10 transition-colors">
                         {cat.icon}
                       </button>
-                      <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover/cat:flex flex-wrap gap-1 p-2 rounded-xl bg-[#1c2237] border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5)] w-64">
+                      <div className={`absolute left-0 top-full mt-1 z-50 ${openPicker === i ? "flex" : "hidden"} flex-wrap gap-1 p-2 rounded-xl panel border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5)] w-64`}>
                         {CATEGORY_KEYS.map(key => (
-                          <button key={key} onClick={() => updateCategory(i, key)}
+                          <button key={key} type="button" onClick={() => { updateCategory(i, key); setOpenPicker(null); }}
                             className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-all ${
                               tx.category === key ? "bg-purple-500/20 border border-purple-500/40" : "bg-white/5 hover:bg-white/10"
                             }`}
@@ -268,7 +280,10 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
                         {tx.confidence === "guess" && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">guess</span>
                         )}
-                        {tx.confidence === "none" && (
+                        {tx.confidence === "manual" && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-300">edited</span>
+                        )}
+                        {tx.confidence !== "pattern" && (
                           <button
                             onClick={() => handleLearnPattern(tx.description, tx.category)}
                             className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 text-[#5a6380] hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
@@ -280,8 +295,8 @@ export default function ImportFlow({ patterns: initialPatterns }: Props) {
                     </div>
 
                     {/* Amount */}
-                    <span className="text-sm font-mono tabular-nums text-white shrink-0">
-                      {tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} €
+                    <span className={`text-sm font-mono tabular-nums shrink-0 ${tx.isIncome ? "text-teal-400" : "text-white"}`}>
+                      {tx.isIncome ? "+" : ""}{tx.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} €
                     </span>
                   </div>
                 );

@@ -4,14 +4,12 @@ import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
 import MonthSelector from "@/components/MonthSelector";
+import { addMonths, currentMonth, isValidMonth, monthLabel as fullMonthLabel } from "@/lib/months";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function monthLabel(month: string): string {
-  const [y, m] = month.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" });
-}
+const monthLabel = (month: string) => fullMonthLabel(month, "short");
 
 export default async function ComparePage({
   searchParams,
@@ -20,13 +18,10 @@ export default async function ComparePage({
 }) {
   await connection();
   const params = await searchParams;
-  const now = new Date();
-  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+  const thisMonth = currentMonth();
 
-  const m1 = params.m1 ?? prevMonth;
-  const m2 = params.m2 ?? thisMonth;
+  const m1 = isValidMonth(params.m1) ? params.m1 : addMonths(thisMonth, -1);
+  const m2 = isValidMonth(params.m2) ? params.m2 : thisMonth;
 
   // Category totals
   const [catRows] = await db.execute(
@@ -46,6 +41,24 @@ export default async function ComparePage({
   const t1 = totals.find(r => r.MONTH === m1);
   const t2 = totals.find(r => r.MONTH === m2);
 
+  // Income for both months (shown only when either has any)
+  const [incomeRows] = await db.execute(
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE KIND = 'income' AND DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
+    [m1, m2]
+  );
+  const incomeOf = (m: string) => (incomeRows as { MONTH: string; TOTAL: number }[]).find(r => r.MONTH === m)?.TOTAL ?? 0;
+  const hasIncome = incomeOf(m1) > 0 || incomeOf(m2) > 0;
+  // Plain helper (not a component) so it isn't re-created per render.
+  const incomeLines = (month: string, spent: number) => {
+    if (!hasIncome) return null;
+    const net = incomeOf(month) - spent;
+    return (
+      <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">
+        <span className="text-teal-400/80">+{fmt(incomeOf(month))}</span> · net <span className={net >= 0 ? "text-teal-400/80" : "text-red-400/80"}>{net >= 0 ? "+" : ""}{fmt(net)}</span>
+      </p>
+    );
+  };
+
   // Unique categories
   const catKeys = [...new Set(catData.map(r => r.CATEGORY))];
   const maxCat = Math.max(...catData.map(r => r.TOTAL), 1);
@@ -56,10 +69,13 @@ export default async function ComparePage({
   );
   const availableMonths = (monthsRows as { MONTH: string }[]).map(r => r.MONTH);
 
-  const diff = (t1?.TOTAL ?? 0) - (t2?.TOTAL ?? 0);
+  // Change is always newer month minus older month, whichever side it was picked on.
+  const [older, newer] = [m1, m2].sort();
+  const totalOf = (m: string) => totals.find(r => r.MONTH === m)?.TOTAL ?? 0;
+  const diff = totalOf(newer) - totalOf(older);
 
   return (
-    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 sm:py-10 pb-20">
+    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-20">
       <div className="max-w-4xl mx-auto space-y-5">
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-fade-up">
           <Link href="/dashboard" className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors">← Back</Link>
@@ -80,17 +96,20 @@ export default async function ComparePage({
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">{monthLabel(m1)}</p>
             <p className="text-lg font-bold text-purple-400 font-mono tabular-nums">{fmt(t1?.TOTAL ?? 0)} €</p>
             <p className="text-[9px] text-[#5a6380]">{t1?.CNT ?? 0} expenses</p>
+            {incomeLines(m1, t1?.TOTAL ?? 0)}
           </div>
           <div className="card rounded-2xl p-4 text-center">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Difference</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Change</p>
             <p className={`text-lg font-bold font-mono tabular-nums ${diff > 0 ? "text-red-400" : diff < 0 ? "text-teal-400" : "text-white"}`}>
               {diff > 0 ? "+" : ""}{fmt(diff)} €
             </p>
+            <p className="text-[9px] text-[#5a6380]">{monthLabel(older)} → {monthLabel(newer)}</p>
           </div>
           <div className="card rounded-2xl p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">{monthLabel(m2)}</p>
             <p className="text-lg font-bold text-pink-400 font-mono tabular-nums">{fmt(t2?.TOTAL ?? 0)} €</p>
             <p className="text-[9px] text-[#5a6380]">{t2?.CNT ?? 0} expenses</p>
+            {incomeLines(m2, t2?.TOTAL ?? 0)}
           </div>
         </div>
 

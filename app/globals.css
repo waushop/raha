@@ -131,6 +131,30 @@ body::before {
 /* ============================================
    CARD SYSTEM
    ============================================ */
+/* Opaque surface for overlays (sidebar, modals, toasts, popovers). Follows the
+   theme via --bg-card-solid, unlike a hardcoded bg-[#1c2237]. */
+.panel {
+  background: var(--bg-card-solid);
+}
+
+/* Row targeted by a /?month=…#e-<id> deep link: flash, then settle. */
+.row-highlight {
+  animation: row-highlight 3s ease-out forwards;
+}
+@keyframes row-highlight {
+  0%, 40% { background: rgba(236, 72, 153, 0.18); }
+  100% { background: transparent; }
+}
+
+/* Per-row action buttons: always visible where there is no hover (touch),
+   revealed on hover/focus on pointer devices at sm+. */
+.row-actions { opacity: 1; transition: opacity 0.15s; }
+@media (hover: hover) and (min-width: 640px) {
+  .row-actions { opacity: 0; }
+  .group:hover .row-actions,
+  .group:focus-within .row-actions { opacity: 1; }
+}
+
 .card {
   background: linear-gradient(135deg, rgba(31, 41, 64, 0.85) 0%, rgba(31, 41, 64, 0.65) 100%);
   backdrop-filter: blur(16px);

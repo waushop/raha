@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <main className="min-h-screen py-6 px-4 sm:py-10 pb-20">
+    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-20">
       <div className="max-w-4xl mx-auto space-y-5 animate-pulse">
         {/* Header skeleton */}
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 flex items-center justify-between">

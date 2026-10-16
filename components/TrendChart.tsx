@@ -81,17 +81,17 @@ export default function TrendChart({ data, currentMonth }: Props) {
           </svg>
         </span>
         <h2 className="text-sm font-bold text-white">Trend</h2>
-        <span className="text-[10px] text-[#5a6380] font-medium ml-auto">{data.length} kuud</span>
+        <span className="text-[10px] text-[#5a6380] font-medium ml-auto">{data.length} months</span>
       </div>
 
       {/* Quick insight */}
       <div className="flex items-center gap-3 mb-3 ml-10">
         <span className="text-[10px] text-[#5a6380]">
-          Keskmine: <span className="font-mono text-[#9ca3c0] font-semibold">{fmt(avg)} €</span>
+          Average: <span className="font-mono text-[#9ca3c0] font-semibold">{fmt(avg)} €</span>
         </span>
         {currentData && Math.abs(diffFromAvg) > 1 && (
           <span className={`text-[10px] font-bold ${diffFromAvg > 0 ? "text-red-400/60" : "text-teal-400/60"}`}>
-            {diffFromAvg > 0 ? "+" : ""}{diffFromAvg.toFixed(0)}% vs keskmine
+            {diffFromAvg > 0 ? "+" : ""}{diffFromAvg.toFixed(0)}% vs average
           </span>
         )}
       </div>
@@ -151,14 +151,14 @@ export default function TrendChart({ data, currentMonth }: Props) {
                 cy={p.y}
                 r={isCurrent ? 4.5 : 2.5}
                 fill={isCurrent ? "#ec4899" : "#8b5cf6"}
-                stroke="#1a1a2e"
+                style={{ stroke: "var(--bg-card-solid)" }}
                 strokeWidth="2"
               />
               <text
                 x={p.x}
                 y={p.y - 10}
                 textAnchor="middle"
-                fill={isCurrent ? "#ffffff" : "rgba(255,255,255,0.3)"}
+                style={{ fill: isCurrent ? "var(--text-primary)" : "var(--text-muted)" }}
                 fontSize="9"
                 fontWeight={isCurrent ? "700" : "500"}
                 fontFamily="ui-monospace, monospace"
@@ -169,10 +169,9 @@ export default function TrendChart({ data, currentMonth }: Props) {
                 x={p.x}
                 y={chartH - 6}
                 textAnchor="middle"
-                fill={isCurrent ? "#ec4899" : "rgba(255,255,255,0.2)"}
+                style={{ fill: isCurrent ? "#ec4899" : "var(--text-muted)", textTransform: "capitalize" }}
                 fontSize="9"
                 fontWeight={isCurrent ? "700" : "400"}
-                style={{ textTransform: "capitalize" }}
               >
                 {shortMonth(p.month)}
               </text>

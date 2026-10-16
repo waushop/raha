@@ -33,10 +33,6 @@ export const CATEGORIES = {
 export type CategoryKey = keyof typeof CATEGORIES;
 export const CATEGORY_KEYS = Object.keys(CATEGORIES) as CategoryKey[];
 
-// Common income-category shortcut keys. These are still standard CategoryKey
-// values; this list is purely a UX hint for the form.
-export const INCOME_CATEGORY_HINTS: CategoryKey[] = ["other", "savings"];
-
 // ============================================
 // CUSTOM CATEGORY GROUPS (user-created, stored in DB)
 // ============================================
@@ -83,6 +79,7 @@ export type Expense = {
   NAME: string;
   AMOUNT: number;
   MONTH: string;
+  DAY: number | null;
   NOTES: string | null;
   IS_RECURRING: number;
   TAGS: string | null;

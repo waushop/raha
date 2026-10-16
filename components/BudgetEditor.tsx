@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { setBudget, resetAllBudgets } from "@/app/actions";
 import { CATEGORIES, CATEGORY_KEYS, type CategoryKey } from "@/types/expense";
+import { useToast } from "./Toast";
 
 const TOTAL_KEY = "_total";
 
@@ -30,14 +31,19 @@ export default function BudgetEditor({
   });
   const [busy, setBusy] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const toast = useToast();
 
   function save(key: string, raw: string) {
     const trimmed = raw.trim();
-    const amount = trimmed === "" ? null : Number(trimmed);
-    if (amount !== null && (Number.isNaN(amount) || amount < 0)) return;
+    const amount = trimmed === "" ? null : Number(trimmed.replace(",", "."));
+    if (amount !== null && (!Number.isFinite(amount) || amount < 0)) {
+      toast.showError("Budget must be a positive number");
+      return;
+    }
     setBusy(key);
     startTransition(async () => {
-      await setBudget(key, amount);
+      const res = await setBudget(key, amount === 0 ? null : amount);
+      if (!res.ok) toast.showError(res.error);
       setBusy(null);
     });
   }

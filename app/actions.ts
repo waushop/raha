@@ -1,132 +1,266 @@
 "use server";
 
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import db from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
 import { ledgerToCsv, type LedgerCsvRow } from "@/lib/csv";
+import { addMonths } from "@/lib/months";
+import * as ledger from "@/lib/ledger";
+import {
+  ValidationError,
+  parseAmount,
+  parseCategory,
+  parseColor,
+  parseId,
+  parseMonth,
+  parseName,
+  parseOptionalDate,
+  parseOptionalDay,
+  parseOptionalId,
+  parseOptionalText,
+  parsePattern,
+  parseTagsText,
+  parseYear,
+} from "@/lib/validate";
 import { revalidatePath } from "next/cache";
 import type { ExpenseGroup, Kind } from "@/types/expense";
 
 // Every exported action calls requireAuth() first. The proxy already blocks
 // unauthenticated requests, but Server Actions are POSTs to whatever page
 // invoked them, so a matcher change must never be the only line of defence.
+//
+// Mutations driven by a form return ActionResult: validation problems come
+// back as { ok: false, error } for the UI to toast; anything else is a bug
+// and propagates. Actions that only take ids/months from our own UI throw
+// on bad input instead, since that can only mean a programming error.
+
+export type ActionResult<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string };
+
+async function attempt<T extends object>(fn: () => T | Promise<T>): Promise<ActionResult<T>> {
+  try {
+    const value = await fn();
+    return { ok: true, ...value } as ActionResult<T>;
+  } catch (e) {
+    if (e instanceof ValidationError) return { ok: false, error: e.message };
+    throw e;
+  }
+}
 
 // ============================================
 // LEDGER ACTIONS (expenses + income)
 // ============================================
 
 function readKind(formData: FormData): Kind {
-  const raw = formData.get("kind");
-  return raw === "income" ? "income" : "expense";
+  return formData.get("kind") === "income" ? "income" : "expense";
 }
 
-type LedgerSource = {
-  KIND: Kind;
-  CATEGORY: string;
-  GROUP_ID: string | null;
-  NAME: string;
-  AMOUNT: number;
-  NOTES: string | null;
-  IS_RECURRING: number;
-  TAGS: string | null;
-};
-
-const INSERT_LEDGER = `INSERT INTO LEDGER (ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-function insertParams(row: LedgerSource, month: string): unknown[] {
-  return [randomUUID(), row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS];
+// A picked date wins over the page's month, so a receipt from last month can
+// be entered from this month's view. No date → the page's month, no day.
+function readLedgerForm(formData: FormData): { row: ledger.LedgerSource; month: string } {
+  const date = parseOptionalDate(formData.get("date"));
+  const month = date ? date.month : parseMonth(formData.get("month"));
+  const row: ledger.LedgerSource = {
+    KIND: readKind(formData),
+    CATEGORY: parseCategory(formData.get("category")),
+    GROUP_ID: parseOptionalId(formData.get("group_id"), "Group"),
+    NAME: parseName(formData.get("name")),
+    AMOUNT: parseAmount(formData.get("amount")),
+    NOTES: parseOptionalText(formData.get("notes"), "Notes"),
+    IS_RECURRING: formData.get("is_recurring") === "1" ? 1 : 0,
+    TAGS: parseTagsText(formData.get("tags")),
+    DAY: date ? date.day : parseOptionalDay(formData.get("day"), month),
+  };
+  return { row, month };
 }
 
-export async function createExpense(formData: FormData) {
+export async function createExpense(formData: FormData): Promise<ActionResult> {
   await requireAuth();
-  const id = randomUUID();
-  const kind = readKind(formData);
-  const category = formData.get("category") as string;
-  const groupId = (formData.get("group_id") as string) || null;
-  const name = formData.get("name") as string;
-  const amount = parseFloat(formData.get("amount") as string);
-  const month = formData.get("month") as string;
-  const notes = (formData.get("notes") as string) || null;
-  const isRecurring = formData.get("is_recurring") === "1" ? 1 : 0;
-  const tags = (formData.get("tags") as string) || null;
-
-  await db.execute(INSERT_LEDGER, [id, kind, category, groupId, name, amount, month, notes, isRecurring, tags]);
-  revalidatePath("/");
+  return attempt(() => {
+    const { row, month } = readLedgerForm(formData);
+    db.transaction((tx) => {
+      ledger.assertGroupExists(tx, row.GROUP_ID);
+      ledger.insertRow(tx, row, month);
+    });
+    revalidatePath("/");
+    return {};
+  });
 }
 
-export async function updateExpense(id: string, formData: FormData) {
+export async function updateExpense(id: string, formData: FormData): Promise<ActionResult> {
   await requireAuth();
-  const kind = readKind(formData);
-  const category = formData.get("category") as string;
-  const groupId = (formData.get("group_id") as string) || null;
-  const name = formData.get("name") as string;
-  const amount = parseFloat(formData.get("amount") as string);
-  const notes = (formData.get("notes") as string) || null;
-  const isRecurring = formData.get("is_recurring") === "1" ? 1 : 0;
-  const tags = (formData.get("tags") as string) || null;
+  return attempt(() => {
+    const rowId = parseId(id);
+    const { row, month } = readLedgerForm(formData);
+    db.transaction((tx) => {
+      ledger.assertGroupExists(tx, row.GROUP_ID);
+      ledger.auditedUpdate(tx, rowId, "update", () => {
+        tx.run(
+          "UPDATE LEDGER SET KIND=?, CATEGORY=?, GROUP_ID=?, NAME=?, AMOUNT=?, MONTH=?, DAY=?, NOTES=?, IS_RECURRING=?, TAGS=? WHERE ID=? AND DELETED_AT IS NULL",
+          [row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.DAY, row.NOTES, row.IS_RECURRING, row.TAGS, rowId],
+        );
+        ledger.syncTags(tx, rowId, row.TAGS);
+      });
+    });
+    revalidatePath("/");
+    return {};
+  });
+}
 
-  await db.execute(
-    "UPDATE LEDGER SET KIND=?, CATEGORY=?, GROUP_ID=?, NAME=?, AMOUNT=?, NOTES=?, IS_RECURRING=?, TAGS=? WHERE ID=? AND DELETED_AT IS NULL",
-    [kind, category, groupId, name, amount, notes, isRecurring, tags, id]
-  );
-  revalidatePath("/");
+export async function updateExpenseAmount(id: string, newAmount: number): Promise<ActionResult> {
+  await requireAuth();
+  return attempt(async () => {
+    const rowId = parseId(id);
+    const amount = parseAmount(newAmount);
+    db.transaction((tx) => ledger.auditedUpdate(tx, rowId, "update", () => {
+      tx.run("UPDATE LEDGER SET AMOUNT=? WHERE ID=? AND DELETED_AT IS NULL", [amount, rowId]);
+    }));
+    revalidatePath("/");
+    return {};
+  });
 }
 
 export async function deleteExpense(id: string) {
   await requireAuth();
-  await db.execute("UPDATE LEDGER SET DELETED_AT=CURRENT_TIMESTAMP WHERE ID=? AND DELETED_AT IS NULL", [id]);
+  const rowId = parseId(id);
+  db.transaction((tx) => ledger.auditedUpdate(tx, rowId, "delete", () => {
+    tx.run("UPDATE LEDGER SET DELETED_AT=CURRENT_TIMESTAMP WHERE ID=? AND DELETED_AT IS NULL", [rowId]);
+  }));
   revalidatePath("/");
 }
 
 export async function undoDeleteExpense(id: string) {
   await requireAuth();
-  await db.execute("UPDATE LEDGER SET DELETED_AT=NULL WHERE ID=?", [id]);
+  const rowId = parseId(id);
+  db.transaction((tx) => ledger.auditedUpdate(tx, rowId, "restore", () => {
+    tx.run("UPDATE LEDGER SET DELETED_AT=NULL WHERE ID=?", [rowId]);
+  }));
+  revalidatePath("/");
+  revalidatePath("/activity");
+}
+
+/** Flags every live expense row with this name as recurring. Returns rows changed. */
+export async function markRecurringByName(name: string): Promise<number> {
+  await requireAuth();
+  const target = parseName(name);
+  const changed = db.transaction((tx) => {
+    const ids = tx.all<{ ID: string }>("SELECT ID FROM LEDGER WHERE NAME = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND IS_RECURRING = 0", [target]);
+    for (const { ID } of ids) {
+      ledger.auditedUpdate(tx, ID, "update", () => tx.run("UPDATE LEDGER SET IS_RECURRING = 1 WHERE ID = ?", [ID]));
+    }
+    return ids.length;
+  });
+  revalidatePath("/");
+  revalidatePath("/dashboard");
+  revalidatePath("/recurring");
+  return changed;
+}
+
+export async function duplicateExpense(id: string, month: string) {
+  await requireAuth();
+  const rowId = parseId(id);
+  const target = parseMonth(month);
+  db.transaction((tx) => {
+    const rows = tx.all<ledger.LedgerSource>(
+      `SELECT ${ledger.SOURCE_COLUMNS} FROM LEDGER WHERE ID = ? AND DELETED_AT IS NULL`,
+      [rowId],
+    );
+    if (rows.length > 0) ledger.insertRow(tx, rows[0], target);
+  });
+  revalidatePath("/");
+}
+
+export async function toggleRecurring(id: string) {
+  await requireAuth();
+  const rowId = parseId(id);
+  db.transaction((tx) => ledger.auditedUpdate(tx, rowId, "update", () => {
+    tx.run("UPDATE LEDGER SET IS_RECURRING = NOT IS_RECURRING WHERE ID=? AND DELETED_AT IS NULL", [rowId]);
+  }));
   revalidatePath("/");
 }
 
 // Bulk-copy every ledger row from `sourceMonth` into each of `targetMonths`.
-// Skips targets where a row with the same NAME+AMOUNT already exists, so
-// re-running is a no-op. Atomic: either every target is filled or none.
-// Returns total rows inserted.
+// Re-running is a no-op thanks to NAME+AMOUNT dedup. Returns rows inserted.
 export async function backfillMonth(sourceMonth: string, targetMonths: string[]) {
   await requireAuth();
-  if (!sourceMonth || targetMonths.length === 0) return 0;
-
-  const inserted = db.transaction((tx) => {
-    const source = tx.all<LedgerSource>(
-      `SELECT KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS
-       FROM LEDGER WHERE MONTH = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`,
-      [sourceMonth],
-    );
-    if (source.length === 0) return 0;
-
-    let count = 0;
-    for (const month of targetMonths) {
-      if (month === sourceMonth) continue;
-      for (const row of source) {
-        const existing = tx.all(
-          "SELECT 1 FROM LEDGER WHERE NAME = ? AND AMOUNT = ? AND MONTH = ? AND DELETED_AT IS NULL LIMIT 1",
-          [row.NAME, row.AMOUNT, month],
-        );
-        if (existing.length > 0) continue;
-        tx.run(INSERT_LEDGER, insertParams(row, month));
-        count++;
-      }
-    }
-    return count;
-  });
-
+  const source = parseMonth(sourceMonth);
+  const targets = targetMonths.map(parseMonth);
+  if (targets.length === 0) return 0;
+  const inserted = ledger.backfill(source, targets);
   if (inserted > 0) revalidatePath("/");
   return inserted;
 }
 
-export async function setBudget(category: string, amount: number | null) {
+export async function copyFromPreviousMonth(targetMonth: string) {
   await requireAuth();
-  const { setBudgetAmount } = await import("@/lib/budgets");
-  await setBudgetAmount(category, amount);
-  revalidatePath("/dashboard");
-  revalidatePath("/settings");
+  const target = parseMonth(targetMonth);
+  const inserted = ledger.copyMonth(addMonths(target, -1), target);
+  if (inserted > 0) revalidatePath("/");
+  return inserted;
+}
+
+export async function copyRecurringToMonth(targetMonth: string) {
+  await requireAuth();
+  const added = ledger.copyRecurring(parseMonth(targetMonth));
+  if (added > 0) revalidatePath("/");
+  return added;
+}
+
+export async function listMonths(): Promise<string[]> {
+  await requireAuth();
+  const [rows] = await db.execute("SELECT DISTINCT MONTH FROM LEDGER WHERE DELETED_AT IS NULL ORDER BY MONTH DESC");
+  return (rows as Array<{ MONTH: string }>).map((r) => r.MONTH);
+}
+
+export async function getRecentNames(category: string, kind: Kind = "expense"): Promise<{ NAME: string; AMOUNT: number }[]> {
+  await requireAuth();
+  let cat: string;
+  try { cat = parseCategory(category); } catch { return []; }
+  const [rows] = await db.execute(
+    `SELECT NAME, CAST(MAX(AMOUNT) AS REAL) AS AMOUNT FROM LEDGER
+     WHERE CATEGORY = ? AND KIND = ? AND DELETED_AT IS NULL
+     GROUP BY NAME ORDER BY MAX(CREATED_AT) DESC LIMIT 15`,
+    [cat, kind === "income" ? "income" : "expense"],
+  );
+  return rows as { NAME: string; AMOUNT: number }[];
+}
+
+/** Tags in use, most common first — suggestions for the form and the search filter. */
+export async function getTags(): Promise<{ TAG: string; N: number }[]> {
+  await requireAuth();
+  const [rows] = await db.execute(
+    `SELECT t.TAG, COUNT(*) AS N FROM LEDGER_TAG t JOIN LEDGER e ON e.ID = t.LEDGER_ID AND e.DELETED_AT IS NULL
+     GROUP BY t.TAG ORDER BY N DESC, t.TAG LIMIT 40`,
+  );
+  return rows as { TAG: string; N: number }[];
+}
+
+export async function exportCsv(month?: string, year?: string): Promise<string> {
+  await requireAuth();
+  let query = `SELECT e.MONTH, e.KIND, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.NOTES, e.IS_RECURRING, e.CREATED_AT, e.DAY, g.NAME AS GROUP_NAME
+     FROM LEDGER e LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL WHERE e.DELETED_AT IS NULL`;
+  const params: string[] = [];
+  if (month) { query += " AND e.MONTH = ?"; params.push(parseMonth(month)); }
+  else if (year) { const y = parseYear(year); query += " AND e.MONTH >= ? AND e.MONTH <= ?"; params.push(`${y}-01`, `${y}-12`); }
+  query += " ORDER BY e.MONTH, g.NAME, e.CATEGORY, e.NAME";
+  const [rows] = await db.execute(query, params);
+  return ledgerToCsv(rows as LedgerCsvRow[]);
+}
+
+// ============================================
+// BUDGET ACTIONS
+// ============================================
+
+export async function setBudget(category: string, amount: number | null): Promise<ActionResult> {
+  await requireAuth();
+  return attempt(async () => {
+    const key = category === "_total" ? "_total" : parseCategory(category);
+    const value = amount === null ? null : parseAmount(amount, "Budget");
+    const { setBudgetAmount } = await import("@/lib/budgets");
+    await setBudgetAmount(key, value);
+    revalidatePath("/dashboard");
+    revalidatePath("/settings");
+    return {};
+  });
 }
 
 export async function resetAllBudgets() {
@@ -137,120 +271,6 @@ export async function resetAllBudgets() {
   revalidatePath("/settings");
 }
 
-export async function listMonths(): Promise<string[]> {
-  await requireAuth();
-  const [rows] = await db.execute(
-    "SELECT DISTINCT MONTH FROM LEDGER WHERE DELETED_AT IS NULL ORDER BY MONTH DESC",
-  );
-  return (rows as Array<{ MONTH: string }>).map((r) => r.MONTH);
-}
-
-// Copies last month's rows (both kinds) into `targetMonth`, skipping rows
-// whose NAME+AMOUNT already exist there so a double-click can't duplicate.
-export async function copyFromPreviousMonth(targetMonth: string) {
-  await requireAuth();
-  const [y, m] = targetMonth.split("-").map(Number);
-  const prevDate = new Date(y, m - 2, 1);
-  const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
-
-  const inserted = db.transaction((tx) => {
-    const rows = tx.all<LedgerSource>(
-      `SELECT KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS
-       FROM LEDGER WHERE MONTH = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`,
-      [prevMonth],
-    );
-    const existing = new Set(
-      tx.all<{ NAME: string; AMOUNT: number }>(
-        "SELECT NAME, AMOUNT FROM LEDGER WHERE MONTH = ? AND DELETED_AT IS NULL",
-        [targetMonth],
-      ).map((r) => `${r.NAME}\u0000${r.AMOUNT}`),
-    );
-
-    let count = 0;
-    for (const row of rows) {
-      if (existing.has(`${row.NAME}\u0000${row.AMOUNT}`)) continue;
-      tx.run(INSERT_LEDGER, insertParams(row, targetMonth));
-      count++;
-    }
-    return count;
-  });
-
-  if (inserted > 0) revalidatePath("/");
-  return inserted;
-}
-
-// Adds every recurring row from the most recent earlier month that isn't
-// already present (by NAME) in `targetMonth`. Recurring income (salary) is
-// copied too; KIND is preserved.
-export async function copyRecurringToMonth(targetMonth: string) {
-  await requireAuth();
-
-  const added = db.transaction((tx) => {
-    const rows = tx.all<LedgerSource>(
-      `SELECT KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS FROM LEDGER
-       WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL AND MONTH < ?
-         AND MONTH = (SELECT MAX(MONTH) FROM LEDGER WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL AND MONTH < ?)
-       ORDER BY CREATED_AT`,
-      [targetMonth, targetMonth],
-    );
-    const existingNames = new Set(
-      tx.all<{ NAME: string }>("SELECT NAME FROM LEDGER WHERE MONTH = ? AND DELETED_AT IS NULL", [targetMonth]).map((r) => r.NAME),
-    );
-
-    let count = 0;
-    for (const row of rows) {
-      if (existingNames.has(row.NAME)) continue;
-      tx.run(INSERT_LEDGER, insertParams({ ...row, IS_RECURRING: 1 }, targetMonth));
-      count++;
-    }
-    return count;
-  });
-
-  if (added > 0) revalidatePath("/");
-  return added;
-}
-
-export async function getRecentNames(category: string): Promise<{ NAME: string; AMOUNT: number }[]> {
-  await requireAuth();
-  const [rows] = await db.execute(
-    `SELECT NAME, CAST(MAX(AMOUNT) AS REAL) AS AMOUNT FROM LEDGER
-     WHERE CATEGORY = ? AND DELETED_AT IS NULL
-     GROUP BY NAME ORDER BY MAX(CREATED_AT) DESC LIMIT 15`,
-    [category]
-  );
-  return rows as { NAME: string; AMOUNT: number }[];
-}
-
-export async function duplicateExpense(id: string, month: string) {
-  await requireAuth();
-  const [rows] = await db.execute(
-    "SELECT KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS FROM LEDGER WHERE ID = ? AND DELETED_AT IS NULL",
-    [id]
-  ) as [LedgerSource[], unknown];
-  if (rows.length === 0) return;
-  await db.execute(INSERT_LEDGER, insertParams(rows[0], month));
-  revalidatePath("/");
-}
-
-export async function toggleRecurring(id: string) {
-  await requireAuth();
-  await db.execute("UPDATE LEDGER SET IS_RECURRING = NOT IS_RECURRING WHERE ID=? AND DELETED_AT IS NULL", [id]);
-  revalidatePath("/");
-}
-
-export async function exportCsv(month?: string, year?: string): Promise<string> {
-  await requireAuth();
-  let query = `SELECT e.MONTH, e.KIND, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.NOTES, e.IS_RECURRING, e.CREATED_AT, g.NAME AS GROUP_NAME
-     FROM LEDGER e LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID WHERE e.DELETED_AT IS NULL`;
-  const params: string[] = [];
-  if (month) { query += " AND e.MONTH = ?"; params.push(month); }
-  else if (year) { query += " AND e.MONTH >= ? AND e.MONTH <= ?"; params.push(`${year}-01`, `${year}-12`); }
-  query += " ORDER BY e.MONTH, g.NAME, e.CATEGORY, e.NAME";
-
-  const [rows] = await db.execute(query, params);
-  return ledgerToCsv(rows as LedgerCsvRow[]);
-}
-
 // ============================================
 // GROUP ACTIONS
 // ============================================
@@ -258,69 +278,58 @@ export async function exportCsv(month?: string, year?: string): Promise<string> 
 export async function getGroups(): Promise<ExpenseGroup[]> {
   await requireAuth();
   const [rows] = await db.execute(
-    "SELECT ID, NAME, EMOJI, COLOR, SORT_ORDER FROM CATEGORY_GROUP WHERE DELETED_AT IS NULL ORDER BY SORT_ORDER, NAME"
+    "SELECT ID, NAME, EMOJI, COLOR, SORT_ORDER FROM CATEGORY_GROUP WHERE DELETED_AT IS NULL ORDER BY SORT_ORDER, NAME",
   );
   return rows as ExpenseGroup[];
 }
 
-export async function createGroup(formData: FormData) {
-  await requireAuth();
-  const id = randomUUID();
-  const name = formData.get("name") as string;
-  const emoji = (formData.get("emoji") as string) || null;
-  const color = (formData.get("color") as string) || "blue";
-
-  await db.execute(
-    "INSERT INTO CATEGORY_GROUP (ID, NAME, EMOJI, COLOR) VALUES (?, ?, ?, ?)",
-    [id, name, emoji, color]
-  );
-  revalidatePath("/");
-  return id;
+function readGroupForm(formData: FormData) {
+  return {
+    name: parseName(formData.get("name"), "Group name", 40),
+    emoji: parseOptionalText(formData.get("emoji"), "Icon", 8),
+    color: parseColor(formData.get("color")),
+  };
 }
 
-export async function updateGroup(id: string, formData: FormData) {
+export async function createGroup(formData: FormData): Promise<ActionResult<{ id: string }>> {
   await requireAuth();
-  const name = formData.get("name") as string;
-  const emoji = (formData.get("emoji") as string) || null;
-  const color = (formData.get("color") as string) || "blue";
-
-  await db.execute(
-    "UPDATE CATEGORY_GROUP SET NAME=?, EMOJI=?, COLOR=? WHERE ID=? AND DELETED_AT IS NULL",
-    [name, emoji, color, id]
-  );
-  revalidatePath("/");
+  return attempt(async () => {
+    const g = readGroupForm(formData);
+    const id = randomUUID();
+    await db.execute(
+      "INSERT INTO CATEGORY_GROUP (ID, NAME, EMOJI, COLOR, SORT_ORDER) VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(SORT_ORDER), -1) + 1 FROM CATEGORY_GROUP WHERE DELETED_AT IS NULL))",
+      [id, g.name, g.emoji, g.color],
+    );
+    revalidatePath("/");
+    revalidatePath("/groups");
+    return { id };
+  });
 }
 
-export async function bulkUpdateAmount(name: string, category: string, oldAmount: number, newAmount: number, fromMonth?: string) {
+export async function updateGroup(id: string, formData: FormData): Promise<ActionResult> {
   await requireAuth();
-  const params: (string | number)[] = [newAmount, name, category, oldAmount];
-  let query = "UPDATE LEDGER SET AMOUNT=? WHERE NAME=? AND CATEGORY=? AND AMOUNT=? AND DELETED_AT IS NULL";
-  if (fromMonth) {
-    query += " AND MONTH >= ?";
-    params.push(fromMonth);
-  }
-  const [result] = await db.execute(query, params) as [{ affectedRows: number }, unknown];
-  revalidatePath("/");
-  return result.affectedRows ?? 0;
+  return attempt(async () => {
+    const gid = parseId(id);
+    const g = readGroupForm(formData);
+    await db.execute("UPDATE CATEGORY_GROUP SET NAME=?, EMOJI=?, COLOR=? WHERE ID=? AND DELETED_AT IS NULL", [g.name, g.emoji, g.color, gid]);
+    revalidatePath("/");
+    revalidatePath("/groups");
+    return {};
+  });
 }
 
-export async function updateExpenseAmount(id: string, newAmount: number) {
+export async function moveGroup(id: string, direction: -1 | 1) {
   await requireAuth();
-  await db.execute(
-    "UPDATE LEDGER SET AMOUNT=? WHERE ID=? AND DELETED_AT IS NULL",
-    [newAmount, id]
-  );
+  ledger.reorderGroup(parseId(id), direction);
   revalidatePath("/");
+  revalidatePath("/groups");
 }
 
 export async function deleteGroup(id: string) {
   await requireAuth();
-  db.transaction((tx) => {
-    tx.run("UPDATE CATEGORY_GROUP SET DELETED_AT=CURRENT_TIMESTAMP WHERE ID=?", [id]);
-    // Unlink ledger rows from this group
-    tx.run("UPDATE LEDGER SET GROUP_ID=NULL WHERE GROUP_ID=?", [id]);
-  });
+  ledger.removeGroup(parseId(id));
   revalidatePath("/");
+  revalidatePath("/groups");
 }
 
 // ============================================
@@ -337,50 +346,50 @@ export type ImportPatternRow = {
 
 export async function getImportPatterns(): Promise<ImportPatternRow[]> {
   await requireAuth();
-  const [rows] = await db.execute(
-    "SELECT ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY FROM IMPORT_PATTERN ORDER BY PRIORITY DESC, PATTERN"
-  );
+  const [rows] = await db.execute("SELECT ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY FROM IMPORT_PATTERN ORDER BY PRIORITY DESC, PATTERN");
   return rows as ImportPatternRow[];
 }
 
-export async function createImportPattern(pattern: string, category: string, groupId?: string | null) {
+export async function createImportPattern(pattern: string, category: string, groupId?: string | null): Promise<ActionResult<{ id: string }>> {
   await requireAuth();
-  const id = randomUUID();
-  await db.execute(
-    "INSERT INTO IMPORT_PATTERN (ID, PATTERN, CATEGORY, GROUP_ID) VALUES (?, ?, ?, ?)",
-    [id, pattern, category, groupId || null]
-  );
-  return id;
+  return attempt(async () => {
+    const id = randomUUID();
+    await db.execute(
+      "INSERT INTO IMPORT_PATTERN (ID, PATTERN, CATEGORY, GROUP_ID) VALUES (?, ?, ?, ?)",
+      [id, parsePattern(pattern), parseCategory(category), parseOptionalId(groupId, "Group")],
+    );
+    revalidatePath("/import");
+    return { id };
+  });
 }
 
 export async function deleteImportPattern(id: string) {
   await requireAuth();
-  await db.execute("DELETE FROM IMPORT_PATTERN WHERE ID = ?", [id]);
+  await db.execute("DELETE FROM IMPORT_PATTERN WHERE ID = ?", [parseId(id)]);
+  revalidatePath("/import");
 }
 
+const MAX_IMPORT_ROWS = 5000;
+
 export async function importTransactions(
-  transactions: Array<{ category: string; groupId: string | null; name: string; amount: number; month: string; notes: string | null; kind?: Kind }>
-) {
+  transactions: Array<{ category: string; groupId: string | null; name: string; amount: number; month: string; notes: string | null; kind?: Kind; day?: number | null }>,
+): Promise<ActionResult<{ count: number }>> {
   await requireAuth();
-
-  const imported = db.transaction((tx) => {
-    let count = 0;
-    for (const t of transactions) {
-      // Dedup: skip if same name + amount + month already exists
-      const existing = tx.all(
-        "SELECT 1 FROM LEDGER WHERE NAME = ? AND AMOUNT = ? AND MONTH = ? AND DELETED_AT IS NULL LIMIT 1",
-        [t.name, t.amount, t.month]
-      );
-      if (existing.length > 0) continue;
-
-      tx.run(INSERT_LEDGER, [
-        randomUUID(), t.kind === "income" ? "income" : "expense", t.category, t.groupId, t.name, t.amount, t.month, t.notes, 0, null,
-      ]);
-      count++;
-    }
-    return count;
+  return attempt(() => {
+    if (!Array.isArray(transactions)) throw new ValidationError("Nothing to import");
+    if (transactions.length > MAX_IMPORT_ROWS) throw new ValidationError(`Import at most ${MAX_IMPORT_ROWS} rows at a time`);
+    const rows: ledger.ImportRow[] = transactions.map((t) => ({
+      kind: t.kind === "income" ? "income" : "expense",
+      category: parseCategory(t.category),
+      groupId: parseOptionalId(t.groupId, "Group"),
+      name: parseName(t.name),
+      amount: parseAmount(t.amount),
+      month: parseMonth(t.month),
+      notes: parseOptionalText(t.notes, "Notes"),
+      day: parseOptionalDay(t.day ?? "", parseMonth(t.month)),
+    }));
+    const count = ledger.importRows(rows);
+    if (count > 0) revalidatePath("/");
+    return { count };
   });
-
-  if (imported > 0) revalidatePath("/");
-  return imported;
 }

@@ -2,12 +2,7 @@
 
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-
-function addMonths(month: string, delta: number): string {
-  const [y, m] = month.split("-").map(Number);
-  const date = new Date(y, m - 1 + delta, 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
+import { addMonths } from "@/lib/months";
 
 export default function SwipeContainer({ month, children }: { month: string; children: React.ReactNode }) {
   const router = useRouter();
@@ -43,7 +38,7 @@ export default function SwipeContainer({ month, children }: { month: string; chi
     setSwiping(false);
 
     if (Math.abs(dx) > threshold * 0.3) {
-      if (dx > 0 && month > "2026-01") {
+      if (dx > 0) {
         router.push(`/?month=${addMonths(month, -1)}`);
       } else if (dx < 0) {
         router.push(`/?month=${addMonths(month, 1)}`);

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { parseTags } from "./tags";
 
 // One-shot migrations (idempotent). Run before the CREATE … IF NOT EXISTS
 // block so renamed tables exist under their new names by the time the
@@ -30,8 +31,8 @@ function migrate(sqlite: DatabaseSync): void {
     tables.add("CATEGORY_GROUP");
   }
 
-  // Add LEDGER.KIND if it's a pre-existing table without the column. New
-  // installs get the column from CREATE TABLE below.
+  // Add LEDGER.KIND / LEDGER.DAY if it's a pre-existing table without the
+  // columns. New installs get them from CREATE TABLE below.
   if (tables.has("LEDGER")) {
     const cols = (sqlite.prepare("PRAGMA table_info(LEDGER)").all() as Array<{
       name: string;
@@ -39,6 +40,30 @@ function migrate(sqlite: DatabaseSync): void {
     if (!cols.includes("KIND")) {
       sqlite.exec("ALTER TABLE LEDGER ADD COLUMN KIND TEXT NOT NULL DEFAULT 'expense'");
     }
+    if (!cols.includes("DAY")) {
+      sqlite.exec("ALTER TABLE LEDGER ADD COLUMN DAY INTEGER");
+      // The UPDATED_AT trigger lists its columns; drop it so the CREATE below
+      // rebuilds it with DAY included.
+      sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
+    }
+  }
+}
+
+// One row per tag so search/analytics can filter without LIKE. Populated
+// from the free-text TAGS column the first time the table is empty.
+function backfillTags(sqlite: DatabaseSync): void {
+  const { n } = sqlite.prepare("SELECT COUNT(*) AS n FROM LEDGER_TAG").get() as { n: number };
+  if (n > 0) return;
+  const rows = sqlite.prepare("SELECT ID, TAGS FROM LEDGER WHERE TAGS IS NOT NULL AND TAGS != ''").all() as Array<{ ID: string; TAGS: string }>;
+  if (rows.length === 0) return;
+  const insert = sqlite.prepare("INSERT OR IGNORE INTO LEDGER_TAG (LEDGER_ID, TAG) VALUES (?, ?)");
+  sqlite.exec("BEGIN");
+  try {
+    for (const r of rows) for (const tag of parseTags(r.TAGS)) insert.run(r.ID, tag);
+    sqlite.exec("COMMIT");
+  } catch (e) {
+    sqlite.exec("ROLLBACK");
+    throw e;
   }
 }
 
@@ -66,12 +91,45 @@ const STATEMENTS = [
     MONTH        TEXT NOT NULL,
     NOTES        TEXT,
     IS_RECURRING INTEGER NOT NULL DEFAULT 0,
-    TAGS         TEXT
+    TAGS         TEXT,
+    DAY          INTEGER
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_MONTH      ON LEDGER(MONTH)`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_DELETED_AT ON LEDGER(DELETED_AT)`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_GROUP      ON LEDGER(GROUP_ID)`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_KIND       ON LEDGER(KIND)`,
+  // Composite indexes for the two query shapes every page uses: spending
+  // aggregates (KIND + live + month range) and "recent" lists.
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_KIND_LIVE_MONTH ON LEDGER(KIND, DELETED_AT, MONTH)`,
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_LIVE_CREATED    ON LEDGER(DELETED_AT, CREATED_AT)`,
+  `CREATE TABLE IF NOT EXISTS LEDGER_TAG (
+    LEDGER_ID TEXT NOT NULL,
+    TAG       TEXT NOT NULL,
+    PRIMARY KEY (LEDGER_ID, TAG)
+  )`,
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_TAG_TAG ON LEDGER_TAG(TAG)`,
+  // Every ledger write, with the row as it looked before and after, so
+  // /activity can show real history (and restores can be exact).
+  `CREATE TABLE IF NOT EXISTS LEDGER_AUDIT (
+    ID          TEXT NOT NULL PRIMARY KEY,
+    LEDGER_ID   TEXT NOT NULL,
+    ACTION      TEXT NOT NULL,
+    BEFORE_JSON TEXT,
+    AFTER_JSON  TEXT,
+    AT          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_AUDIT_AT     ON LEDGER_AUDIT(AT)`,
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_AUDIT_LEDGER ON LEDGER_AUDIT(LEDGER_ID)`,
+  // Budgets as they stood for a given month. Written whenever a budget is
+  // edited and lazily when a month is first viewed, so "budget vs actual"
+  // can be charted after the budget itself has moved on.
+  `CREATE TABLE IF NOT EXISTS BUDGET_HISTORY (
+    MONTH      TEXT NOT NULL,
+    CATEGORY   TEXT NOT NULL,
+    AMOUNT     REAL NOT NULL,
+    CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (MONTH, CATEGORY)
+  )`,
   `CREATE TABLE IF NOT EXISTS IMPORT_PATTERN (
     ID          TEXT NOT NULL PRIMARY KEY,
     CREATED_AT  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -97,7 +155,7 @@ const STATEMENTS = [
   // a non-timestamp column avoids the recursive trigger that would fire when the
   // trigger itself updates UPDATED_AT.
   `CREATE TRIGGER IF NOT EXISTS TRG_LEDGER_UPDATED_AT
-   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DELETED_AT
+   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, DELETED_AT
    ON LEDGER
    BEGIN
      UPDATE LEDGER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
@@ -127,4 +185,5 @@ export function initSchema(sqlite: DatabaseSync): void {
   for (const stmt of STATEMENTS) {
     sqlite.exec(stmt);
   }
+  backfillTags(sqlite);
 }

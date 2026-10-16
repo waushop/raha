@@ -23,11 +23,12 @@ export type LedgerCsvRow = {
   IS_RECURRING: number;
   CREATED_AT: string;
   GROUP_NAME: string | null;
+  DAY: number | null;
 };
 
 // Column order is load-bearing: /api/import reads Month, Group, Category,
 // Name, Amount positionally, so new columns go at the end.
-export const LEDGER_CSV_HEADER = ["Kuu", "Grupp", "Kategooria", "Nimetus", "Summa", "Märkmed", "Korduv", "Lisatud", "Liik"];
+export const LEDGER_CSV_HEADER = ["Month", "Group", "Category", "Name", "Amount", "Notes", "Recurring", "Created", "Kind", "Day"];
 
 export function ledgerToCsv(rows: LedgerCsvRow[]): string {
   return toCsv(
@@ -39,9 +40,10 @@ export function ledgerToCsv(rows: LedgerCsvRow[]): string {
       r.NAME,
       r.AMOUNT,
       r.NOTES ?? "",
-      r.IS_RECURRING ? "Jah" : "Ei",
+      r.IS_RECURRING ? "Yes" : "No",
       r.CREATED_AT,
-      r.KIND === "income" ? "Tulu" : "Kulu",
+      r.KIND === "income" ? "Income" : "Expense",
+      r.DAY ?? "",
     ]),
   );
 }

@@ -1,9 +1,12 @@
 "use client";
 
 import { useRef, useState, useTransition, useEffect } from "react";
-import { createExpense, updateExpense, getRecentNames } from "@/app/actions";
+import { createExpense, updateExpense, getRecentNames, createGroup, getTags } from "@/app/actions";
+import { currentMonth, monthKey } from "@/lib/months";
+import { formatTags, parseTags } from "@/lib/tags";
 import type { Expense, CategoryKey, ExpenseGroup, Kind } from "@/types/expense";
-import { CATEGORIES, CATEGORY_KEYS, GROUP_COLOR_CLASSES } from "@/types/expense";
+import { CATEGORIES, CATEGORY_KEYS, GROUP_COLORS, GROUP_COLOR_CLASSES } from "@/types/expense";
+import { useToast } from "./Toast";
 
 type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; onDone: () => void };
 
@@ -17,11 +20,47 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   const [isRecurring, setIsRecurring] = useState(editing?.IS_RECURRING === 1);
   const [showExtra, setShowExtra] = useState(!!editing?.NOTES || !!editing?.TAGS);
   const [tags, setTags] = useState(editing?.TAGS ?? "");
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
+  // Default the date to today when adding to the current month; otherwise
+  // leave it blank (the row then has a month but no day).
+  const today = new Date();
+  const defaultDate = editing
+    ? (editing.DAY ? `${editing.MONTH}-${String(editing.DAY).padStart(2, "0")}` : "")
+    : (month === currentMonth() ? `${monthKey(today)}-${String(today.getDate()).padStart(2, "0")}` : "");
   const [suggestions, setSuggestions] = useState<{ NAME: string; AMOUNT: number }[]>([]);
   const [isPending, startTransition] = useTransition();
+  const toast = useToast();
+  // Inline "+ New" group: null = closed, string = the name being typed.
+  // Created groups are kept locally so they show up before the page revalidates.
+  const [newGroupName, setNewGroupName] = useState<string | null>(null);
+  const [localGroups, setLocalGroups] = useState<ExpenseGroup[]>([]);
+  const [isCreatingGroup, startGroupTransition] = useTransition();
+  const allGroups = [...groups, ...localGroups.filter((l) => !groups.some((g) => g.ID === l.ID))];
+
+  function submitNewGroup() {
+    const name = newGroupName?.trim();
+    if (!name) return;
+    const color = GROUP_COLORS[allGroups.length % GROUP_COLORS.length];
+    const fd = new FormData();
+    fd.set("name", name); fd.set("emoji", "📦"); fd.set("color", color);
+    startGroupTransition(async () => {
+      const res = await createGroup(fd);
+      if (!res.ok) { toast.showError(res.error); return; }
+      setLocalGroups((p) => [...p, { ID: res.id, NAME: name, EMOJI: "📦", COLOR: color, SORT_ORDER: allGroups.length }]);
+      setGroupId(res.id);
+      setNewGroupName(null);
+    });
+  }
 
   useEffect(() => { setTimeout(() => nameRef.current?.focus(), 100); }, []);
-  useEffect(() => { if (!editing) getRecentNames(category).then(setSuggestions); }, [category, editing]);
+  useEffect(() => { if (!editing) getRecentNames(category, kind).then(setSuggestions); }, [category, kind, editing]);
+  useEffect(() => { if (showExtra) getTags().then((rows) => setTagOptions(rows.map((r) => r.TAG))).catch(() => {}); }, [showExtra]);
+
+  function toggleTag(tag: string) {
+    const current = parseTags(tags);
+    const next = current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag];
+    setTags(formatTags(next) ?? "");
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,9 +70,10 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
     data.set("tags", tags || "");
     data.set("group_id", groupId || "");
     startTransition(async () => {
-      if (editing) await updateExpense(editing.ID, data);
-      else await createExpense(data);
+      const res = editing ? await updateExpense(editing.ID, data) : await createExpense(data);
+      if (!res.ok) { toast.showError(res.error); return; }
       navigator.vibrate?.(10);
+      toast.show(editing ? "Saved" : `"${data.get("name")}" added`);
       onDone();
     });
   }
@@ -81,7 +121,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
             className={`shrink-0 border rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all ${!groupId ? "border-white/20 bg-white/10 text-white" : "border-white/[0.06] text-[#5a6380] hover:border-white/15"}`}>
             None
           </button>
-          {groups.map(g => {
+          {allGroups.map(g => {
             const colors = GROUP_COLOR_CLASSES[g.COLOR] ?? GROUP_COLOR_CLASSES.blue;
             return (
               <button key={g.ID} type="button" onClick={() => setGroupId(g.ID)}
@@ -92,9 +132,31 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
               </button>
             );
           })}
-          <a href="/groups" className="shrink-0 border border-dashed border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] font-semibold text-[#5a6380] hover:text-[#9ca3c0] hover:border-white/15 transition-all">
-            + New
-          </a>
+          {newGroupName === null ? (
+            <button type="button" onClick={() => setNewGroupName("")}
+              className="shrink-0 border border-dashed border-white/[0.06] rounded-lg px-3 py-1.5 text-[11px] font-semibold text-[#5a6380] hover:text-[#9ca3c0] hover:border-white/15 transition-all">
+              + New
+            </button>
+          ) : (
+            <span className="shrink-0 inline-flex items-center gap-1">
+              <input
+                autoFocus
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); submitNewGroup(); }
+                  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setNewGroupName(null); }
+                }}
+                placeholder="Group name"
+                aria-label="New group name"
+                className="w-28 border border-white/[0.08] rounded-lg px-2 py-1 text-[11px] bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 placeholder:text-[#5a6380]"
+              />
+              <button type="button" onClick={submitNewGroup} disabled={isCreatingGroup || !newGroupName.trim()}
+                className="rounded-lg px-2 py-1 text-[11px] font-bold bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 disabled:opacity-40 transition-all">
+                {isCreatingGroup ? "…" : "Add"}
+              </button>
+            </span>
+          )}
         </div>
         <input type="hidden" name="group_id" value={groupId} />
       </div>
@@ -131,8 +193,8 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
         </div>
       )}
 
-      {/* Name + Amount */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Name + Amount + Date */}
+      <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Name</label>
           <input ref={nameRef} name="name" required defaultValue={editing?.NAME} placeholder="e.g. Grocery store, Netflix..."
@@ -142,6 +204,11 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Amount (€)</label>
           <input ref={amountRef} name="amount" type="number" step="0.01" min="0" required defaultValue={editing?.AMOUNT} placeholder="0.00"
             className="border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all placeholder:text-[#5a6380] font-mono tabular-nums" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Date <span className="normal-case tracking-normal font-medium text-[#5a6380]/60">(optional)</span></label>
+          <input name="date" type="date" defaultValue={defaultDate}
+            className="border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all font-mono tabular-nums [color-scheme:dark]" />
         </div>
       </div>
 
@@ -155,8 +222,21 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Tags</label>
-            <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="#travel, #kids"
+            <input value={tags} onChange={(e) => setTags(e.target.value)} onBlur={() => setTags(formatTags(parseTags(tags)) ?? "")} placeholder="#travel, #kids"
               className="border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all placeholder:text-[#5a6380]" />
+            {tagOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {tagOptions.slice(0, 12).map((t) => {
+                  const on = parseTags(tags).includes(t);
+                  return (
+                    <button key={t} type="button" onClick={() => toggleTag(t)}
+                      className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${on ? "bg-purple-500/20 border-purple-500/40 text-purple-200" : "bg-white/5 border-white/[0.06] text-[#9ca3c0] hover:text-white"}`}>
+                      #{t}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

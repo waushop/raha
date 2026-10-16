@@ -31,7 +31,7 @@ export default function MonthSelector({ m1, m2, availableMonths }: Props) {
         className="bg-white/5 border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30 appearance-none cursor-pointer"
       >
         {availableMonths.map(m => (
-          <option key={m} value={m} className="bg-[#1c2237]">{monthLabel(m)}</option>
+          <option key={m} value={m} className="panel">{monthLabel(m)}</option>
         ))}
       </select>
       <span className="text-xs text-[#5a6380] font-bold">vs</span>
@@ -41,7 +41,7 @@ export default function MonthSelector({ m1, m2, availableMonths }: Props) {
         className="bg-white/5 border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30 appearance-none cursor-pointer"
       >
         {availableMonths.map(m => (
-          <option key={m} value={m} className="bg-[#1c2237]">{monthLabel(m)}</option>
+          <option key={m} value={m} className="panel">{monthLabel(m)}</option>
         ))}
       </select>
     </div>

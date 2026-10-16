@@ -10,7 +10,7 @@ type Props = {
   rightLabel?: string;
 };
 
-export default function SwipeRow({ children, onSwipeLeft, onSwipeRight, leftLabel = "Kustuta", rightLabel = "Muuda" }: Props) {
+export default function SwipeRow({ children, onSwipeLeft, onSwipeRight, leftLabel = "Delete", rightLabel = "Edit" }: Props) {
   const touchStartX = useRef(0);
   const [offset, setOffset] = useState(0);
   const [swiping, setSwiping] = useState(false);

@@ -11,7 +11,7 @@ const fmtShort = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(0);
 
 const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "Mai", "Jun",
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
@@ -57,7 +57,19 @@ export default async function YearPage({
   );
   const categories = catRows as CatRow[];
 
+  // Income per month → net + savings rate for the year
+  const [incomeRows] = await db.execute(
+    `SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER
+     WHERE KIND = 'income' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH`,
+    [`${year}-01`, `${year}-12`]
+  );
+  const incomeByMonth = new Map((incomeRows as { MONTH: string; TOTAL: number }[]).map((r) => [r.MONTH, r.TOTAL]));
+  const yearIncome = [...incomeByMonth.values()].reduce((s, v) => s + v, 0);
+  const hasIncome = yearIncome > 0;
+
   const yearTotal = months.reduce((s, m) => s + m.TOTAL, 0);
+  const yearNet = yearIncome - yearTotal;
+  const savingsRate = hasIncome ? (yearNet / yearIncome) * 100 : null;
   const avgMonth = months.length > 0 ? yearTotal / months.length : 0;
   const maxMonth = Math.max(...months.map(m => m.TOTAL), 0);
 
@@ -65,7 +77,7 @@ export default async function YearPage({
   const nextYear = String(Number(year) + 1);
 
   return (
-    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 sm:py-10 pb-20">
+    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-20">
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 flex items-center justify-between animate-fade-up">
@@ -99,7 +111,7 @@ export default async function YearPage({
         </div>
 
         {/* Year stats */}
-        <div className="grid grid-cols-2 gap-3 animate-fade-up" style={{ animationDelay: "0.05s" }}>
+        <div className={`grid grid-cols-2 ${hasIncome ? "sm:grid-cols-4" : ""} gap-3 animate-fade-up`} style={{ animationDelay: "0.05s" }}>
           <div className="card rounded-2xl p-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Year total</p>
             <p className="text-lg font-bold text-white font-mono tabular-nums">{fmt(yearTotal)} €</p>
@@ -108,6 +120,19 @@ export default async function YearPage({
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Monthly avg</p>
             <p className="text-lg font-bold text-white font-mono tabular-nums">{fmt(avgMonth)} €</p>
           </div>
+          {hasIncome && (
+            <>
+              <div className="card rounded-2xl p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Income</p>
+                <p className="text-lg font-bold text-teal-400 font-mono tabular-nums">{fmt(yearIncome)} €</p>
+              </div>
+              <div className="card rounded-2xl p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Saved</p>
+                <p className={`text-lg font-bold font-mono tabular-nums ${yearNet >= 0 ? "text-teal-400" : "text-red-400"}`}>{yearNet >= 0 ? "+" : ""}{fmt(yearNet)} €</p>
+                <p className="text-[9px] text-[#5a6380]">{savingsRate?.toFixed(0)}% savings rate</p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Monthly bar chart */}
@@ -203,7 +228,7 @@ export default async function YearPage({
         {/* Monthly detail table */}
         <div className="card rounded-2xl overflow-hidden animate-fade-up" style={{ animationDelay: "0.12s" }}>
           <div className="px-5 py-4 border-b border-white/[0.06]">
-            <h2 className="text-sm font-bold text-white">Monthse detail</h2>
+            <h2 className="text-sm font-bold text-white">Monthly detail</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -212,6 +237,8 @@ export default async function YearPage({
                   <th className="text-left px-5 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Month</th>
                   <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Total</th>
                   <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Expenses</th>
+                  {hasIncome && <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Income</th>}
+                  {hasIncome && <th className="text-right px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Net</th>}
                 </tr>
               </thead>
               <tbody>
@@ -226,6 +253,10 @@ export default async function YearPage({
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono font-semibold text-white/80 tabular-nums">{fmt(m.TOTAL)} €</td>
                       <td className="px-4 py-2.5 text-right text-[#9ca3c0] tabular-nums">{m.COUNT}</td>
+                      {hasIncome && <td className="px-4 py-2.5 text-right font-mono text-teal-400/80 tabular-nums">{fmt(incomeByMonth.get(m.MONTH) ?? 0)} €</td>}
+                      {hasIncome && (() => { const net = (incomeByMonth.get(m.MONTH) ?? 0) - m.TOTAL; return (
+                        <td className={`px-4 py-2.5 text-right font-mono tabular-nums ${net >= 0 ? "text-teal-400/80" : "text-red-400/80"}`}>{net >= 0 ? "+" : ""}{fmt(net)} €</td>
+                      ); })()}
                     </tr>
                   );
                 })}
@@ -236,6 +267,8 @@ export default async function YearPage({
                     <td className="px-5 py-3 text-[#9ca3c0] text-xs uppercase tracking-wider">Total</td>
                     <td className="px-4 py-3 text-right font-mono text-white tabular-nums">{fmt(yearTotal)} €</td>
                     <td className="px-4 py-3 text-right text-[#9ca3c0] tabular-nums">{months.reduce((s, m) => s + m.COUNT, 0)}</td>
+                    {hasIncome && <td className="px-4 py-3 text-right font-mono text-teal-400 tabular-nums">{fmt(yearIncome)} €</td>}
+                    {hasIncome && <td className={`px-4 py-3 text-right font-mono tabular-nums ${yearNet >= 0 ? "text-teal-400" : "text-red-400"}`}>{yearNet >= 0 ? "+" : ""}{fmt(yearNet)} €</td>}
                   </tr>
                 </tfoot>
               )}
@@ -245,13 +278,13 @@ export default async function YearPage({
 
         {months.length === 0 && (
           <div className="card rounded-2xl p-12 text-center">
-            <p className="text-sm text-[#5a6380]">Aastal {year} has no data</p>
+            <p className="text-sm text-[#5a6380]">No data for {year}</p>
           </div>
         )}
 
         <footer className="text-center pt-4 pb-2">
           <Link href="/" className="text-[10px] text-[#5a6380]/50 hover:text-pink-400/50 transition-colors tracking-wider font-medium">
-            ← Back kuuvaatesse
+            ← Back to month view
           </Link>
         </footer>
       </div>

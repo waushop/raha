@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useCallback, useRef } from "react";
+import { useState, useTransition, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { deleteExpense, undoDeleteExpense, copyFromPreviousMonth, copyRecurringToMonth, duplicateExpense, toggleRecurring } from "@/app/actions";
 import { useToast } from "./Toast";
@@ -21,6 +21,17 @@ type Props = {
   groups: ExpenseGroup[];
 };
 
+// Row id from a `#e-<id>` deep link (search, activity, dashboard link here).
+// External store rather than state-in-effect: hydration-safe and lint-clean.
+function subscribeHash(onChange: () => void) {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+}
+function readHashId(): string | null {
+  const h = window.location.hash;
+  return h.startsWith("#e-") ? h.slice(3) : null;
+}
+
 export default function ExpenseTable({ expenses, month, groups }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Expense | undefined>();
@@ -28,6 +39,12 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
   const [, startTransition] = useTransition();
   const [isCopying, startCopyTransition] = useTransition();
   const toast = useToast();
+  const hashId = useSyncExternalStore(subscribeHash, readHashId, () => null);
+
+  useEffect(() => {
+    if (!hashId) return;
+    document.getElementById(`e-${hashId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [hashId]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -132,7 +149,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
           <div className="divide-y divide-white/[0.04]">
             {[...income].sort((a, b) => b.AMOUNT - a.AMOUNT).map(e => (
               <SwipeRow key={e.ID} onSwipeLeft={() => handleDelete(e.ID, e.NAME)} onSwipeRight={() => openEdit(e)}>
-                <ExpenseRow expense={e} onEdit={openEdit} onDelete={handleDelete} onDuplicate={handleDuplicate} onToggleRecurring={handleToggleRecurring} />
+                <ExpenseRow expense={e} highlighted={e.ID === hashId} onEdit={openEdit} onDelete={handleDelete} onDuplicate={handleDuplicate} onToggleRecurring={handleToggleRecurring} />
               </SwipeRow>
             ))}
           </div>
@@ -159,7 +176,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
                 <div className="divide-y divide-white/[0.04]">
                   {s.items.map(e => (
                     <SwipeRow key={e.ID} onSwipeLeft={() => handleDelete(e.ID, e.NAME)} onSwipeRight={() => openEdit(e)}>
-                      <ExpenseRow expense={e} onEdit={openEdit} onDelete={handleDelete} onDuplicate={handleDuplicate} onToggleRecurring={handleToggleRecurring} />
+                      <ExpenseRow expense={e} highlighted={e.ID === hashId} onEdit={openEdit} onDelete={handleDelete} onDuplicate={handleDuplicate} onToggleRecurring={handleToggleRecurring} />
                     </SwipeRow>
                   ))}
                 </div>
@@ -208,7 +225,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
         <>
           <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={closeForm} />
           <div className="fixed inset-0 z-[70] flex items-start sm:items-center justify-center p-4 pt-16 sm:pt-4 pointer-events-none">
-            <div className="rounded-2xl p-5 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto pointer-events-auto animate-fade-up bg-[#1c2237] border border-white/[0.08] shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
+            <div className="rounded-2xl p-5 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto pointer-events-auto animate-fade-up panel border border-white/[0.08] shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-bold text-white flex items-center gap-3">
                   <span className="w-8 h-8 rounded-lg gradient-pink flex items-center justify-center shadow-lg shadow-pink-500/20">
@@ -230,8 +247,9 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
   );
 }
 
-function ExpenseRow({ expense: e, onEdit, onDelete, onDuplicate, onToggleRecurring }: {
+function ExpenseRow({ expense: e, highlighted, onEdit, onDelete, onDuplicate, onToggleRecurring }: {
   expense: Expense;
+  highlighted: boolean;
   onEdit: (e: Expense) => void;
   onDelete: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
@@ -245,11 +263,14 @@ function ExpenseRow({ expense: e, onEdit, onDelete, onDuplicate, onToggleRecurri
   const cat = CATEGORIES[e.CATEGORY] ?? CATEGORIES.other;
 
   return (
-    <div className="px-4 py-2.5 flex items-center gap-2.5 row-hover group" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onTouchMove={onTouchMove}>
+    <div id={`e-${e.ID}`} className={`px-4 py-2.5 flex items-center gap-2.5 row-hover group scroll-mt-24 ${highlighted ? "row-highlight" : ""}`} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onTouchMove={onTouchMove}>
       <span className="text-base leading-none shrink-0" title={cat.label}>{cat.icon}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <span className="text-sm text-white/90 truncate inline-flex items-center gap-1.5">
+            {e.DAY !== null && e.DAY !== undefined && (
+              <span className="text-[9px] font-mono tabular-nums text-[#5a6380] bg-white/5 rounded px-1 shrink-0" title={`Day ${e.DAY}`}>{e.DAY}</span>
+            )}
             {e.NAME}
             {e.IS_RECURRING === 1 && (
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-teal-400/50 shrink-0">
@@ -261,17 +282,17 @@ function ExpenseRow({ expense: e, onEdit, onDelete, onDuplicate, onToggleRecurri
         </div>
         {e.NOTES && <p className="text-[10px] text-[#5a6380] mt-0.5 truncate">{e.NOTES}</p>}
       </div>
-      <div className="flex gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
-        <button onClick={() => onToggleRecurring(e.ID, e.NAME, e.IS_RECURRING === 1)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${e.IS_RECURRING ? "text-teal-400/60" : "text-[#5a6380]"} hover:text-teal-400 hover:bg-teal-500/10`} aria-label="Korduv">
+      <div className="flex gap-0.5 row-actions shrink-0">
+        <button onClick={() => onToggleRecurring(e.ID, e.NAME, e.IS_RECURRING === 1)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${e.IS_RECURRING ? "text-teal-400/60" : "text-[#5a6380]"} hover:text-teal-400 hover:bg-teal-500/10`} aria-label="Recurring">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 014-4h14" /><path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 01-4 4H3" /></svg>
         </button>
-        <button onClick={() => onDuplicate(e.ID)} className="w-7 h-7 rounded-lg hover:bg-purple-500/10 flex items-center justify-center text-[#5a6380] hover:text-purple-400 transition-colors" aria-label="Dubleeri">
+        <button onClick={() => onDuplicate(e.ID)} className="w-7 h-7 rounded-lg hover:bg-purple-500/10 flex items-center justify-center text-[#5a6380] hover:text-purple-400 transition-colors" aria-label="Duplicate">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
         </button>
-        <button onClick={() => onEdit(e)} className="w-7 h-7 rounded-lg hover:bg-blue-500/10 flex items-center justify-center text-[#5a6380] hover:text-blue-400 transition-colors" aria-label="Muuda">
+        <button onClick={() => onEdit(e)} className="w-7 h-7 rounded-lg hover:bg-blue-500/10 flex items-center justify-center text-[#5a6380] hover:text-blue-400 transition-colors" aria-label="Edit">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
         </button>
-        <button onClick={() => onDelete(e.ID, e.NAME)} className="w-7 h-7 rounded-lg hover:bg-red-500/10 flex items-center justify-center text-[#5a6380] hover:text-red-400 transition-colors" aria-label="Kustuta">
+        <button onClick={() => onDelete(e.ID, e.NAME)} className="w-7 h-7 rounded-lg hover:bg-red-500/10 flex items-center justify-center text-[#5a6380] hover:text-red-400 transition-colors" aria-label="Delete">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
         </button>
       </div>

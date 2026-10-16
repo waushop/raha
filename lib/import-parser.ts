@@ -8,7 +8,7 @@ export type ParsedTransaction = {
   currency: string;
   isIncome: boolean;
   category: CategoryKey;
-  confidence: "pattern" | "guess" | "none";
+  confidence: "pattern" | "guess" | "manual" | "none";
   patternId?: string;    // which pattern matched
 };
 

@@ -20,7 +20,7 @@ const caveat = Caveat({
 
 // Applies the saved theme before first paint so a light-mode user doesn't
 // see a dark flash. Mirrors ThemeToggle, which owns the toggle itself.
-const THEME_INIT = `try{if(localStorage.getItem("theme")==="light")document.documentElement.setAttribute("data-theme","light")}catch(e){}`;
+const THEME_INIT = `try{if(localStorage.getItem("theme")==="light"){document.documentElement.setAttribute("data-theme","light");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#f5f5f9")}}catch(e){}`;
 
 export const metadata: Metadata = {
   title: "Empty Wallet",
@@ -54,7 +54,7 @@ export default function RootLayout({
 }) {
   return (
     // suppressHydrationWarning: THEME_INIT may add data-theme before React hydrates.
-    <html lang="et" className={caveat.variable} suppressHydrationWarning>
+    <html lang="en" className={caveat.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>

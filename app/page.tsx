@@ -7,19 +7,8 @@ import ExpenseTable from "@/components/ExpenseTable";
 import TrendChart from "@/components/TrendChart";
 import SwipeContainer from "@/components/SwipeContainer";
 import QuickAddBar from "@/components/QuickAddBar";
-
-function previousMonth() {
-  const now = new Date();
-  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function getMonthRange(month: string, range: number): { start: string; end: string } {
-  const [y, m] = month.split("-").map(Number);
-  const startDate = new Date(y, m - 1 - range, 1);
-  const start = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`;
-  return { start, end: month };
-}
+import { addMonths, currentMonth, isValidMonth } from "@/lib/months";
+import { monthlyTotals } from "@/lib/queries";
 
 export default async function Page({
   searchParams,
@@ -28,11 +17,11 @@ export default async function Page({
 }) {
   await connection();
   const { month: monthParam } = await searchParams;
-  const month = monthParam ?? previousMonth();
+  const month = isValidMonth(monthParam) ? monthParam : currentMonth();
 
   // Fetch expenses with group info
   const [rows] = await db.execute(
-    `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.NAME,
+    `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.NAME,
             e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.CREATED_AT,
             g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
@@ -42,17 +31,13 @@ export default async function Page({
     [month]
   );
   const expenses = rows as Expense[];
+  const spent = expenses.filter((e) => e.KIND === "expense");
 
   // Fetch groups
   const groups = await getGroups();
 
   // Fetch 6-month trend data
-  const { start } = getMonthRange(month, 5);
-  const [trendRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH ORDER BY MONTH",
-    [start, month]
-  );
-  const trendData = trendRows as { MONTH: string; TOTAL: number }[];
+  const trendData = await monthlyTotals("expense", addMonths(month, -5), month);
 
   // Quick-add presets
   const existingNames = new Set(expenses.map(e => e.NAME));
@@ -70,7 +55,7 @@ export default async function Page({
     .slice(0, 10);
 
   return (
-    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 sm:py-10 pb-20">
+    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-20">
       <SwipeContainer month={month}>
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}
@@ -79,13 +64,13 @@ export default async function Page({
             <h1 className="text-4xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight" style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}>
               Empty Wallet
             </h1>
-            {expenses.length > 0 && (
+            {spent.length > 0 && (
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-sm font-mono font-bold text-white/80 tabular-nums">
-                  {expenses.reduce((s, e) => s + e.AMOUNT, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} €
+                  {spent.reduce((s, e) => s + e.AMOUNT, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} €
                 </span>
                 <span className="text-[9px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">
-                  {expenses.length} expenses
+                  {spent.length} expense{spent.length !== 1 ? "s" : ""}
                 </span>
               </div>
             )}

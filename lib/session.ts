@@ -19,6 +19,19 @@ import { dirname, join } from "node:path";
 export const SESSION_COOKIE = "auth";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 365;
 
+/** Cookie attributes shared by the login action and the proxy's sliding refresh. */
+export function sessionCookieOptions(secure: boolean) {
+  return { httpOnly: true, secure, sameSite: "lax" as const, maxAge: SESSION_TTL_SECONDS, path: "/" };
+}
+
+/** Expiry (unix seconds) baked into a token, or null if it is malformed. Does not verify. */
+export function sessionTokenExpiry(token: string | null | undefined): number | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 4 || parts[0] !== TOKEN_VERSION || !/^\d{1,12}$/.test(parts[1])) return null;
+  return Number(parts[1]);
+}
+
 const SECRET_BYTES = 32;
 const TOKEN_VERSION = "v1";
 

@@ -40,6 +40,7 @@ export default function ThemeToggle() {
     }
     if (next === "light") document.documentElement.setAttribute("data-theme", "light");
     else document.documentElement.removeAttribute("data-theme");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "light" ? "#f5f5f9" : "#1a1a2e");
     window.dispatchEvent(new Event(CHANGE_EVENT));
   }
 

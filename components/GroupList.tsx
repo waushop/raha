@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createGroup, updateGroup, deleteGroup } from "@/app/actions";
+import { createGroup, updateGroup, deleteGroup, moveGroup } from "@/app/actions";
 import { useToast } from "./Toast";
 import type { ExpenseGroup } from "@/types/expense";
 import { GROUP_COLORS, GROUP_COLOR_CLASSES } from "@/types/expense";
@@ -45,13 +45,9 @@ export default function GroupList({ groups }: Props) {
     data.set("color", color);
 
     startTransition(async () => {
-      if (editing) {
-        await updateGroup(editing.ID, data);
-        toast.show(`"${name}" updated`);
-      } else {
-        await createGroup(data);
-        toast.show(`"${name}" created`);
-      }
+      const res = editing ? await updateGroup(editing.ID, data) : await createGroup(data);
+      if (!res.ok) { toast.showError(res.error); return; }
+      toast.show(editing ? `"${name}" updated` : `"${name}" created`);
       setShowForm(false);
       setEditing(null);
     });
@@ -70,11 +66,21 @@ export default function GroupList({ groups }: Props) {
       {/* Existing groups */}
       {groups.length > 0 ? (
         <div className="space-y-2">
-          {groups.map(g => {
+          {groups.map((g, idx) => {
             const colors = GROUP_COLOR_CLASSES[g.COLOR] ?? GROUP_COLOR_CLASSES.blue;
             return (
               <div key={g.ID} className={`card rounded-2xl p-4 flex items-center justify-between border-l-4 ${colors.border}`}>
                 <div className="flex items-center gap-3">
+                  <div className="flex flex-col -my-1">
+                    <button onClick={() => startTransition(() => moveGroup(g.ID, -1))} disabled={idx === 0 || isPending} aria-label="Move up"
+                      className="w-6 h-5 flex items-center justify-center text-[#5a6380] hover:text-white disabled:opacity-20 transition-colors">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6" /></svg>
+                    </button>
+                    <button onClick={() => startTransition(() => moveGroup(g.ID, 1))} disabled={idx === groups.length - 1 || isPending} aria-label="Move down"
+                      className="w-6 h-5 flex items-center justify-center text-[#5a6380] hover:text-white disabled:opacity-20 transition-colors">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+                    </button>
+                  </div>
                   <span className="text-2xl">{g.EMOJI}</span>
                   <div>
                     <span className={`text-sm font-bold ${colors.text}`}>{g.NAME}</span>
@@ -139,7 +145,7 @@ export default function GroupList({ groups }: Props) {
                 return (
                   <button key={c} type="button" onClick={() => setColor(c)}
                     className={`w-8 h-8 rounded-full ${cls.bg} transition-all ${
-                      color === c ? "ring-2 ring-white ring-offset-2 ring-offset-[#1c2237] scale-110" : "opacity-50 hover:opacity-80"
+                      color === c ? "ring-2 ring-white ring-offset-2 ring-offset-[var(--bg-card-solid)] scale-110" : "opacity-50 hover:opacity-80"
                     }`} />
                 );
               })}

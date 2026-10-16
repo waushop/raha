@@ -4,9 +4,9 @@ A small, fast, single-user expense and income tracker. Next.js 16 + React 19 on 
 
 ## Features
 
-- Monthly ledger grouped by your own category groups, with income shown separately and a Spent / Income / Net summary
-- Dashboard with budgets and pacing, forecasting, insights and a spending heatmap
-- Year overview, 12-month analytics, side-by-side month comparison, global search, activity timeline
+- Monthly ledger grouped by your own category groups, with income shown separately and a Spent / Income / Net summary; entries can carry a day and tags
+- Dashboard with budgets and pacing, forecasting, insights, a monthly and a daily spending heatmap, savings rate, and "looks recurring" suggestions
+- Year overview and 12-month analytics with income, savings rate, budget-vs-actual history and tag totals; side-by-side month comparison; search with filters; a full audit-backed activity timeline with restore
 - Recurring items with one-click "add recurring" and "copy last month"
 - Bank CSV import (Swedbank Estonia auto-detected, generic `Date,Name,Amount` otherwise) with learnable categorisation patterns
 - JSON backup/restore of everything (ledger, groups, budgets, import patterns) and CSV export
@@ -38,11 +38,13 @@ CI runs the same three gates before building the image, so a failing lint or tes
 | Variable        | Default          | Purpose |
 |-----------------|------------------|---------|
 | `DB_PATH`       | `./raha.sqlite`  | Path to the SQLite database. The session-signing secret is stored beside it as `.auth-secret`. |
-| `AUTH_PIN_HASH` | unset            | Optional SHA-256 of a bootstrap PIN. Only consulted until a PIN exists in the database. |
+| `AUTH_PIN_HASH` | unset            | Optional SHA-256 of a bootstrap PIN. Only consulted until a PIN exists in the database; the first successful login stores a salted scrypt hash instead. |
 
 ## How auth works
 
-- The PIN hash lives in the `APP_SETTING` table.
+- The PIN hash lives in the `APP_SETTING` table as salted scrypt. Older unsalted SHA-256 hashes (and the `AUTH_PIN_HASH` bootstrap) still verify and are upgraded in place on the next successful login.
+- Five wrong PINs from one client IP lock it out for a minute, doubling per further failure up to fifteen minutes (`lib/ratelimit.ts`, in-memory).
+- Sessions slide: the proxy re-issues the cookie once it is past half its one-year life, so an active device is never logged out.
 - A successful login sets an HMAC-signed, one-year session cookie. The signing key is 32 random bytes in `<DB dir>/.auth-secret`, generated on first use.
 - `proxy.ts` verifies the signature on every request before any route runs; every Server Action and API route also calls `requireAuth()` itself.
 - Changing the PIN rotates the secret, which logs out every other device while re-issuing a cookie to the one that made the change.

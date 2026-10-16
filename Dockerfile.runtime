@@ -1,11 +1,22 @@
 # Runtime image for the Next.js standalone build. CI builds the app first
-# (npm run build), this just packages the resulting .next/standalone +
-# .next/static + public into a small node:alpine image.
+# (npm run build); this packages .next/standalone + .next/static + public
+# into a small node:alpine image.
+#
+# Runs as root on purpose: the wauhost chart mounts a local-path PVC at /data
+# whose existing SQLite file is root-owned, and local-path volumes don't
+# honour fsGroup. Switching to USER node needs a chown step in the chart first.
 FROM node:24-alpine
 WORKDIR /app
-ENV NODE_ENV=production
-EXPOSE 3000
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000 \
+    DB_PATH=/data/raha.sqlite
+RUN mkdir -p /data
 COPY .next/standalone /app/
 COPY .next/static /app/.next/static
 COPY public /app/public
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/login >/dev/null || exit 1
 CMD ["node", "server.js"]

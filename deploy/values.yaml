@@ -38,14 +38,14 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt"
   hosts:
-    - host: raha.vaus.ee
+    - host: raha.waushop.ee
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: raha-vaus-tls
       hosts:
-        - raha.vaus.ee
+        - raha.waushop.ee
 
 resources:
   limits:

@@ -6,13 +6,15 @@ type ToastData = {
   id: number;
   message: string;
   action?: { label: string; onClick: () => void };
+  variant?: "success" | "error";
 };
 
 type ToastContextType = {
   show: (message: string, action?: { label: string; onClick: () => void }) => void;
+  showError: (message: string) => void;
 };
 
-const ToastContext = createContext<ToastContextType>({ show: () => {} });
+const ToastContext = createContext<ToastContextType>({ show: () => {}, showError: () => {} });
 
 export function useToast() {
   return useContext(ToastContext);
@@ -25,7 +27,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const show = useCallback((message: string, action?: { label: string; onClick: () => void }) => {
     const id = nextId++;
-    setToasts((prev) => [...prev, { id, message, action }]);
+    setToasts((prev) => [...prev, { id, message, action, variant: "success" }]);
+  }, []);
+
+  const showError = useCallback((message: string) => {
+    const id = nextId++;
+    setToasts((prev) => [...prev, { id, message, variant: "error" }]);
   }, []);
 
   const dismiss = useCallback((id: number) => {
@@ -44,20 +51,26 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [toasts, dismiss]);
 
   return (
-    <ToastContext value={{ show }}>
+    <ToastContext value={{ show, showError }}>
       {children}
       {/* Toast container */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none" role="status" aria-live="polite">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-xl bg-[#1c2237] border border-white/[0.08] shadow-2xl shadow-black/40 ${
+            className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-xl panel border border-white/[0.08] shadow-2xl shadow-black/40 ${
               toast.exiting ? "toast-exit" : "toast-enter"
             }`}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
+            {toast.variant === "error" ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            )}
             <span className="text-sm text-white/90 font-medium">{toast.message}</span>
             {toast.action && (
               <button

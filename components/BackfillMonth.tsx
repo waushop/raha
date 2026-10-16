@@ -82,7 +82,7 @@ export default function BackfillMonth({ existingMonths }: Props) {
           className="mt-1 w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500/50 disabled:opacity-40"
         >
           {existingMonths.map((m) => (
-            <option key={m} value={m} className="bg-[#1a1a2e]">
+            <option key={m} value={m} className="panel">
               {fmt(m)}
             </option>
           ))}

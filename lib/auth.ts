@@ -1,32 +1,19 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import db from "./db";
 import {
   SESSION_COOKIE,
-  SESSION_TTL_SECONDS,
   createSessionToken,
   getSessionSecret,
+  sessionCookieOptions,
   verifySessionTokenWithCurrentSecret,
 } from "./session";
 
+export { PIN_REGEX, constantTimeEqual, hashPin, isLegacyPinHash, verifyPin } from "./pin";
+
 const PIN_KEY = "pin_hash";
 
-export function hashPin(pin: string): string {
-  return createHash("sha256").update(pin).digest("hex");
-}
-
-export function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
-}
-
-export const PIN_REGEX = /^\d{6}$/;
-
 async function readPinFromDb(): Promise<string | null> {
-  const [rows] = await db.execute(
-    "SELECT VALUE FROM APP_SETTING WHERE NAME = ?",
-    [PIN_KEY],
-  );
+  const [rows] = await db.execute("SELECT VALUE FROM APP_SETTING WHERE NAME = ?", [PIN_KEY]);
   const row = (rows as Array<{ VALUE: string }>)[0];
   return row?.VALUE ?? null;
 }
@@ -35,9 +22,9 @@ export async function isPinSetInDb(): Promise<boolean> {
   return (await readPinFromDb()) !== null;
 }
 
-// DB takes precedence; env var is a one-shot bootstrap that becomes
-// authoritative only until a successful login persists it to the DB
-// (see persistEnvHashIfNeeded).
+// DB takes precedence; the env var is a one-shot bootstrap (unsalted SHA-256)
+// that stays authoritative only until a successful login persists an
+// upgraded hash to the DB.
 export async function getPinHash(): Promise<string | null> {
   return (await readPinFromDb()) ?? process.env.AUTH_PIN_HASH ?? null;
 }
@@ -50,13 +37,6 @@ export async function setPinHash(hash: string): Promise<void> {
   );
 }
 
-// Called after a successful env-var login so the hash lives in the DB and
-// the env var can be dropped from the SealedSecret on the next deploy.
-export async function persistEnvHashIfNeeded(verifiedHash: string): Promise<void> {
-  if (await isPinSetInDb()) return;
-  await setPinHash(verifiedHash);
-}
-
 // ============================================
 // SESSION COOKIE
 // ============================================
@@ -64,13 +44,7 @@ export async function persistEnvHashIfNeeded(verifiedHash: string): Promise<void
 /** Mints a fresh signed token and stores it in the session cookie. */
 export async function issueSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, createSessionToken(getSessionSecret()), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: SESSION_TTL_SECONDS,
-    path: "/",
-  });
+  cookieStore.set(SESSION_COOKIE, createSessionToken(getSessionSecret()), sessionCookieOptions(process.env.NODE_ENV === "production"));
 }
 
 export async function clearSessionCookie(): Promise<void> {

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useTransition, useEffect } from "react";
 import { updateExpenseAmount } from "@/app/actions";
+import { useToast } from "./Toast";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -17,6 +18,7 @@ export default function InlineAmount({ expenseId, amount, tone = "expense" }: Pr
   const [value, setValue] = useState(amount.toString());
   const inputRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
+  const toast = useToast();
 
   useEffect(() => {
     if (editing) {
@@ -26,14 +28,20 @@ export default function InlineAmount({ expenseId, amount, tone = "expense" }: Pr
   }, [editing]);
 
   function save() {
-    const newAmount = parseFloat(value);
+    const newAmount = parseFloat(value.replace(",", "."));
     if (isNaN(newAmount) || newAmount === amount) {
       setEditing(false);
       setValue(amount.toString());
       return;
     }
+    if (newAmount <= 0) {
+      toast.showError("Amount must be greater than zero");
+      setValue(amount.toString());
+      return;
+    }
     startTransition(async () => {
-      await updateExpenseAmount(expenseId, newAmount);
+      const res = await updateExpenseAmount(expenseId, newAmount);
+      if (!res.ok) { toast.showError(res.error); setValue(amount.toString()); }
       setEditing(false);
     });
   }

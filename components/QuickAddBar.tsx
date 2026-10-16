@@ -5,6 +5,7 @@ import { createExpense } from "@/app/actions";
 import { useToast } from "./Toast";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
+import { currentMonth, monthKey } from "@/lib/months";
 
 type Preset = {
   NAME: string;
@@ -29,9 +30,14 @@ export default function QuickAddBar({ presets, month }: Props) {
     data.set("name", preset.NAME);
     data.set("amount", preset.AMOUNT.toString());
     data.set("month", month);
+    if (month === currentMonth()) {
+      const now = new Date();
+      data.set("date", `${monthKey(now)}-${String(now.getDate()).padStart(2, "0")}`);
+    }
 
     startTransition(async () => {
-      await createExpense(data);
+      const res = await createExpense(data);
+      if (!res.ok) { toast.showError(res.error); return; }
       navigator.vibrate?.(10);
       toast.show(`"${preset.NAME}" added`);
     });

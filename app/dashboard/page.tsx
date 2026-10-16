@@ -6,7 +6,11 @@ import Link from "next/link";
 import SpendingHeatmap from "@/components/SpendingHeatmap";
 import Insights from "@/components/Insights";
 import Welcome from "@/components/Welcome";
-import { getBudgets } from "@/lib/budgets";
+import { getBudgets, ensureBudgetSnapshot } from "@/lib/budgets";
+import DailyHeatmap from "@/components/DailyHeatmap";
+import RecurringSuggestions from "@/components/RecurringSuggestions";
+import { monthlyTotals, recurringCandidates } from "@/lib/queries";
+import { addMonths } from "@/lib/months";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -101,7 +105,9 @@ export default async function DashboardPage() {
     prevCatMap.set(r.CATEGORY, r.TOTAL);
   }
 
-  // Budgets + per-category pacing (this month).
+  // Budgets + per-category pacing (this month). Viewing a month freezes its
+  // budget snapshot so analytics can show budget vs actual later.
+  await ensureBudgetSnapshot(thisMonth);
   const budgets = await getBudgets();
   const budgetCatList = (Object.entries(budgets.categories) as Array<[CategoryKey, number]>)
     .filter(([, amt]) => amt > 0)
@@ -145,11 +151,11 @@ export default async function DashboardPage() {
 
   // Recent entries (last 5, both kinds — visual indicator below)
   const [recentRows] = await db.execute(
-    `SELECT NAME, CATEGORY, KIND, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT
+    `SELECT ID, NAME, CATEGORY, KIND, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT
      FROM LEDGER WHERE DELETED_AT IS NULL
      ORDER BY CREATED_AT DESC LIMIT 5`
   );
-  const recentExpenses = recentRows as { NAME: string; CATEGORY: CategoryKey; KIND: "expense" | "income"; AMOUNT: number; MONTH: string; CREATED_AT: string }[];
+  const recentExpenses = recentRows as { ID: string; NAME: string; CATEGORY: CategoryKey; KIND: "expense" | "income"; AMOUNT: number; MONTH: string; CREATED_AT: string }[];
 
   // Spending pace
   const expectedSpend = avgMonthly * (dayOfMonth / totalDays);
@@ -162,11 +168,21 @@ export default async function DashboardPage() {
 
   const missingRecurringCount = missingRecurring.length;
 
-  // Heatmap data (all months, expenses only)
-  const [heatmapRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL GROUP BY MONTH ORDER BY MONTH"
+  // Day-level spending this month (rows entered with a date)
+  const [dailyRows] = await db.execute(
+    `SELECT DAY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER
+     WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND DAY IS NOT NULL GROUP BY DAY`,
+    [thisMonth],
   );
-  const heatmapData = (heatmapRows as { MONTH: string; TOTAL: number }[]).map(r => ({ month: r.MONTH, total: r.TOTAL }));
+  const daily = (dailyRows as { DAY: number; TOTAL: number }[]).map((r) => ({ day: r.DAY, total: r.TOTAL }));
+  const datedTotal = daily.reduce((s, d) => s + d.total, 0);
+  const savingsRate = thisIncome > 0 ? ((thisIncome - thisTotal) / thisIncome) * 100 : null;
+
+  // Heatmap data (all months, expenses only)
+  const heatmapData = (await monthlyTotals("expense")).map(r => ({ month: r.MONTH, total: r.TOTAL }));
+
+  // Names that behave like subscriptions but aren't flagged yet
+  const candidates = await recurringCandidates(addMonths(thisMonth, -3));
 
   // Welcome screen is for *truly* fresh installs — no expenses AND no groups
   // yet. Once the user has any groups, drop the Welcome and render the regular
@@ -180,14 +196,14 @@ export default async function DashboardPage() {
 
   if (isNewUser) {
     return (
-      <main className="min-h-screen flex items-center justify-center py-10 px-4 pl-16 sm:pl-20">
+      <main className="min-h-screen flex items-center justify-center py-10 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6">
         <Welcome />
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 sm:py-10 pb-20">
+    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-20">
       <div className="max-w-5xl mx-auto space-y-5">
         {/* Header */}
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-fade-up">
@@ -224,9 +240,11 @@ export default async function DashboardPage() {
               <p className={`text-xl font-bold font-mono tabular-nums ${thisNet >= 0 ? "text-teal-400" : "text-red-400"}`}>
                 {thisNet >= 0 ? "+" : ""}{fmt(thisNet)} €
               </p>
-              {prevTotal > 0 && (
-                <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">prev: {prevNet >= 0 ? "+" : ""}{fmt(prevNet)}</p>
-              )}
+              <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">
+                {savingsRate !== null && <span className={savingsRate >= 0 ? "text-teal-400/70" : "text-red-400/70"}>saved {savingsRate.toFixed(0)}%</span>}
+                {savingsRate !== null && prevTotal > 0 && " · "}
+                {prevTotal > 0 && <>prev: {prevNet >= 0 ? "+" : ""}{fmt(prevNet)}</>}
+              </p>
             </div>
           </div>
         )}
@@ -236,7 +254,7 @@ export default async function DashboardPage() {
           <Link href={`/?month=${thisMonth}`} className="card rounded-2xl p-4 card-hover">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">This month</p>
             <p className="text-xl font-bold text-white font-mono tabular-nums">{fmt(thisTotal)} €</p>
-            <p className="text-[9px] text-[#5a6380] mt-1">{thisCount} kulu</p>
+            <p className="text-[9px] text-[#5a6380] mt-1">{thisCount} expense{thisCount !== 1 ? "s" : ""}</p>
           </Link>
           <Link href={`/?month=${prevMonth}`} className="card rounded-2xl p-4 card-hover">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Last month</p>
@@ -436,6 +454,13 @@ export default async function DashboardPage() {
             </div>
           )}
 
+          {/* Recurring detection */}
+          {candidates.length > 0 && (
+            <div className="animate-fade-up" style={{ animationDelay: "0.1s" }}>
+              <RecurringSuggestions candidates={candidates} />
+            </div>
+          )}
+
           {/* Category comparison */}
           <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.11s" }}>
             <h2 className="text-sm font-bold text-white mb-4">Categories (this month)</h2>
@@ -474,22 +499,29 @@ export default async function DashboardPage() {
           <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.13s" }}>
             <h2 className="text-sm font-bold text-white mb-4">Recently added</h2>
             <div className="space-y-2.5">
-              {recentExpenses.map((item, i) => {
+              {recentExpenses.map((item) => {
                 const meta = CATEGORIES[item.CATEGORY];
                 return (
-                  <div key={i} className="flex items-center gap-2">
+                  <Link key={item.ID} href={`/?month=${item.MONTH}#e-${item.ID}`} className="flex items-center gap-2 rounded-lg -mx-1 px-1 hover:bg-white/5 transition-colors">
                     <span className="text-xs">{meta.icon}</span>
                     <div className="flex-1 min-w-0">
                       <span className="text-xs text-white/80 truncate block">{item.NAME}</span>
                       <span className="text-[9px] text-[#5a6380]">{item.MONTH}</span>
                     </div>
-                    <span className="text-xs font-mono text-white/60 tabular-nums shrink-0">{fmt(item.AMOUNT)} €</span>
-                  </div>
+                    <span className={`text-xs font-mono tabular-nums shrink-0 ${item.KIND === "income" ? "text-teal-400/80" : "text-white/60"}`}>{item.KIND === "income" ? "+" : ""}{fmt(item.AMOUNT)} €</span>
+                  </Link>
                 );
               })}
             </div>
           </div>
         </div>
+
+        {/* Daily heatmap (this month) */}
+        {daily.length > 0 && (
+          <div className="animate-fade-up" style={{ animationDelay: "0.14s" }}>
+            <DailyHeatmap month={thisMonth} days={daily} undated={Math.max(0, thisTotal - datedTotal)} />
+          </div>
+        )}
 
         {/* Heatmap */}
         {heatmapData.length > 0 && (
