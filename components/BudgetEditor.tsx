@@ -69,7 +69,7 @@ export default function BudgetEditor({
       {/* Total */}
       <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
         <span className="text-xs font-bold text-white">Total monthly budget</span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <input
             type="number"
             inputMode="decimal"
@@ -98,7 +98,12 @@ export default function BudgetEditor({
               <span className="text-xs font-semibold text-white/70 flex-1 truncate">
                 {meta.label}
               </span>
-              <div className="flex items-center gap-1">
+              {isDefault && (
+                <span className="hidden sm:inline text-[8px] font-bold text-[#5a6380]/60 uppercase tracking-wider" title="Matches default">
+                  default
+                </span>
+              )}
+              <div className="flex items-center gap-1 shrink-0">
                 <input
                   type="number"
                   inputMode="decimal"
@@ -111,18 +116,9 @@ export default function BudgetEditor({
                   }
                   onBlur={() => save(cat, value)}
                   disabled={busy === cat}
-                  className="w-20 bg-white/[0.03] border border-white/[0.08] rounded-lg px-2 py-1 text-xs font-mono text-white/80 tabular-nums text-right focus:outline-none focus:border-purple-500/50 disabled:opacity-40"
+                  className="w-24 bg-white/[0.03] border border-white/[0.08] rounded-lg px-2 py-1 text-xs font-mono text-white/80 tabular-nums text-right focus:outline-none focus:border-purple-500/50 disabled:opacity-40"
                 />
                 <span className="text-xs text-[#5a6380] w-3">€</span>
-                {isDefault && (
-                  <span
-                    className="text-[8px] font-bold text-[#5a6380]/60 uppercase tracking-wider w-12"
-                    title="Matches default"
-                  >
-                    default
-                  </span>
-                )}
-                {!isDefault && <span className="w-12" />}
               </div>
             </div>
           );

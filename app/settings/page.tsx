@@ -86,7 +86,7 @@ export default async function SettingsPage() {
             </div>
             <div className="bg-white/[0.03] rounded-xl p-3">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Total</p>
-              <p className="text-lg font-bold text-white font-mono tabular-nums">{fmt(stats.TOTAL_AMOUNT ?? 0)} €</p>
+              <p className="text-base sm:text-lg font-bold text-white font-mono tabular-nums whitespace-nowrap">{fmt(stats.TOTAL_AMOUNT ?? 0)} €</p>
             </div>
             <div className="bg-white/[0.03] rounded-xl p-3">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Recurring</p>
