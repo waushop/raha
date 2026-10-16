@@ -18,6 +18,17 @@ export async function monthlyTotals(kind: Kind, start?: string, end?: string): P
   return rows as MonthTotal[];
 }
 
+/** Per-month totals of non-recurring expenses — the "variable" part of spending. */
+export async function monthlyVariableTotals(start: string, endExclusive: string): Promise<MonthTotal[]> {
+  const [rows] = await db.execute(
+    `SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER
+     WHERE KIND = 'expense' AND IS_RECURRING = 0 AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?
+     GROUP BY MONTH ORDER BY MONTH`,
+    [start, endExclusive],
+  );
+  return rows as MonthTotal[];
+}
+
 export type RecurringCandidate = { NAME: string; CATEGORY: string; MONTHS: number; AVG_AMOUNT: number; LAST_MONTH: string };
 
 /**

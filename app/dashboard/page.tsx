@@ -9,8 +9,9 @@ import Welcome from "@/components/Welcome";
 import { getBudgets, ensureBudgetSnapshot } from "@/lib/budgets";
 import DailyHeatmap from "@/components/DailyHeatmap";
 import RecurringSuggestions from "@/components/RecurringSuggestions";
-import { monthlyTotals, recurringCandidates } from "@/lib/queries";
-import { addMonths } from "@/lib/months";
+import { monthlyTotals, monthlyVariableTotals, recurringCandidates } from "@/lib/queries";
+import { addMonths, daysInMonth } from "@/lib/months";
+import { forecastMonth, variableDailyRate } from "@/lib/forecast";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -162,9 +163,17 @@ export default async function DashboardPage() {
   const pace = expectedSpend > 0 ? ((thisTotal - expectedSpend) / expectedSpend) * 100 : 0;
   const diffFromPrev = prevTotal > 0 ? ((thisTotal - prevTotal) / prevTotal) * 100 : 0;
 
-  // Predicted end-of-month
-  const dailyRate = dayOfMonth > 0 ? thisTotal / dayOfMonth : 0;
-  const predicted = dailyRate * totalDays;
+  // Predicted end-of-month: spent + bills still due + typical variable spend
+  // for the days left (see lib/forecast.ts).
+  const variableHistory = await monthlyVariableTotals(sixMonthStart, thisMonth);
+  const forecast = forecastMonth({
+    spent: thisTotal,
+    dayOfMonth,
+    totalDays,
+    missingRecurring: missingRecurring.reduce((s, r) => s + r.AMOUNT, 0),
+    variableDaily: variableDailyRate(variableHistory.map((m) => ({ total: m.TOTAL, days: daysInMonth(m.MONTH) }))),
+  });
+  const predicted = forecast.predicted;
 
   const missingRecurringCount = missingRecurring.length;
 
@@ -270,11 +279,16 @@ export default async function DashboardPage() {
             <p className="text-xl font-bold text-white font-mono tabular-nums">{fmt(avgMonthly)} €</p>
             <p className="text-[9px] text-[#5a6380] mt-1">monthly</p>
           </div>
-          <div className="card rounded-2xl p-4">
+          <div className="card rounded-2xl p-4" title={forecast.method === "model"
+            ? `${fmt(forecast.spent)} spent + ${fmt(forecast.dueRecurring)} recurring still due + ${fmt(forecast.variableRemaining)} typical variable spend for ${totalDays - dayOfMonth} remaining days`
+            : "Straight-line projection (no previous months to learn from yet)"}>
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Forecast</p>
             <p className="text-xl font-bold text-amber-400 font-mono tabular-nums">{fmt(predicted)} €</p>
             <p className={`text-[9px] font-bold mt-1 ${Math.abs(pace) < 5 ? "text-teal-400/60" : pace > 0 ? "text-red-400/60" : "text-teal-400/60"}`}>
               {Math.abs(pace) < 5 ? "On pace" : pace > 0 ? "Ahead" : "Behind"}
+              {forecast.method === "model" && forecast.dueRecurring > 0 && (
+                <span className="text-[#5a6380] font-normal"> · {fmt(forecast.dueRecurring)} due</span>
+              )}
             </p>
           </div>
         </div>
