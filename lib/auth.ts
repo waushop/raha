@@ -11,12 +11,13 @@ import {
 } from "./session";
 
 export { PIN_REGEX, constantTimeEqual, hashPin, isLegacyPinHash, verifyPin } from "./pin";
+export { findUserByPin, pinTaken, type UserRow } from "./users";
+import type { UserRow } from "./users";
 
 // ============================================
 // USERS + WORKSPACES
 // ============================================
 
-export type UserRow = { ID: string; NAME: string; PIN_HASH: string; IS_ADMIN: number; SESSION_VERSION: number };
 export type AuthContext = { userId: string; name: string; isAdmin: boolean; workspaceId: string };
 
 export async function listUsers(): Promise<Array<{ ID: string; NAME: string; IS_ADMIN: number }>> {

@@ -11,7 +11,7 @@ A small, fast, single-user expense and income tracker. Next.js 16 + React 19 on 
 - Recurring items with one-click "add recurring" and "copy last month"; a subscription tracker with charge day, price changes and yearly cost
 - Bank CSV import (Swedbank Estonia auto-detected, generic `Date,Name,Amount` otherwise) with learnable patterns plus a classifier trained on your own history
 - JSON backup/restore of everything (ledger, groups, budgets, import patterns) and CSV export
-- Multiple users, each with a private ledger and their own 6-digit PIN; admins manage users from Settings. Light/dark theme, installable PWA
+- Multiple users, each with a private ledger and their own 6-digit PIN; the PIN alone signs you into your ledger. Admins manage users from Settings. Light/dark theme, installable PWA
 
 ## Running locally
 

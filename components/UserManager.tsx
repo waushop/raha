@@ -81,7 +81,7 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
             <input name="name" required maxLength={40} placeholder="Name" className={input} autoFocus />
             <input name="pin" required inputMode="numeric" pattern="\d{6}" maxLength={6} placeholder="Initial 6-digit PIN" className={`${input} font-mono tabular-nums`} />
           </div>
-          <p className="text-[10px] text-[#5a6380]">They get their own empty ledger and can change the PIN from Settings after signing in.</p>
+          <p className="text-[10px] text-[#5a6380]">They sign in with just this PIN (it must differ from everyone else&rsquo;s), land in their own empty ledger, and can change it from Settings.</p>
           <div className="flex gap-2">
             <button type="submit" disabled={isPending} className="gradient-pink text-white rounded-xl px-5 py-2 text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-all btn-press">{isPending ? "Creating…" : "Create"}</button>
             <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-white/[0.08] rounded-xl text-[#9ca3c0] hover:bg-white/5 transition-all">Cancel</button>
