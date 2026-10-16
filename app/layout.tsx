@@ -6,6 +6,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import { Suspense } from "react";
 import Sidebar from "@/components/Sidebar";
 import CommandPalette from "@/components/CommandPalette";
+import BottomNav from "@/components/BottomNav";
 import ServiceWorker from "@/components/ServiceWorker";
 import "./globals.css";
 
@@ -62,6 +63,7 @@ export default function RootLayout({
         <ToastProvider>
           {children}
           <Suspense><Sidebar /></Suspense>
+          <Suspense><BottomNav /></Suspense>
           <KeyboardHints />
           <Suspense><CommandPalette /></Suspense>
           <ScrollToTop />

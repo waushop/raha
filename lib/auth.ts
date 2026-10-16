@@ -122,9 +122,17 @@ export async function requireAuth(): Promise<AuthContext> {
   return ctx;
 }
 
-/** Same as requireAuth for pages: sends the browser to /login instead of throwing. */
+/**
+ * Same as requireAuth for pages: sends the browser away instead of throwing.
+ * A present-but-rejected cookie goes through /logout so it gets cleared;
+ * otherwise the proxy (which only checks the signature) would bounce /login
+ * straight back here.
+ */
 export async function currentContext(): Promise<AuthContext> {
   const ctx = await getAuthContext();
-  if (!ctx) redirect("/login");
+  if (!ctx) {
+    const cookieStore = await cookies();
+    redirect(cookieStore.get(SESSION_COOKIE) ? "/logout" : "/login");
+  }
   return ctx;
 }

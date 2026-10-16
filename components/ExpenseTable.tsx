@@ -7,7 +7,7 @@ import { useToast } from "./Toast";
 import ExpenseForm from "./ExpenseForm";
 import type { Expense, ExpenseGroup } from "@/types/expense";
 import { CATEGORIES, GROUP_COLOR_CLASSES } from "@/types/expense";
-import QuickAddFab from "./QuickAddFab";
+import { OPEN_ADD_EVENT } from "./BottomNav";
 import CollapsibleCard from "./CollapsibleCard";
 import SwipeRow from "./SwipeRow";
 import InlineAmount from "./InlineAmount";
@@ -45,6 +45,12 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
     if (!hashId) return;
     document.getElementById(`e-${hashId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [hashId]);
+
+  useEffect(() => {
+    function onOpenAdd() { setEditing(undefined); setShowForm(true); }
+    window.addEventListener(OPEN_ADD_EVENT, onOpenAdd);
+    return () => window.removeEventListener(OPEN_ADD_EVENT, onOpenAdd);
+  }, []);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -219,7 +225,6 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
         </button>
       )}
 
-      {!showForm && visible.length > 0 && <QuickAddFab onAdd={openAdd} />}
 
       {showForm && createPortal(
         <>

@@ -211,3 +211,6 @@ export async function logout() {
   await clearSessionCookie();
   redirect("/login");
 }
+
+// Note: /logout (route handler) does the same for a stale cookie that a page
+// rejected; see currentContext() in lib/auth.ts.
