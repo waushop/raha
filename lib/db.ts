@@ -13,6 +13,10 @@ function getDb(): DatabaseSync {
   conn.exec("PRAGMA journal_mode = WAL");
   conn.exec("PRAGMA foreign_keys = ON");
   conn.exec("PRAGMA synchronous = NORMAL");
+  // Rolling deploys briefly run two pods against the same file. WAL allows
+  // that; the busy timeout makes a writer wait for the other's lock instead
+  // of failing with SQLITE_BUSY during the overlap.
+  conn.exec("PRAGMA busy_timeout = 5000");
   initSchema(conn);
   sqlite = conn;
   return conn;
