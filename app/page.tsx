@@ -62,23 +62,24 @@ export default async function Page({
       <SwipeContainer month={month}>
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}
-        <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 flex items-center justify-between animate-fade-up sticky top-3 z-30">
-          <div>
-            <h1 className="text-4xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight" style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}>
+        {/* Sticky, so it gets a solid background: the translucent card would show rows through it. */}
+        <div className="card rounded-2xl px-4 py-3 sm:px-6 sm:py-5 flex items-center justify-between gap-2 animate-fade-up sticky top-3 z-30" style={{ background: "var(--bg-card-solid)" }}>
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight whitespace-nowrap" style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}>
               Empty Wallet
             </h1>
             {spent.length > 0 && (
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm font-mono font-bold text-white/80 tabular-nums">
+              <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
+                <span className="text-xs sm:text-sm font-mono font-bold text-white/80 tabular-nums whitespace-nowrap">
                   {spent.reduce((s, e) => s + e.AMOUNT, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} €
                 </span>
-                <span className="text-[9px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">
+                <span className="hidden sm:inline text-[9px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">
                   {spent.length} expense{spent.length !== 1 ? "s" : ""}
                 </span>
               </div>
             )}
           </div>
-          <MonthNav month={month} />
+          <div className="shrink-0"><MonthNav month={month} /></div>
         </div>
 
         {/* Trend */}

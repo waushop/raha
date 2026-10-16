@@ -178,16 +178,16 @@ export default async function AnalyticsPage() {
 
         {/* Income + savings (only when income is tracked) */}
         {incomeTotal > 0 && (
-          <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.06s" }}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.06s" }}>
             <div className="card rounded-2xl p-4">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">12-mo income</p>
-              <p className="text-lg font-bold text-teal-400 font-mono tabular-nums">{fmt(incomeTotal)} €</p>
+              <p className="text-lg font-bold text-teal-400 font-mono tabular-nums whitespace-nowrap">{fmt(incomeTotal)} €</p>
             </div>
             <div className="card rounded-2xl p-4">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Saved</p>
-              <p className={`text-lg font-bold font-mono tabular-nums ${saved >= 0 ? "text-teal-400" : "text-red-400"}`}>{saved >= 0 ? "+" : ""}{fmt(saved)} €</p>
+              <p className={`text-lg font-bold font-mono tabular-nums whitespace-nowrap ${saved >= 0 ? "text-teal-400" : "text-red-400"}`}>{saved >= 0 ? "+" : ""}{fmt(saved)} €</p>
             </div>
-            <div className="card rounded-2xl p-4">
+            <div className="card rounded-2xl p-4 col-span-2 sm:col-span-1">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Savings rate</p>
               <p className={`text-lg font-bold font-mono tabular-nums ${(savingsRate ?? 0) >= 0 ? "text-teal-400" : "text-red-400"}`}>{savingsRate?.toFixed(0)}%</p>
               <p className="text-[9px] text-[#5a6380]">of income kept</p>
@@ -305,11 +305,11 @@ export default async function AnalyticsPage() {
                     <span className="inline-flex items-center gap-2">
                       <span className="text-sm">{meta.icon}</span>
                       <span className={`text-xs font-bold ${"text-white/70"}`}>{meta.label}</span>
-                      <span className="text-[9px] text-[#5a6380]">{CNT} expenses</span>
+                      <span className="hidden sm:inline text-[9px] text-[#5a6380]">{CNT} expenses</span>
                     </span>
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] text-[#5a6380] font-mono tabular-nums">~{fmtShort(avg)}/mo</span>
-                      <span className="text-xs font-mono font-semibold text-white/60 tabular-nums">{fmt(TOTAL)} €</span>
+                      <span className="text-xs font-mono font-semibold text-white/60 tabular-nums whitespace-nowrap">{fmt(TOTAL)} €</span>
                       <span className="text-[10px] text-[#5a6380] tabular-nums">{pct.toFixed(0)}%</span>
                     </div>
                   </div>

@@ -237,24 +237,24 @@ export default async function DashboardPage() {
 
         {/* Income + Net (only renders if user has any income tracked) */}
         {(thisIncome > 0 || prevIncome > 0) && (
-          <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.04s" }}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.04s" }}>
             <div className="card rounded-2xl p-4">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Income (this)</p>
-              <p className="text-xl font-bold text-teal-400 font-mono tabular-nums">{fmt(thisIncome)} €</p>
+              <p className="text-lg sm:text-xl font-bold text-teal-400 font-mono tabular-nums whitespace-nowrap">{fmt(thisIncome)} €</p>
               {prevIncome > 0 && (
                 <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">prev: {fmt(prevIncome)}</p>
               )}
             </div>
             <div className="card rounded-2xl p-4">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Spent (this)</p>
-              <p className="text-xl font-bold text-pink-400 font-mono tabular-nums">{fmt(thisTotal)} €</p>
+              <p className="text-lg sm:text-xl font-bold text-pink-400 font-mono tabular-nums whitespace-nowrap">{fmt(thisTotal)} €</p>
               {prevTotal > 0 && (
                 <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">prev: {fmt(prevTotal)}</p>
               )}
             </div>
-            <div className="card rounded-2xl p-4">
+            <div className="card rounded-2xl p-4 col-span-2 sm:col-span-1">
               <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Net (this)</p>
-              <p className={`text-xl font-bold font-mono tabular-nums ${thisNet >= 0 ? "text-teal-400" : "text-red-400"}`}>
+              <p className={`text-lg sm:text-xl font-bold font-mono tabular-nums whitespace-nowrap ${thisNet >= 0 ? "text-teal-400" : "text-red-400"}`}>
                 {thisNet >= 0 ? "+" : ""}{fmt(thisNet)} €
               </p>
               <p className="text-[9px] text-[#5a6380] mt-1 font-mono tabular-nums">

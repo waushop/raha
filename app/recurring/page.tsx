@@ -85,18 +85,18 @@ export default async function RecurringPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.05s" }}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.05s" }}>
           <div className="card rounded-2xl p-4">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Monthly</p>
-            <p className="text-xl font-bold text-white font-mono tabular-nums">{fmt(monthlyTotal)} €</p>
+            <p className="text-lg sm:text-xl font-bold text-white font-mono tabular-nums whitespace-nowrap">{fmt(monthlyTotal)} €</p>
           </div>
           <div className="card rounded-2xl p-4">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Yearly</p>
-            <p className="text-xl font-bold text-amber-400 font-mono tabular-nums">{fmt(yearlyEstimate)} €</p>
+            <p className="text-lg sm:text-xl font-bold text-amber-400 font-mono tabular-nums whitespace-nowrap">{fmt(yearlyEstimate)} €</p>
           </div>
-          <div className="card rounded-2xl p-4" title={upcoming.map((u) => `${u.day}: ${u.name}`).join(", ")}>
+          <div className="card rounded-2xl p-4 col-span-2 sm:col-span-1" title={upcoming.map((u) => `${u.day}: ${u.name}`).join(", ")}>
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Still due this month</p>
-            <p className="text-xl font-bold text-pink-400 font-mono tabular-nums">{fmt(dueTotal)} €</p>
+            <p className="text-lg sm:text-xl font-bold text-pink-400 font-mono tabular-nums whitespace-nowrap">{fmt(dueTotal)} €</p>
             <p className="text-[9px] text-[#5a6380]">{upcoming.length} charge{upcoming.length !== 1 ? "s" : ""} after today</p>
           </div>
         </div>

@@ -55,12 +55,13 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
     <div className="space-y-3">
       <div className="space-y-1.5">
         {users.map((u) => (
-          <div key={u.ID} className="flex items-center gap-3 bg-white/[0.03] rounded-xl px-3 py-2">
+          <div key={u.ID} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-white/[0.03] rounded-xl px-3 py-2">
             <span className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500/30 to-purple-500/30 flex items-center justify-center text-sm font-bold text-white shrink-0">{u.NAME.charAt(0).toUpperCase()}</span>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-[8rem]">
               <p className="text-sm text-white font-medium truncate">{u.NAME}{u.ID === currentUserId && <span className="text-[#5a6380] font-normal"> (you)</span>}</p>
-              <p className="text-[10px] text-[#5a6380]">{u.IS_ADMIN ? "Admin" : "Member"} · own ledger{u.REQUIRE_2FA ? " · email check on" : ""}</p>
+              <p className="text-[10px] text-[#5a6380] whitespace-nowrap">{u.IS_ADMIN ? "Admin" : "Member"} · own ledger{u.REQUIRE_2FA ? " · email check on" : ""}</p>
             </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 basis-full sm:basis-auto justify-end">
             {(isAdmin || u.ID === currentUserId) && (
               <button onClick={() => rename(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-white transition-colors px-1">Rename</button>
             )}
@@ -73,6 +74,7 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
                 <button onClick={() => remove(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-red-400 transition-colors px-1">Remove</button>
               </>
             )}
+            </div>
           </div>
         ))}
       </div>

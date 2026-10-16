@@ -253,11 +253,11 @@ export default async function YearPage({
                           {MONTH_NAMES[mi]}
                         </Link>
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono font-semibold text-white/80 tabular-nums">{fmt(m.TOTAL)} €</td>
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap font-mono font-semibold text-white/80 tabular-nums">{fmt(m.TOTAL)} €</td>
                       <td className="px-4 py-2.5 text-right text-[#9ca3c0] tabular-nums">{m.COUNT}</td>
-                      {hasIncome && <td className="px-4 py-2.5 text-right font-mono text-teal-400/80 tabular-nums">{fmt(incomeByMonth.get(m.MONTH) ?? 0)} €</td>}
+                      {hasIncome && <td className="px-4 py-2.5 text-right whitespace-nowrap font-mono text-teal-400/80 tabular-nums">{fmt(incomeByMonth.get(m.MONTH) ?? 0)} €</td>}
                       {hasIncome && (() => { const net = (incomeByMonth.get(m.MONTH) ?? 0) - m.TOTAL; return (
-                        <td className={`px-4 py-2.5 text-right font-mono tabular-nums ${net >= 0 ? "text-teal-400/80" : "text-red-400/80"}`}>{net >= 0 ? "+" : ""}{fmt(net)} €</td>
+                        <td className={`px-4 py-2.5 text-right whitespace-nowrap font-mono tabular-nums ${net >= 0 ? "text-teal-400/80" : "text-red-400/80"}`}>{net >= 0 ? "+" : ""}{fmt(net)} €</td>
                       ); })()}
                     </tr>
                   );
@@ -267,10 +267,10 @@ export default async function YearPage({
                 <tfoot>
                   <tr className="border-t border-white/10 font-semibold">
                     <td className="px-5 py-3 text-[#9ca3c0] text-xs uppercase tracking-wider">Total</td>
-                    <td className="px-4 py-3 text-right font-mono text-white tabular-nums">{fmt(yearTotal)} €</td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap font-mono text-white tabular-nums">{fmt(yearTotal)} €</td>
                     <td className="px-4 py-3 text-right text-[#9ca3c0] tabular-nums">{months.reduce((s, m) => s + m.COUNT, 0)}</td>
-                    {hasIncome && <td className="px-4 py-3 text-right font-mono text-teal-400 tabular-nums">{fmt(yearIncome)} €</td>}
-                    {hasIncome && <td className={`px-4 py-3 text-right font-mono tabular-nums ${yearNet >= 0 ? "text-teal-400" : "text-red-400"}`}>{yearNet >= 0 ? "+" : ""}{fmt(yearNet)} €</td>}
+                    {hasIncome && <td className="px-4 py-3 text-right whitespace-nowrap font-mono text-teal-400 tabular-nums">{fmt(yearIncome)} €</td>}
+                    {hasIncome && <td className={`px-4 py-3 text-right whitespace-nowrap font-mono tabular-nums ${yearNet >= 0 ? "text-teal-400" : "text-red-400"}`}>{yearNet >= 0 ? "+" : ""}{fmt(yearNet)} €</td>}
                   </tr>
                 </tfoot>
               )}

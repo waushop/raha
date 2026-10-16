@@ -284,10 +284,10 @@ function ExpenseRow({ expense: e, highlighted, onEdit, onDelete, onDuplicate, on
         {e.NOTES && <p className="text-[10px] text-[#5a6380] mt-0.5 truncate">{e.NOTES}</p>}
       </div>
       <div className="flex gap-0.5 row-actions shrink-0">
-        <button onClick={() => onToggleRecurring(e.ID, e.NAME, e.IS_RECURRING === 1)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${e.IS_RECURRING ? "text-teal-400/60" : "text-[#5a6380]"} hover:text-teal-400 hover:bg-teal-500/10`} aria-label="Recurring">
+        <button onClick={() => onToggleRecurring(e.ID, e.NAME, e.IS_RECURRING === 1)} className={`w-7 h-7 rounded-lg hidden sm:flex items-center justify-center transition-colors ${e.IS_RECURRING ? "text-teal-400/60" : "text-[#5a6380]"} hover:text-teal-400 hover:bg-teal-500/10`} aria-label="Recurring">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 014-4h14" /><path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 01-4 4H3" /></svg>
         </button>
-        <button onClick={() => onDuplicate(e.ID)} className="w-7 h-7 rounded-lg hover:bg-purple-500/10 flex items-center justify-center text-[#5a6380] hover:text-purple-400 transition-colors" aria-label="Duplicate">
+        <button onClick={() => onDuplicate(e.ID)} className="w-7 h-7 rounded-lg hover:bg-purple-500/10 hidden sm:flex items-center justify-center text-[#5a6380] hover:text-purple-400 transition-colors" aria-label="Duplicate">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
         </button>
         <button onClick={() => onEdit(e)} className="w-7 h-7 rounded-lg hover:bg-blue-500/10 flex items-center justify-center text-[#5a6380] hover:text-blue-400 transition-colors" aria-label="Edit">

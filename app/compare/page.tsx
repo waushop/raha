@@ -93,23 +93,23 @@ export default async function ComparePage({
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.05s" }}>
-          <div className="card rounded-2xl p-4 text-center">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 animate-fade-up" style={{ animationDelay: "0.05s" }}>
+          <div className="card rounded-2xl p-2.5 sm:p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">{monthLabel(m1)}</p>
-            <p className="text-lg font-bold text-purple-400 font-mono tabular-nums">{fmt(t1?.TOTAL ?? 0)} €</p>
+            <p className="text-sm sm:text-lg font-bold text-purple-400 font-mono tabular-nums whitespace-nowrap">{fmt(t1?.TOTAL ?? 0)} €</p>
             <p className="text-[9px] text-[#5a6380]">{t1?.CNT ?? 0} expenses</p>
             {incomeLines(m1, t1?.TOTAL ?? 0)}
           </div>
-          <div className="card rounded-2xl p-4 text-center">
+          <div className="card rounded-2xl p-2.5 sm:p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">Change</p>
-            <p className={`text-lg font-bold font-mono tabular-nums ${diff > 0 ? "text-red-400" : diff < 0 ? "text-teal-400" : "text-white"}`}>
+            <p className={`text-sm sm:text-lg font-bold font-mono tabular-nums whitespace-nowrap ${diff > 0 ? "text-red-400" : diff < 0 ? "text-teal-400" : "text-white"}`}>
               {diff > 0 ? "+" : ""}{fmt(diff)} €
             </p>
             <p className="text-[9px] text-[#5a6380]">{monthLabel(older)} → {monthLabel(newer)}</p>
           </div>
-          <div className="card rounded-2xl p-4 text-center">
+          <div className="card rounded-2xl p-2.5 sm:p-4 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">{monthLabel(m2)}</p>
-            <p className="text-lg font-bold text-pink-400 font-mono tabular-nums">{fmt(t2?.TOTAL ?? 0)} €</p>
+            <p className="text-sm sm:text-lg font-bold text-pink-400 font-mono tabular-nums whitespace-nowrap">{fmt(t2?.TOTAL ?? 0)} €</p>
             <p className="text-[9px] text-[#5a6380]">{t2?.CNT ?? 0} expenses</p>
             {incomeLines(m2, t2?.TOTAL ?? 0)}
           </div>

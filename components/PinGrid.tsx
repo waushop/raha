@@ -68,7 +68,7 @@ const PinGrid = forwardRef<PinGridHandle, Props>(function PinGrid(
   }
 
   return (
-    <div className="flex justify-center items-center gap-2" onPaste={handlePaste}>
+    <div className="flex justify-center items-center gap-1.5 sm:gap-2" onPaste={handlePaste}>
       {[0, 1, 2].map((i) => (
         <input
           key={i}
@@ -82,7 +82,7 @@ const PinGrid = forwardRef<PinGridHandle, Props>(function PinGrid(
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           disabled={disabled}
-          className={`w-14 h-16 text-center text-2xl font-mono font-bold rounded-2xl border-2 bg-white/[0.03] backdrop-blur-sm text-white focus:outline-none transition-all duration-200 ${
+          className={`w-10 h-12 text-xl sm:w-14 sm:h-16 sm:text-2xl text-center font-mono font-bold rounded-2xl border-2 bg-white/[0.03] backdrop-blur-sm text-white focus:outline-none transition-all duration-200 ${
             shake
               ? "border-red-500/60 shake"
               : digits[i]
@@ -107,7 +107,7 @@ const PinGrid = forwardRef<PinGridHandle, Props>(function PinGrid(
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           disabled={disabled}
-          className={`w-14 h-16 text-center text-2xl font-mono font-bold rounded-2xl border-2 bg-white/[0.03] backdrop-blur-sm text-white focus:outline-none transition-all duration-200 ${
+          className={`w-10 h-12 text-xl sm:w-14 sm:h-16 sm:text-2xl text-center font-mono font-bold rounded-2xl border-2 bg-white/[0.03] backdrop-blur-sm text-white focus:outline-none transition-all duration-200 ${
             shake
               ? "border-red-500/60 shake"
               : digits[i]

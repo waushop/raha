@@ -10,6 +10,7 @@ export type FilterKey = (typeof FIELDS)[number];
 
 const select = "bg-white/5 border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30";
 const input = `${select} w-24 font-mono tabular-nums placeholder:text-[#5a6380]`;
+const monthInput = `${select} font-mono tabular-nums flex-1 min-w-0 sm:flex-none sm:w-36`;
 
 // Filters live in the URL so results are shareable and the back button works.
 export default function SearchFilters({ groups, tags }: Props) {
@@ -60,10 +61,10 @@ export default function SearchFilters({ groups, tags }: Props) {
             onBlur={(e) => { if (e.target.value !== get("max")) update({ max: e.target.value }); }}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} className={input} />
         </span>
-        <span className="inline-flex items-center gap-1">
-          <input aria-label="From month" type="month" value={get("from")} onChange={(e) => update({ from: e.target.value })} className={`${input} w-36`} />
+        <span className="flex items-center gap-1 w-full sm:w-auto">
+          <input aria-label="From month" type="month" value={get("from")} onChange={(e) => update({ from: e.target.value })} className={monthInput} />
           <span className="text-[#5a6380] text-xs">→</span>
-          <input aria-label="To month" type="month" value={get("to")} onChange={(e) => update({ to: e.target.value })} className={`${input} w-36`} />
+          <input aria-label="To month" type="month" value={get("to")} onChange={(e) => update({ to: e.target.value })} className={monthInput} />
         </span>
         {active > 0 && (
           <button onClick={clear} className="text-xs text-[#5a6380] hover:text-pink-400 transition-colors px-2">Clear filters</button>
