@@ -7,11 +7,12 @@ import { listMonths, whoAmI } from "@/app/actions";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
 import ThemeToggle from "./ThemeToggle";
 
-// Current month back to `minMonth`, newest first. Always shows at least a
-// year so a fresh install still has somewhere to click.
-function generateMonths(minMonth: string): { value: string; label: string }[] {
+// Current month back to the oldest month with data, newest first. A fresh
+// ledger shows just the current month; the list grows as entries are added
+// (earlier months are still reachable with the arrows on the month page).
+function generateMonths(oldestMonth: string): { value: string; label: string }[] {
   const months: { value: string; label: string }[] = [];
-  const floor = minMonth < addMonths(currentMonth(), -11) ? minMonth : addMonths(currentMonth(), -11);
+  const floor = oldestMonth < currentMonth() ? oldestMonth : currentMonth();
   for (let m = currentMonth(); m >= floor; m = addMonths(m, -1)) {
     months.push({ value: m, label: monthLabel(m) });
   }
