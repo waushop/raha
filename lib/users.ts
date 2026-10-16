@@ -3,9 +3,12 @@
 import db from "./db";
 import { verifyPin } from "./pin";
 
-export type UserRow = { ID: string; NAME: string; PIN_HASH: string; IS_ADMIN: number; SESSION_VERSION: number };
+export type UserRow = {
+  ID: string; NAME: string; PIN_HASH: string; IS_ADMIN: number; SESSION_VERSION: number;
+  EMAIL: string | null; EMAIL_VERIFIED_AT: string | null; REQUIRE_2FA: number;
+};
 
-const COLUMNS = "ID, NAME, PIN_HASH, IS_ADMIN, SESSION_VERSION";
+const COLUMNS = "ID, NAME, PIN_HASH, IS_ADMIN, SESSION_VERSION, EMAIL, EMAIL_VERIFIED_AT, REQUIRE_2FA";
 
 export async function listUserRows(): Promise<UserRow[]> {
   const [rows] = await db.execute(`SELECT ${COLUMNS} FROM USER WHERE DELETED_AT IS NULL ORDER BY SORT_ORDER, CREATED_AT`);

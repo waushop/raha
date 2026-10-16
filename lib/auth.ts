@@ -20,13 +20,13 @@ import type { UserRow } from "./users";
 
 export type AuthContext = { userId: string; name: string; isAdmin: boolean; workspaceId: string };
 
-export async function listUsers(): Promise<Array<{ ID: string; NAME: string; IS_ADMIN: number }>> {
-  const [rows] = await db.execute("SELECT ID, NAME, IS_ADMIN FROM USER WHERE DELETED_AT IS NULL ORDER BY SORT_ORDER, CREATED_AT");
-  return rows as Array<{ ID: string; NAME: string; IS_ADMIN: number }>;
+export async function listUsers(): Promise<Array<{ ID: string; NAME: string; IS_ADMIN: number; REQUIRE_2FA: number }>> {
+  const [rows] = await db.execute("SELECT ID, NAME, IS_ADMIN, REQUIRE_2FA FROM USER WHERE DELETED_AT IS NULL ORDER BY SORT_ORDER, CREATED_AT");
+  return rows as Array<{ ID: string; NAME: string; IS_ADMIN: number; REQUIRE_2FA: number }>;
 }
 
 export async function getUser(id: string): Promise<UserRow | null> {
-  const [rows] = await db.execute("SELECT ID, NAME, PIN_HASH, IS_ADMIN, SESSION_VERSION FROM USER WHERE ID = ? AND DELETED_AT IS NULL", [id]);
+  const [rows] = await db.execute("SELECT ID, NAME, PIN_HASH, IS_ADMIN, SESSION_VERSION, EMAIL, EMAIL_VERIFIED_AT, REQUIRE_2FA FROM USER WHERE ID = ? AND DELETED_AT IS NULL", [id]);
   return (rows as UserRow[])[0] ?? null;
 }
 
@@ -74,6 +74,16 @@ export async function issueSessionCookie(user: UserRow): Promise<void> {
     createSessionToken(getSessionSecret(), { userId: user.ID, version: user.SESSION_VERSION }),
     sessionCookieOptions(process.env.NODE_ENV === "production"),
   );
+}
+
+export const DEVICE_COOKIE = "device";
+export const PENDING_COOKIE = "pending";
+
+/** True when the browser carries a remembered-device token for this user. */
+export async function isTrustedDevice(userId: string): Promise<boolean> {
+  const { deviceTrusted } = await import("./twofa");
+  const cookieStore = await cookies();
+  return deviceTrusted(userId, cookieStore.get(DEVICE_COOKIE)?.value);
 }
 
 export async function clearSessionCookie(): Promise<void> {

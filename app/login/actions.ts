@@ -1,8 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
+  DEVICE_COOKIE,
+  PENDING_COOKIE,
   PIN_REGEX,
   clearSessionCookie,
   createUserWithWorkspace,
@@ -11,12 +13,16 @@ import {
   hasAnyUser,
   hashPin,
   isLegacyPinHash,
+  isTrustedDevice,
   issueSessionCookie,
   pinTaken,
   requireAuth,
   setUserPin,
   verifyPin,
 } from "@/lib/auth";
+import { createPendingToken, getSessionSecret, parsePendingToken, sessionCookieOptions } from "@/lib/session";
+import { createChallenge, describeDevice, issueDevice, maskEmail, verifyChallenge, DEVICE_TTL_MS } from "@/lib/twofa";
+import { sendMail } from "@/lib/mailer";
 import { clearFailures, globalLockoutRemainingMs, lockoutRemainingMs, recordFailure } from "@/lib/ratelimit";
 import { pinWeakness } from "@/lib/pin-policy";
 import { parseName } from "@/lib/validate";
@@ -75,8 +81,79 @@ export async function login(formData: FormData) {
     await db.execute("UPDATE USER SET PIN_HASH = ? WHERE ID = ?", [hashPin(pin), user.ID]);
   }
 
+  // Second factor: a code by email on browsers this user hasn't remembered.
+  if (user.REQUIRE_2FA && user.EMAIL && user.EMAIL_VERIFIED_AT && !(await isTrustedDevice(user.ID))) {
+    const sent = await startEmailChallenge(user.ID, user.EMAIL);
+    if ("error" in sent) return sent;
+    redirect("/login");
+  }
+
   await issueSessionCookie(user);
   redirect("/dashboard");
+}
+
+async function startEmailChallenge(userId: string, email: string): Promise<{ error: string } | { ok: true }> {
+  const challenge = await createChallenge(userId);
+  if (!challenge) return { error: "Too many codes requested — wait ten minutes and try again" };
+  const sent = await sendMail(email, "Your Empty Wallet sign-in code", `Your sign-in code is ${challenge.code}\n\nIt expires in 10 minutes. If this wasn't you, change your PIN.`);
+  if (!sent) return { error: "Couldn't send the code — email isn't set up. Ask an admin to turn off the email check for you." };
+  const cookieStore = await cookies();
+  cookieStore.set(PENDING_COOKIE, createPendingToken(getSessionSecret(), { userId, challengeId: challenge.id }), { ...sessionCookieOptions(process.env.NODE_ENV === "production"), maxAge: 600 });
+  return { ok: true };
+}
+
+/** What the login page needs to render the code step, or null when no code is outstanding. */
+export async function pendingChallenge(): Promise<{ email: string } | null> {
+  const cookieStore = await cookies();
+  const claims = parsePendingToken(getSessionSecret(), cookieStore.get(PENDING_COOKIE)?.value);
+  if (!claims) return null;
+  const user = await getUser(claims.userId);
+  if (!user?.EMAIL) return null;
+  return { email: maskEmail(user.EMAIL) };
+}
+
+export type CodeStepResult = { error: string; restart?: boolean };
+
+export async function verifyCode(formData: FormData): Promise<CodeStepResult> {
+  const cookieStore = await cookies();
+  const claims = parsePendingToken(getSessionSecret(), cookieStore.get(PENDING_COOKIE)?.value);
+  if (!claims) return { error: "This code request has expired — enter your PIN again", restart: true };
+  const code = String(formData.get("code") ?? "");
+  if (!/^\d{6}$/.test(code)) return { error: "Enter the 6-digit code" };
+  const user = await getUser(claims.userId);
+  if (!user) return { error: "No such user", restart: true };
+
+  const result = await verifyChallenge(claims.challengeId, user.ID, code);
+  if (result === "wrong") return { error: "Wrong code" };
+  if (result !== "ok") {
+    cookieStore.delete(PENDING_COOKIE);
+    return { error: result === "locked" ? "Too many wrong codes — enter your PIN again for a new one" : "That code has expired — enter your PIN again", restart: true };
+  }
+
+  cookieStore.delete(PENDING_COOKIE);
+  if (formData.get("remember") === "1") {
+    const h = await headers();
+    const token = await issueDevice(user.ID, describeDevice(h.get("user-agent")));
+    cookieStore.set(DEVICE_COOKIE, token, { ...sessionCookieOptions(process.env.NODE_ENV === "production"), maxAge: DEVICE_TTL_MS / 1000 });
+  }
+  await issueSessionCookie(user);
+  redirect("/dashboard");
+}
+
+export async function resendCode(): Promise<CodeStepResult | { ok: true }> {
+  const cookieStore = await cookies();
+  const claims = parsePendingToken(getSessionSecret(), cookieStore.get(PENDING_COOKIE)?.value);
+  if (!claims) return { error: "Enter your PIN again", restart: true };
+  const user = await getUser(claims.userId);
+  if (!user?.EMAIL) return { error: "Enter your PIN again", restart: true };
+  const res = await startEmailChallenge(user.ID, user.EMAIL);
+  return "error" in res ? res : { ok: true };
+}
+
+export async function cancelPending() {
+  const cookieStore = await cookies();
+  cookieStore.delete(PENDING_COOKIE);
+  redirect("/login");
 }
 
 export async function setupInitialUser(formData: FormData) {

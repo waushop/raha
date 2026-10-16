@@ -2,10 +2,13 @@ import { connection } from "next/server";
 import { hasAnyUser } from "@/lib/auth";
 import LoginForm from "@/components/LoginForm";
 import SetupForm from "@/components/SetupForm";
+import CodeForm from "@/components/CodeForm";
+import { pendingChallenge } from "./actions";
 
 export default async function LoginPage() {
   await connection();
   const ready = await hasAnyUser();
+  const pending = ready ? await pendingChallenge() : null;
   return (
     <main className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
       {/* Decorative blurred circles */}
@@ -24,7 +27,7 @@ export default async function LoginPage() {
             Empty Wallet
           </h1>
         </div>
-        {ready ? <LoginForm /> : <SetupForm />}
+        {pending ? <CodeForm email={pending.email} /> : ready ? <LoginForm /> : <SetupForm />}
       </div>
     </main>
   );

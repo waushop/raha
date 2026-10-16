@@ -145,6 +145,31 @@ export function parseSessionToken(
   return { userId, version: Number(verStr), exp };
 }
 
+// ---------- pending second-factor token ----------
+// Set after a correct PIN while the email code is outstanding:
+//   p1.<exp>.<userId>.<challengeId>.<sig>
+export type PendingClaims = { userId: string; challengeId: string };
+
+export function createPendingToken(secret: Buffer, claims: PendingClaims, nowMs: number = Date.now(), ttlSeconds = 600): string {
+  const exp = Math.floor(nowMs / 1000) + ttlSeconds;
+  const payload = `p1.${exp}.${claims.userId}.${claims.challengeId}`;
+  return `${payload}.${sign(secret, payload)}`;
+}
+
+export function parsePendingToken(secret: Buffer, token: string | null | undefined, nowMs: number = Date.now()): PendingClaims | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 5 || parts[0] !== "p1") return null;
+  const [, expStr, userId, challengeId, sig] = parts;
+  if (!/^\d{1,12}$/.test(expStr) || !UUID_RE.test(userId) || !UUID_RE.test(challengeId) || !/^[0-9a-f]{64}$/.test(sig)) return null;
+  if (Number(expStr) * 1000 <= nowMs) return null;
+  const expected = sign(secret, `p1.${expStr}.${userId}.${challengeId}`);
+  const a = Buffer.from(sig, "hex");
+  const b = Buffer.from(expected, "hex");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return { userId, challengeId };
+}
+
 export function verifySessionToken(secret: Buffer, token: string | null | undefined, nowMs: number = Date.now()): boolean {
   return parseSessionToken(secret, token, nowMs) !== null;
 }

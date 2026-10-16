@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createUser, removeUser, renameUser, resetUserPin } from "@/app/users/actions";
+import { adminDisable2fa, createUser, removeUser, renameUser, resetUserPin } from "@/app/users/actions";
 import { useToast } from "./Toast";
 
-type User = { ID: string; NAME: string; IS_ADMIN: number };
+type User = { ID: string; NAME: string; IS_ADMIN: number; REQUIRE_2FA?: number };
 
 export default function UserManager({ users, currentUserId, isAdmin }: { users: User[]; currentUserId: string; isAdmin: boolean }) {
   const [showForm, setShowForm] = useState(false);
@@ -59,7 +59,7 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
             <span className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500/30 to-purple-500/30 flex items-center justify-center text-sm font-bold text-white shrink-0">{u.NAME.charAt(0).toUpperCase()}</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-white font-medium truncate">{u.NAME}{u.ID === currentUserId && <span className="text-[#5a6380] font-normal"> (you)</span>}</p>
-              <p className="text-[10px] text-[#5a6380]">{u.IS_ADMIN ? "Admin" : "Member"} · own ledger</p>
+              <p className="text-[10px] text-[#5a6380]">{u.IS_ADMIN ? "Admin" : "Member"} · own ledger{u.REQUIRE_2FA ? " · email check on" : ""}</p>
             </div>
             {(isAdmin || u.ID === currentUserId) && (
               <button onClick={() => rename(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-white transition-colors px-1">Rename</button>
@@ -67,6 +67,9 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
             {isAdmin && u.ID !== currentUserId && (
               <>
                 <button onClick={() => resetPin(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-amber-400 transition-colors px-1">Reset PIN</button>
+                {u.REQUIRE_2FA === 1 && (
+                  <button onClick={() => { if (confirm(`Switch off the email check for ${u.NAME}? Use this if they lost access to their mailbox.`)) startTransition(async () => { const res = await adminDisable2fa(u.ID); toast[res.ok ? "show" : "showError"](res.ok ? "Email check switched off" : res.error); }); }} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-amber-400 transition-colors px-1">Disable email check</button>
+                )}
                 <button onClick={() => remove(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-red-400 transition-colors px-1">Remove</button>
               </>
             )}

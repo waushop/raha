@@ -39,6 +39,7 @@ CI runs the same three gates before building the image, so a failing lint or tes
 | Variable        | Default          | Purpose |
 |-----------------|------------------|---------|
 | `DB_PATH`       | `./raha.sqlite`  | Path to the SQLite database. The session-signing secret is stored beside it as `.auth-secret`. |
+| `SMTP_HOST` … `SMTP_FROM` | unset | Outbound email for sign-in codes: `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_SECURE` (`true` for port 465), `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`. Without them codes are logged to the console in development and cannot be sent in production. |
 | `AUTH_PIN_HASH` | unset            | Optional SHA-256 of a bootstrap PIN. Only consulted until a PIN exists in the database; the first successful login stores a salted scrypt hash instead. |
 
 ## How auth works
@@ -46,6 +47,7 @@ CI runs the same three gates before building the image, so a failing lint or tes
 - Each user's PIN hash lives on the `USER` row as salted scrypt. A database from before multi-user is migrated on first start: the old PIN becomes the "Owner" admin and all existing data becomes that user's workspace. Older unsalted SHA-256 hashes (and the `AUTH_PIN_HASH` bootstrap) still verify and are upgraded in place on the next successful login.
 - Data is partitioned by workspace. Every user has a personal one; nothing is shared between users yet.
 - Five wrong PINs from one client IP lock it for a minute. Hitting the limit a second time within the hour locks it for 24 hours; an hour without attempts resets the count. Twenty failures from anywhere within fifteen minutes pause sign-in for everyone for fifteen minutes, which defeats address rotation. Admins can lift any lock from Settings (`lib/ratelimit.ts`, in-memory).
+- Optional email check: add and verify an email in Settings and new browsers must enter a six-digit code sent by email after the PIN. Remembered devices skip it for 30 days; you can forget them from Settings, and an admin can switch the check off for someone who lost their mailbox. Needs `SMTP_*` env vars (see below).
 - New PINs are checked against a policy: no repeated digits, sequences, patterns, well-known PINs or date-like digits (`lib/pin-policy.ts`).
 - Sessions slide: the proxy re-issues the cookie once it is past half its one-year life, so an active device is never logged out. Changing your PIN signs out your other devices only; other users are unaffected.
 - A successful login sets an HMAC-signed, one-year session cookie. The signing key is 32 random bytes in `<DB dir>/.auth-secret`, generated on first use.

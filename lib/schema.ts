@@ -17,7 +17,10 @@ const USER_TABLES = [
     PIN_HASH        TEXT NOT NULL,
     IS_ADMIN        INTEGER NOT NULL DEFAULT 0,
     SESSION_VERSION INTEGER NOT NULL DEFAULT 1,
-    SORT_ORDER      INTEGER NOT NULL DEFAULT 0
+    SORT_ORDER      INTEGER NOT NULL DEFAULT 0,
+    EMAIL           TEXT,
+    EMAIL_VERIFIED_AT TEXT,
+    REQUIRE_2FA     INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE TABLE IF NOT EXISTS WORKSPACE (
     ID         TEXT NOT NULL PRIMARY KEY,
@@ -44,6 +47,14 @@ function hasColumn(sqlite: DatabaseSync, table: string, column: string): boolean
  */
 function migrateWorkspaces(sqlite: DatabaseSync, tables: Set<string>): void {
   for (const stmt of USER_TABLES) sqlite.exec(stmt);
+
+  // Email second factor columns on an older USER table.
+  if (!hasColumn(sqlite, "USER", "EMAIL")) {
+    sqlite.exec("ALTER TABLE USER ADD COLUMN EMAIL TEXT");
+    sqlite.exec("ALTER TABLE USER ADD COLUMN EMAIL_VERIFIED_AT TEXT");
+    sqlite.exec("ALTER TABLE USER ADD COLUMN REQUIRE_2FA INTEGER NOT NULL DEFAULT 0");
+    sqlite.exec("DROP TRIGGER IF EXISTS TRG_USER_UPDATED_AT");
+  }
 
   const needsAssign = (t: string) => tables.has(t) && !hasColumn(sqlite, t, "WORKSPACE_ID");
   const legacy = [...TENANT_TABLES, "BUDGET", "BUDGET_HISTORY"].some(needsAssign);
@@ -236,6 +247,27 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_AUDIT_AT     ON LEDGER_AUDIT(AT)`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_AUDIT_LEDGER ON LEDGER_AUDIT(LEDGER_ID)`,
+  // Email sign-in codes (hashed) and remembered devices (hashed tokens).
+  `CREATE TABLE IF NOT EXISTS LOGIN_CHALLENGE (
+    ID          TEXT NOT NULL PRIMARY KEY,
+    USER_ID     TEXT NOT NULL,
+    CODE_HASH   TEXT NOT NULL,
+    ATTEMPTS    INTEGER NOT NULL DEFAULT 0,
+    CREATED_AT  TEXT NOT NULL,
+    EXPIRES_AT  TEXT NOT NULL,
+    CONSUMED_AT TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS IDX_LOGIN_CHALLENGE_USER ON LOGIN_CHALLENGE(USER_ID, CREATED_AT)`,
+  `CREATE TABLE IF NOT EXISTS TRUSTED_DEVICE (
+    ID           TEXT NOT NULL PRIMARY KEY,
+    USER_ID      TEXT NOT NULL,
+    TOKEN_HASH   TEXT NOT NULL,
+    NAME         TEXT NOT NULL,
+    CREATED_AT   TEXT NOT NULL,
+    LAST_SEEN_AT TEXT NOT NULL,
+    EXPIRES_AT   TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS IDX_TRUSTED_DEVICE_USER ON TRUSTED_DEVICE(USER_ID, TOKEN_HASH)`,
   // Budgets as they stood for a given month. Written whenever a budget is
   // edited and lazily when a month is first viewed, so "budget vs actual"
   // can be charted after the budget itself has moved on.
@@ -293,7 +325,7 @@ const STATEMENTS = [
      UPDATE SAVINGS_GOAL SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
    END`,
   `CREATE TRIGGER IF NOT EXISTS TRG_USER_UPDATED_AT
-   AFTER UPDATE OF NAME, PIN_HASH, IS_ADMIN, SESSION_VERSION, SORT_ORDER, DELETED_AT
+   AFTER UPDATE OF NAME, PIN_HASH, IS_ADMIN, SESSION_VERSION, SORT_ORDER, EMAIL, EMAIL_VERIFIED_AT, REQUIRE_2FA, DELETED_AT
    ON USER
    BEGIN
      UPDATE USER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
