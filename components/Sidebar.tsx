@@ -201,6 +201,19 @@ export default function Sidebar() {
               Groups
             </button>
             <button
+              onClick={() => router.push("/goals")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
+                pathname === "/goals"
+                  ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
+                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
+              </svg>
+              Goals
+            </button>
+            <button
               onClick={() => router.push("/import")}
               className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
                 pathname === "/import"

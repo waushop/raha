@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition, useEffect } from "react";
-import { createExpense, updateExpense, getRecentNames, createGroup, getTags } from "@/app/actions";
+import { createExpense, updateExpense, getRecentNames, createGroup, getTags, getGoalOptions } from "@/app/actions";
 import { currentMonth, monthKey } from "@/lib/months";
 import { formatTags, parseTags } from "@/lib/tags";
 import type { Expense, CategoryKey, ExpenseGroup, Kind } from "@/types/expense";
@@ -21,6 +21,9 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   const [showExtra, setShowExtra] = useState(!!editing?.NOTES || !!editing?.TAGS);
   const [tags, setTags] = useState(editing?.TAGS ?? "");
   const [tagOptions, setTagOptions] = useState<string[]>([]);
+  const [goalId, setGoalId] = useState<string>(editing?.GOAL_ID ?? "");
+  const [goalOptions, setGoalOptions] = useState<{ ID: string; NAME: string; EMOJI: string | null }[]>([]);
+  const showGoals = category === "savings" || !!goalId;
   // Default the date to today when adding to the current month; otherwise
   // leave it blank (the row then has a month but no day).
   const today = new Date();
@@ -54,6 +57,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
 
   useEffect(() => { setTimeout(() => nameRef.current?.focus(), 100); }, []);
   useEffect(() => { if (!editing) getRecentNames(category, kind).then(setSuggestions); }, [category, kind, editing]);
+  useEffect(() => { if (showGoals) getGoalOptions().then(setGoalOptions).catch(() => {}); }, [showGoals]);
   useEffect(() => { if (showExtra) getTags().then((rows) => setTagOptions(rows.map((r) => r.TAG))).catch(() => {}); }, [showExtra]);
 
   function toggleTag(tag: string) {
@@ -69,6 +73,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
     data.set("is_recurring", isRecurring ? "1" : "0");
     data.set("tags", tags || "");
     data.set("group_id", groupId || "");
+    data.set("goal_id", showGoals ? goalId : "");
     startTransition(async () => {
       const res = editing ? await updateExpense(editing.ID, data) : await createExpense(data);
       if (!res.ok) { toast.showError(res.error); return; }
@@ -180,6 +185,25 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
         </div>
         <input type="hidden" name="category" value={category} />
       </div>
+
+      {/* Goal (savings) */}
+      {showGoals && goalOptions.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Counts towards goal</label>
+          <div className="flex gap-1.5 overflow-x-auto stats-scroll pb-1">
+            <button type="button" onClick={() => setGoalId("")}
+              className={`shrink-0 border rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all ${!goalId ? "border-white/20 bg-white/10 text-white" : "border-white/[0.06] text-[#5a6380] hover:border-white/15"}`}>
+              None
+            </button>
+            {goalOptions.map((g) => (
+              <button key={g.ID} type="button" onClick={() => setGoalId(g.ID)}
+                className={`shrink-0 border rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all whitespace-nowrap ${goalId === g.ID ? "border-teal-500/40 bg-teal-500/10 text-teal-300" : "border-white/[0.06] text-[#9ca3c0] hover:border-white/15"}`}>
+                {g.EMOJI && <span className="mr-1">{g.EMOJI}</span>}{g.NAME}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Suggestions */}
       {suggestions.length > 0 && !editing && (

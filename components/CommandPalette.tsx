@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { label: "Dashboard", path: "/dashboard", icon: "📊" },
   { label: "Search", path: "/search", icon: "🔍" },
   { label: "Groups", path: "/groups", icon: "📁" },
+  { label: "Goals", path: "/goals", icon: "🎯" },
   { label: "Recurring", path: "/recurring", icon: "🔄" },
   { label: "Activity", path: "/activity", icon: "📝" },
   { label: "Analytics", path: "/analytics", icon: "📈" },

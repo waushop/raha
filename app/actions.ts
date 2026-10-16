@@ -69,6 +69,7 @@ function readLedgerForm(formData: FormData): { row: ledger.LedgerSource; month: 
     IS_RECURRING: formData.get("is_recurring") === "1" ? 1 : 0,
     TAGS: parseTagsText(formData.get("tags")),
     DAY: date ? date.day : parseOptionalDay(formData.get("day"), month),
+    GOAL_ID: parseOptionalId(formData.get("goal_id"), "Goal"),
   };
   return { row, month };
 }
@@ -79,6 +80,7 @@ export async function createExpense(formData: FormData): Promise<ActionResult> {
     const { row, month } = readLedgerForm(formData);
     db.transaction((tx) => {
       ledger.assertGroupExists(tx, row.GROUP_ID);
+      ledger.assertGoalExists(tx, row.GOAL_ID);
       ledger.insertRow(tx, row, month);
     });
     revalidatePath("/");
@@ -93,10 +95,11 @@ export async function updateExpense(id: string, formData: FormData): Promise<Act
     const { row, month } = readLedgerForm(formData);
     db.transaction((tx) => {
       ledger.assertGroupExists(tx, row.GROUP_ID);
+      ledger.assertGoalExists(tx, row.GOAL_ID);
       ledger.auditedUpdate(tx, rowId, "update", () => {
         tx.run(
-          "UPDATE LEDGER SET KIND=?, CATEGORY=?, GROUP_ID=?, NAME=?, AMOUNT=?, MONTH=?, DAY=?, NOTES=?, IS_RECURRING=?, TAGS=? WHERE ID=? AND DELETED_AT IS NULL",
-          [row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.DAY, row.NOTES, row.IS_RECURRING, row.TAGS, rowId],
+          "UPDATE LEDGER SET KIND=?, CATEGORY=?, GROUP_ID=?, NAME=?, AMOUNT=?, MONTH=?, DAY=?, NOTES=?, IS_RECURRING=?, TAGS=?, GOAL_ID=? WHERE ID=? AND DELETED_AT IS NULL",
+          [row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.DAY, row.NOTES, row.IS_RECURRING, row.TAGS, row.GOAL_ID ?? null, rowId],
         );
         ledger.syncTags(tx, rowId, row.TAGS);
       });
@@ -330,6 +333,70 @@ export async function deleteGroup(id: string) {
   ledger.removeGroup(parseId(id));
   revalidatePath("/");
   revalidatePath("/groups");
+}
+
+// ============================================
+// SAVINGS GOALS
+// ============================================
+
+function readGoalForm(formData: FormData) {
+  const targetMonthRaw = String(formData.get("target_month") ?? "").trim();
+  return {
+    name: parseName(formData.get("name"), "Goal name", 60),
+    emoji: parseOptionalText(formData.get("emoji"), "Icon", 8),
+    target: parseAmount(formData.get("target_amount"), "Target"),
+    targetMonth: targetMonthRaw ? parseMonth(targetMonthRaw) : null,
+    starting: String(formData.get("starting_amount") ?? "").trim() ? parseAmount(formData.get("starting_amount"), "Already saved") : 0,
+  };
+}
+
+export async function createGoal(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  await requireAuth();
+  return attempt(async () => {
+    const g = readGoalForm(formData);
+    const id = randomUUID();
+    await db.execute(
+      "INSERT INTO SAVINGS_GOAL (ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, ?, ?, ?, ?, ?)",
+      [id, g.name, g.emoji, g.target, g.targetMonth, g.starting],
+    );
+    revalidatePath("/goals");
+    revalidatePath("/dashboard");
+    return { id };
+  });
+}
+
+export async function updateGoal(id: string, formData: FormData): Promise<ActionResult> {
+  await requireAuth();
+  return attempt(async () => {
+    const gid = parseId(id);
+    const g = readGoalForm(formData);
+    await db.execute(
+      "UPDATE SAVINGS_GOAL SET NAME=?, EMOJI=?, TARGET_AMOUNT=?, TARGET_MONTH=?, STARTING_AMOUNT=? WHERE ID=? AND DELETED_AT IS NULL",
+      [g.name, g.emoji, g.target, g.targetMonth, g.starting, gid],
+    );
+    revalidatePath("/goals");
+    revalidatePath("/dashboard");
+    return {};
+  });
+}
+
+export async function deleteGoal(id: string) {
+  await requireAuth();
+  const gid = parseId(id);
+  db.transaction((tx) => {
+    tx.run("UPDATE SAVINGS_GOAL SET DELETED_AT=CURRENT_TIMESTAMP WHERE ID=? AND DELETED_AT IS NULL", [gid]);
+    // Contributions stay as ordinary ledger rows; they just stop counting.
+    tx.run("UPDATE LEDGER SET GOAL_ID=NULL WHERE GOAL_ID=? AND DELETED_AT IS NULL", [gid]);
+  });
+  revalidatePath("/goals");
+  revalidatePath("/dashboard");
+  revalidatePath("/");
+}
+
+export async function getGoalOptions(): Promise<{ ID: string; NAME: string; EMOJI: string | null }[]> {
+  await requireAuth();
+  const [rows] = await db.execute("SELECT ID, NAME, EMOJI FROM SAVINGS_GOAL WHERE DELETED_AT IS NULL ORDER BY CREATED_AT");
+  return rows as { ID: string; NAME: string; EMOJI: string | null }[];
 }
 
 // ============================================

@@ -80,6 +80,7 @@ export type Expense = {
   AMOUNT: number;
   MONTH: string;
   DAY: number | null;
+  GOAL_ID: string | null;
   NOTES: string | null;
   IS_RECURRING: number;
   TAGS: string | null;

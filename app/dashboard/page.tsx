@@ -9,6 +9,9 @@ import Welcome from "@/components/Welcome";
 import { getBudgets, ensureBudgetSnapshot } from "@/lib/budgets";
 import DailyHeatmap from "@/components/DailyHeatmap";
 import RecurringSuggestions from "@/components/RecurringSuggestions";
+import { GoalRing } from "@/components/GoalList";
+import { listGoals } from "@/lib/goals";
+import { monthLabel } from "@/lib/months";
 import { monthlyTotals, monthlyVariableTotals, recurringCandidates } from "@/lib/queries";
 import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
@@ -190,6 +193,8 @@ export default async function DashboardPage() {
   // Heatmap data (all months, expenses only)
   const heatmapData = (await monthlyTotals("expense")).map(r => ({ month: r.MONTH, total: r.TOTAL }));
 
+  const goals = (await listGoals()).filter((g) => g.status !== "done").slice(0, 3);
+
   // Names that behave like subscriptions but aren't flagged yet
   const candidates = await recurringCandidates(addMonths(thisMonth, -3));
 
@@ -305,6 +310,33 @@ export default async function DashboardPage() {
             predicted={predicted}
           />
         </div>
+
+        {/* Goals */}
+        {goals.length > 0 && (
+          <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.065s" }}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-white">Goals</h2>
+              <Link href="/goals" className="text-[10px] text-[#5a6380] hover:text-pink-400 transition-colors">All goals →</Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {goals.map((g) => (
+                <Link key={g.ID} href="/goals" className="flex items-center gap-3 rounded-xl p-2 -m-2 hover:bg-white/5 transition-colors">
+                  <div className="relative">
+                    <GoalRing pct={g.pct} size={44} stroke={5} />
+                    <span className="absolute inset-0 flex items-center justify-center text-base">{g.EMOJI ?? "🎯"}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white truncate">{g.NAME}</p>
+                    <p className="text-[10px] font-mono tabular-nums text-[#9ca3c0]">{g.pct.toFixed(0)}% · {fmt(g.saved)} / {fmt(g.TARGET_AMOUNT)}</p>
+                    <p className={`text-[9px] ${g.status === "behind" ? "text-amber-400" : g.status === "on-track" ? "text-teal-400/80" : "text-[#5a6380]"}`}>
+                      {g.status === "on-track" && g.projectedMonth ? `on track · ${monthLabel(g.projectedMonth, "short")}` : g.status === "behind" && g.neededPerMonth !== null ? `needs ${fmt(g.neededPerMonth)} €/mo` : g.projectedMonth ? `at this pace ${monthLabel(g.projectedMonth, "short")}` : "no contributions yet"}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Spending progress bar */}
         {thisTotal > 0 && (

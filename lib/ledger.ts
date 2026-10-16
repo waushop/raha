@@ -18,12 +18,13 @@ export type LedgerSource = {
   IS_RECURRING: number;
   TAGS: string | null;
   DAY: number | null;
+  GOAL_ID?: string | null;
 };
 
-export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY";
+export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID";
 
-const INSERT_LEDGER = `INSERT INTO LEDGER (ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_LEDGER = `INSERT INTO LEDGER (ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** A copied row keeps its day where the target month has it (31st → 30th otherwise). */
 export function clampDay(day: number | null, month: string): number | null {
@@ -33,7 +34,7 @@ export function clampDay(day: number | null, month: string): number | null {
 // ---------- audit ----------
 export type AuditAction = "create" | "update" | "delete" | "restore";
 export type AuditSnapshot = Record<string, unknown>;
-const AUDIT_COLUMNS = "ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS";
+const AUDIT_COLUMNS = "ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID";
 
 /** The row as stored right now (live or deleted), or null if it doesn't exist. */
 export function snapshotRow(tx: Tx, id: string): AuditSnapshot | null {
@@ -72,6 +73,13 @@ function existingKeys(tx: Tx, month: string): Set<string> {
   );
 }
 
+export function assertGoalExists(tx: Tx, id: string | null | undefined): void {
+  if (!id) return;
+  if (tx.all("SELECT 1 FROM SAVINGS_GOAL WHERE ID = ? AND DELETED_AT IS NULL", [id]).length === 0) {
+    throw new ValidationError("That goal no longer exists");
+  }
+}
+
 export function assertGroupExists(tx: Tx, id: string | null): void {
   if (!id) return;
   if (tx.all("SELECT 1 FROM CATEGORY_GROUP WHERE ID = ? AND DELETED_AT IS NULL", [id]).length === 0) {
@@ -82,7 +90,7 @@ export function assertGroupExists(tx: Tx, id: string | null): void {
 export function insertRow(tx: Tx, row: LedgerSource, month: string): string {
   const id = randomUUID();
   const day = clampDay(row.DAY, month);
-  tx.run(INSERT_LEDGER, [id, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day]);
+  tx.run(INSERT_LEDGER, [id, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null]);
   if (row.TAGS) syncTags(tx, id, row.TAGS);
   audit(tx, id, "create", null, { ID: id, ...row, MONTH: month, DAY: day });
   return id;

@@ -21,7 +21,7 @@ export default async function Page({
 
   // Fetch expenses with group info
   const [rows] = await db.execute(
-    `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.NAME,
+    `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.GOAL_ID, e.NAME,
             e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.CREATED_AT,
             g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
      FROM LEDGER e

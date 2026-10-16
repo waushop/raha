@@ -16,7 +16,8 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //       database are never touched.
 //   v5  + DAY per row, plus budget_history section. LEDGER_TAG is derived
 //       from TAGS on restore, so it is not backed up separately.
-const BACKUP_VERSION = 5;
+//   v6  + GOAL_ID per row, plus goals section.
+const BACKUP_VERSION = 6;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,7 +29,7 @@ export async function GET() {
   if (!(await isAuthenticated())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const [expenses] = await db.execute(
-    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, CREATED_AT
+    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, NOTES, IS_RECURRING, TAGS, CREATED_AT
      FROM LEDGER WHERE DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`
   );
   const [groups] = await db.execute(
@@ -38,6 +39,9 @@ export async function GET() {
   const [patterns] = await db.execute(
     "SELECT ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY FROM IMPORT_PATTERN ORDER BY PRIORITY DESC, PATTERN"
   );
+  const [goals] = await db.execute(
+    "SELECT ID, NAME, EMOJI, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH, CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT FROM SAVINGS_GOAL WHERE DELETED_AT IS NULL ORDER BY CREATED_AT"
+  );
   const [budgetHistory] = await db.execute("SELECT MONTH, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM BUDGET_HISTORY ORDER BY MONTH, CATEGORY");
 
   const data = {
@@ -46,6 +50,7 @@ export async function GET() {
     groups,
     budgets,
     budget_history: budgetHistory,
+    goals,
     import_patterns: patterns,
     expenses, // legacy field name kept so older importers still find the rows
   };
@@ -89,10 +94,11 @@ export async function POST(request: NextRequest) {
   const budgets = Array.isArray(body.budgets) ? body.budgets : [];
   const patterns = Array.isArray(body.import_patterns) ? body.import_patterns : [];
   const budgetHistory = Array.isArray(body.budget_history) ? body.budget_history : [];
+  const goals = Array.isArray(body.goals) ? body.goals : [];
   const expenses = body.expenses;
 
   const result = db.transaction((tx) => {
-    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0 };
+    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0 };
 
     for (const g of groups) {
       if (!isObj(g)) continue;
@@ -107,6 +113,25 @@ export async function POST(request: NextRequest) {
       );
       stats.groups++;
     }
+
+    for (const g of goals) {
+      if (!isObj(g)) continue;
+      const id = str(g.ID);
+      const name = str(g.NAME);
+      const target = num(g.TARGET_AMOUNT);
+      if (!id || !UUID_RE.test(id) || !name || target === null || target <= 0) continue;
+      const targetMonth = str(g.TARGET_MONTH);
+      tx.run(
+        `INSERT INTO SAVINGS_GOAL (ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET NAME = excluded.NAME, EMOJI = excluded.EMOJI, TARGET_AMOUNT = excluded.TARGET_AMOUNT,
+           TARGET_MONTH = excluded.TARGET_MONTH, STARTING_AMOUNT = excluded.STARTING_AMOUNT, DELETED_AT = NULL`,
+        [id, name, str(g.EMOJI), target, targetMonth && MONTH_RE.test(targetMonth) ? targetMonth : null, Math.max(0, num(g.STARTING_AMOUNT) ?? 0)],
+      );
+      stats.goals++;
+    }
+    const liveGoalIds = new Set(
+      tx.all<{ ID: string }>("SELECT ID FROM SAVINGS_GOAL WHERE DELETED_AT IS NULL").map((r) => r.ID),
+    );
 
     const liveGroupIds = new Set(
       tx.all<{ ID: string }>("SELECT ID FROM CATEGORY_GROUP WHERE DELETED_AT IS NULL").map((r) => r.ID),
@@ -167,13 +192,14 @@ export async function POST(request: NextRequest) {
       const rawDay = num(e.DAY);
       const day = rawDay !== null && Number.isInteger(rawDay) && rawDay >= 1 && rawDay <= 31 ? rawDay : null;
       const tags = str(e.TAGS);
+      const goalId = str(e.GOAL_ID);
 
       tx.run(
-        `INSERT INTO LEDGER (ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO LEDGER (ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, NOTES, IS_RECURRING, TAGS)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ID) DO UPDATE SET KIND = excluded.KIND, CATEGORY = excluded.CATEGORY, GROUP_ID = excluded.GROUP_ID,
-           NAME = excluded.NAME, AMOUNT = excluded.AMOUNT, MONTH = excluded.MONTH, DAY = excluded.DAY, NOTES = excluded.NOTES,
-           IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
+           NAME = excluded.NAME, AMOUNT = excluded.AMOUNT, MONTH = excluded.MONTH, DAY = excluded.DAY, GOAL_ID = excluded.GOAL_ID,
+           NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
         [
           id,
           e.KIND === "income" ? "income" : "expense",
@@ -183,6 +209,7 @@ export async function POST(request: NextRequest) {
           amount,
           month,
           day,
+          goalId && liveGoalIds.has(goalId) ? goalId : null,
           str(e.NOTES),
           num(e.IS_RECURRING) ? 1 : 0,
           tags,
