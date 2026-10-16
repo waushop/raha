@@ -119,7 +119,8 @@ export default async function SettingsPage() {
           />
         </div>
 
-        {/* Users */}
+        {/* Users (admins) / Profile (everyone else) */}
+        {ctx.isAdmin ? (
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.085s" }}>
           <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-teal-400">
@@ -137,6 +138,13 @@ export default async function SettingsPage() {
             </div>
           )}
         </div>
+        ) : (
+        <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.085s" }}>
+          <h2 className="text-sm font-bold text-white mb-1">Profile</h2>
+          <p className="text-xs text-[#5a6380] mb-3">Your ledger is private to you. Only an admin can add or remove users.</p>
+          <UserManager users={users.filter((u) => u.ID === ctx.userId)} currentUserId={ctx.userId} isAdmin={false} />
+        </div>
+        )}
 
         {/* Email check on new devices */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.088s" }}>
