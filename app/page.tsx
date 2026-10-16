@@ -58,7 +58,7 @@ export default async function Page({
     .slice(0, 10);
 
   return (
-    <main className="min-h-screen py-6 px-4 pl-16 sm:pl-20 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-28 lg:pb-20">
+    <main className="min-h-screen py-6 px-4 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-24 lg:pb-20">
       <SwipeContainer month={month}>
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}

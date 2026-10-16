@@ -4,6 +4,10 @@
    DESIGN TOKENS
    ============================================ */
 :root {
+  /* Safe areas for notched phones (viewport-fit=cover) */
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+
   /* Backgrounds */
   --bg-primary: #1a1a2e;
   --bg-card: #1f2940;
@@ -135,6 +139,16 @@ body::before {
    theme via --bg-card-solid, unlike a hardcoded bg-[#1c2237]. */
 .panel {
   background: var(--bg-card-solid);
+}
+
+/* Mobile bottom bar: translucent, blurred, like the cards behind it. */
+.bottom-bar {
+  background: rgba(28, 34, 55, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+[data-theme="light"] .bottom-bar {
+  background: rgba(255, 255, 255, 0.96);
 }
 
 /* Row targeted by a /?month=…#e-<id> deep link: flash, then settle. */

@@ -3,9 +3,11 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-// Thumb-reachable navigation for phones and tablets. Above lg the sidebar is
-// pinned and this bar is hidden. "+" opens the add form on the month page
-// (navigating there first if needed); "Menu" opens the full sidebar drawer.
+// Thumb-reachable navigation for phones and tablets, in the same flat style
+// as onebetwonder's bar: equal icon + label tabs on a translucent blurred
+// strip, nothing raised. Above lg the sidebar is pinned and this is hidden.
+// "Add" opens the form on the month page (navigating there first if needed);
+// "Menu" opens the full sidebar drawer.
 export const OPEN_ADD_EVENT = "open-add-expense";
 export const OPEN_MENU_EVENT = "open-sidebar";
 
@@ -54,13 +56,12 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 panel border-t border-white/[0.08] pb-[env(safe-area-inset-bottom)]" aria-label="Main">
-      <div className="flex items-stretch h-16 max-w-xl mx-auto">
+    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/[0.08] bottom-bar" aria-label="Main" style={{ paddingBottom: "var(--sab, 0px)" }}>
+      <div className="flex items-center justify-around px-1 h-14 max-w-xl mx-auto">
         {ITEMS.map(tab)}
-        <button onClick={add} aria-label="Add expense" className="flex-1 flex items-center justify-center">
-          <span className="-mt-6 w-14 h-14 rounded-2xl gradient-pink shadow-xl shadow-pink-500/30 flex items-center justify-center btn-press">
-            <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round"><path d="M8 3v10M3 8h10" /></svg>
-          </span>
+        <button onClick={add} aria-label="Add expense" className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-pink-400 hover:text-pink-300 transition-colors">
+          <svg {...ICON}><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></svg>
+          <span className="text-[9px] font-semibold">Add</span>
         </button>
         {ITEMS_RIGHT.map(tab)}
         <button onClick={() => window.dispatchEvent(new Event(OPEN_MENU_EVENT))} aria-label="Menu"
