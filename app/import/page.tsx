@@ -3,13 +3,15 @@ import { getImportPatterns } from "@/app/actions";
 import Link from "next/link";
 import ImportFlow from "./ImportFlow";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import { train } from "@/lib/classifier";
 
 export default async function ImportPage() {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   const patterns = await getImportPatterns();
   // Train on everything the user has categorised so far (expenses only).
-  const [rows] = await db.execute("SELECT NAME, CATEGORY, GROUP_ID FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL");
+  const [rows] = await db.execute("SELECT NAME, CATEGORY, GROUP_ID FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL", [ws]);
   const model = train((rows as Array<{ NAME: string; CATEGORY: string; GROUP_ID: string | null }>).map((r) => ({ name: r.NAME, category: r.CATEGORY, groupId: r.GROUP_ID })));
 
   return (

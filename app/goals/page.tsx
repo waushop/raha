@@ -2,12 +2,14 @@ import { connection } from "next/server";
 import Link from "next/link";
 import GoalList from "@/components/GoalList";
 import { listGoals } from "@/lib/goals";
+import { currentContext } from "@/lib/auth";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 export default async function GoalsPage() {
   await connection();
-  const goals = await listGoals();
+  const { workspaceId: ws } = await currentContext();
+  const goals = await listGoals(ws);
   const saved = goals.reduce((s, g) => s + g.saved, 0);
   const target = goals.reduce((s, g) => s + g.TARGET_AMOUNT, 0);
 

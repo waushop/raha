@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
 process.env.DB_PATH = ":memory:";
+const WS = "22222222-2222-4222-8222-222222222222";
 
 describe("savings goals", () => {
   let db: typeof import("@/lib/db").default;
@@ -19,17 +20,17 @@ describe("savings goals", () => {
   });
 
   async function contribute(goalId: string, month: string, amount: number) {
-    await db.execute("INSERT INTO LEDGER (ID, KIND, CATEGORY, NAME, AMOUNT, MONTH, GOAL_ID) VALUES (?, 'expense', 'savings', 'Transfer', ?, ?, ?)", [randomUUID(), amount, month, goalId]);
+    await db.execute("INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, NAME, AMOUNT, MONTH, GOAL_ID) VALUES (?, ?, 'expense', 'savings', 'Transfer', ?, ?, ?)", [randomUUID(), WS, amount, month, goalId]);
   }
 
   test("progress adds starting amount and linked rows; pace comes from the last three months", async () => {
     const id = randomUUID();
     const now = months.currentMonth();
-    await db.execute("INSERT INTO SAVINGS_GOAL (ID, NAME, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, 'Fund', 1000, ?, 100)", [id, months.addMonths(now, 6)]);
+    await db.execute("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, ?, 'Fund', 1000, ?, 100)", [id, WS, months.addMonths(now, 6)]);
     await contribute(id, months.addMonths(now, -5), 500); // old, counts for total but not pace
     await contribute(id, months.addMonths(now, -1), 90);
     await contribute(id, now, 90);
-    const [g] = await goals.listGoals();
+    const [g] = await goals.listGoals(WS);
     assert.equal(g.saved, 780);
     assert.equal(g.remaining, 220);
     assert.equal(Math.round(g.pct), 78);
@@ -43,22 +44,22 @@ describe("savings goals", () => {
   test("behind when the pace misses the deadline, done when target reached, ignores deleted rows", async () => {
     const id = randomUUID();
     const now = months.currentMonth();
-    await db.execute("INSERT INTO SAVINGS_GOAL (ID, NAME, TARGET_AMOUNT, TARGET_MONTH) VALUES (?, 'Trip', 1000, ?)", [id, months.addMonths(now, 2)]);
+    await db.execute("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, TARGET_AMOUNT, TARGET_MONTH) VALUES (?, ?, 'Trip', 1000, ?)", [id, WS, months.addMonths(now, 2)]);
     await contribute(id, now, 100);
-    assert.equal((await goals.listGoals())[0].status, "behind");
+    assert.equal((await goals.listGoals(WS))[0].status, "behind");
 
     await contribute(id, now, 900);
-    const [done] = await goals.listGoals();
+    const [done] = await goals.listGoals(WS);
     assert.equal(done.status, "done");
     assert.equal(done.pct, 100);
 
     await db.execute("UPDATE LEDGER SET DELETED_AT = CURRENT_TIMESTAMP WHERE AMOUNT = 900");
-    assert.equal((await goals.listGoals())[0].saved, 100);
+    assert.equal((await goals.listGoals(WS))[0].saved, 100);
   });
 
   test("no deadline and no contributions → no-deadline with no projection", async () => {
-    await db.execute("INSERT INTO SAVINGS_GOAL (ID, NAME, TARGET_AMOUNT) VALUES (?, 'Someday', 500)", [randomUUID()]);
-    const [g] = await goals.listGoals();
+    await db.execute("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, TARGET_AMOUNT) VALUES (?, ?, 'Someday', 500)", [randomUUID(), WS]);
+    const [g] = await goals.listGoals(WS);
     assert.equal(g.status, "no-deadline");
     assert.equal(g.projectedMonth, null);
     assert.equal(g.neededPerMonth, null);

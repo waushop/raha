@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
@@ -32,6 +33,7 @@ export default async function YearPage({
   searchParams: Promise<{ year?: string }>;
 }) {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   const { year: yearParam } = await searchParams;
   const year = yearParam ?? String(new Date().getFullYear());
 
@@ -41,9 +43,9 @@ export default async function YearPage({
             CAST(SUM(AMOUNT) AS REAL) AS TOTAL,
             COUNT(*) AS COUNT
      FROM LEDGER
-     WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY MONTH ORDER BY MONTH`,
-    [`${year}-01`, `${year}-12`]
+    [ws, `${year}-01`, `${year}-12`]
   );
   const months = monthRows as MonthRow[];
 
@@ -51,17 +53,17 @@ export default async function YearPage({
   const [catRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
      FROM LEDGER
-     WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
-    [`${year}-01`, `${year}-12`]
+    [ws, `${year}-01`, `${year}-12`]
   );
   const categories = catRows as CatRow[];
 
   // Income per month → net + savings rate for the year
   const [incomeRows] = await db.execute(
     `SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER
-     WHERE KIND = 'income' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH`,
-    [`${year}-01`, `${year}-12`]
+     WHERE WORKSPACE_ID = ? AND KIND = 'income' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ? GROUP BY MONTH`,
+    [ws, `${year}-01`, `${year}-12`]
   );
   const incomeByMonth = new Map((incomeRows as { MONTH: string; TOTAL: number }[]).map((r) => [r.MONTH, r.TOTAL]));
   const yearIncome = [...incomeByMonth.values()].reduce((s, v) => s + v, 0);

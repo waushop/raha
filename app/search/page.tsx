@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { Expense } from "@/types/expense";
 import { CATEGORIES, CATEGORY_KEYS, GROUP_COLOR_CLASSES } from "@/types/expense";
 import Link from "next/link";
@@ -19,12 +20,13 @@ const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<Params> }) {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   const p = await searchParams;
   const query = p.q?.trim() ?? "";
 
   // Every filter is validated before it reaches SQL; invalid values are ignored.
-  const where: string[] = ["e.DELETED_AT IS NULL"];
-  const args: unknown[] = [];
+  const where: string[] = ["e.WORKSPACE_ID = ?", "e.DELETED_AT IS NULL"];
+  const args: unknown[] = [ws];
   if (query.length >= 2) {
     where.push("(e.NAME LIKE ? ESCAPE '\\' OR e.NOTES LIKE ? ESCAPE '\\' OR e.TAGS LIKE ? ESCAPE '\\')");
     args.push(like(query), like(query), like(query));
@@ -42,7 +44,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   if (isValidMonth(p.from)) { where.push("e.MONTH >= ?"); args.push(p.from); }
   if (isValidMonth(p.to)) { where.push("e.MONTH <= ?"); args.push(p.to); }
 
-  const hasCriteria = where.length > 1;
+  const hasCriteria = where.length > 2;
   let results: Expense[] = [];
   let totalFound = 0;
 

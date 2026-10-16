@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { Expense, CategoryKey } from "@/types/expense";
 import { getGroups } from "@/app/actions";
 import MonthNav from "@/components/MonthNav";
@@ -16,6 +17,7 @@ export default async function Page({
   searchParams: Promise<{ month?: string }>;
 }) {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   const { month: monthParam } = await searchParams;
   const month = isValidMonth(monthParam) ? monthParam : currentMonth();
 
@@ -26,9 +28,9 @@ export default async function Page({
             g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
      LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
-     WHERE e.MONTH = ? AND e.DELETED_AT IS NULL
+     WHERE e.WORKSPACE_ID = ? AND e.MONTH = ? AND e.DELETED_AT IS NULL
      ORDER BY g.SORT_ORDER, g.NAME, e.CREATED_AT`,
-    [month]
+    [ws, month]
   );
   const expenses = rows as Expense[];
   const spent = expenses.filter((e) => e.KIND === "expense");
@@ -37,18 +39,19 @@ export default async function Page({
   const groups = await getGroups();
 
   // Fetch 6-month trend data
-  const trendData = await monthlyTotals("expense", addMonths(month, -5), month);
+  const trendData = await monthlyTotals(ws, "expense", addMonths(month, -5), month);
 
   // Quick-add presets
   const existingNames = new Set(expenses.map(e => e.NAME));
   const [presetRows] = await db.execute(
     `SELECT NAME, CATEGORY, GROUP_ID, CAST(AMOUNT AS REAL) AS AMOUNT,
             COUNT(DISTINCT MONTH) AS MONTHS
-     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL
      GROUP BY NAME, CATEGORY, GROUP_ID, AMOUNT
      HAVING MONTHS >= 3
      ORDER BY MONTHS DESC
-     LIMIT 20`
+     LIMIT 20`,
+    [ws]
   );
   const quickPresets = (presetRows as Array<{ NAME: string; CATEGORY: CategoryKey; GROUP_ID: string | null; AMOUNT: number }>)
     .filter(p => !existingNames.has(p.NAME))

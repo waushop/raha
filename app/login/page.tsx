@@ -1,11 +1,11 @@
 import { connection } from "next/server";
-import { getPinHash } from "@/lib/auth";
+import { listUsers } from "@/lib/auth";
 import LoginForm from "@/components/LoginForm";
 import SetupForm from "@/components/SetupForm";
 
 export default async function LoginPage() {
   await connection();
-  const hasPin = (await getPinHash()) !== null;
+  const users = await listUsers();
   return (
     <main className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
       {/* Decorative blurred circles */}
@@ -24,7 +24,7 @@ export default async function LoginPage() {
             Empty Wallet
           </h1>
         </div>
-        {hasPin ? <LoginForm /> : <SetupForm />}
+        {users.length > 0 ? <LoginForm users={users.map((u) => ({ ID: u.ID, NAME: u.NAME }))} /> : <SetupForm />}
       </div>
     </main>
   );

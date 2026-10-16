@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES, GROUP_COLOR_CLASSES } from "@/types/expense";
 import Link from "next/link";
@@ -21,6 +22,7 @@ type Subscription = {
 
 export default async function RecurringPage() {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   // All recurring expense rows; grouped in JS so we can read the latest price,
   // the charge day and the previous price without a tangle of window functions.
   const [rows] = await db.execute(
@@ -28,8 +30,9 @@ export default async function RecurringPage() {
             g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
      LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
-     WHERE e.IS_RECURRING = 1 AND e.KIND = 'expense' AND e.DELETED_AT IS NULL
+     WHERE e.WORKSPACE_ID = ? AND e.IS_RECURRING = 1 AND e.KIND = 'expense' AND e.DELETED_AT IS NULL
      ORDER BY e.MONTH DESC, e.CREATED_AT DESC`,
+    [ws],
   );
   const activeSince = addMonths(currentMonth(), -2);
   const byKey = new Map<string, Row[]>();

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { isAuthenticated } from "@/lib/auth";
+import { getAuthContext } from "@/lib/auth";
 import { importRows, type ImportRow } from "@/lib/ledger";
 import { CATEGORY_KEYS } from "@/types/expense";
 
@@ -29,7 +29,8 @@ const YES = new Set(["yes", "jah", "1", "true"]);
 const INCOME = new Set(["income", "tulu"]);
 
 export async function POST(request: NextRequest) {
-  if (!(await isAuthenticated())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const ctx = await getAuthContext();
+  if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const declared = Number(request.headers.get("content-length") ?? 0);
   if (declared > MAX_BODY_BYTES) return NextResponse.json({ error: "File is too large" }, { status: 413 });
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const imported = importRows(rows);
+  const imported = importRows(ctx.workspaceId, rows);
   if (imported > 0) revalidatePath("/");
   return NextResponse.json({ imported, skipped: skipped + (rows.length - imported) });
 }

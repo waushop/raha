@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import db from "../lib/db";
 import type { CategoryKey } from "../types/expense";
 import { parseTags } from "../lib/tags";
+import { hashPin } from "../lib/pin";
 import { daysInMonth, addMonths as addMonthsKey } from "../lib/months";
 
 const force = process.argv.includes("--force");
@@ -172,6 +173,17 @@ const patterns: Array<[string, CategoryKey, Group | null, number]> = [
 ];
 
 const result = db.transaction((tx) => {
+  // Seed into the first user's workspace; on a blank database create a demo
+  // user (PIN 123456) so the login screen has someone to pick.
+  let ws = tx.all<{ ID: string }>("SELECT ID FROM WORKSPACE ORDER BY CREATED_AT LIMIT 1")[0]?.ID;
+  if (!ws) {
+    const userId = randomUUID();
+    ws = randomUUID();
+    tx.run("INSERT INTO USER (ID, NAME, PIN_HASH, IS_ADMIN) VALUES (?, 'Demo', ?, 1)", [userId, hashPin("123456")]);
+    tx.run("INSERT INTO WORKSPACE (ID, NAME, KIND) VALUES (?, 'Demo''s ledger', 'personal')", [ws]);
+    tx.run("INSERT INTO WORKSPACE_MEMBER (WORKSPACE_ID, USER_ID, ROLE) VALUES (?, ?, 'owner')", [ws, userId]);
+    console.log("Created user Demo with PIN 123456");
+  }
   const existing = tx.all<{ n: number }>("SELECT COUNT(*) AS n FROM LEDGER")[0].n;
   if (existing > 0 && !force) {
     throw new Error(`LEDGER already has ${existing} rows. Re-run with --force to wipe and reseed.`);
@@ -180,12 +192,12 @@ const result = db.transaction((tx) => {
     for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL"]) tx.run(`DELETE FROM ${t}`);
   }
 
-  tx.run("INSERT INTO SAVINGS_GOAL (ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, 'Emergency fund', '🛡️', 6000, ?, 1500, ?)", [GOAL_FUND, addMonthsKey(months[months.length - 1], 8), `${months[0]}-01 09:00:00`]);
-  tx.run("INSERT INTO SAVINGS_GOAL (ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, 'Summer trip', '🏖️', 1500, ?, 0, ?)", [GOAL_TRIP, addMonthsKey(months[months.length - 1], 7), `${months[months.length - 4]}-01 09:00:00`]);
+  tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Emergency fund', '🛡️', 6000, ?, 1500, ?)", [GOAL_FUND, ws, addMonthsKey(months[months.length - 1], 8), `${months[0]}-01 09:00:00`]);
+  tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Summer trip', '🏖️', 1500, ?, 0, ?)", [GOAL_TRIP, ws, addMonthsKey(months[months.length - 1], 7), `${months[months.length - 4]}-01 09:00:00`]);
 
   Object.values(groups).forEach((g, i) => {
-    tx.run("INSERT INTO CATEGORY_GROUP (ID, NAME, EMOJI, COLOR, SORT_ORDER, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?, ?, ?, ?)", [
-      g.id, g.name, g.emoji, g.color, i, `${months[0]}-01 09:00:00`, `${months[0]}-01 09:00:00`,
+    tx.run("INSERT INTO CATEGORY_GROUP (ID, WORKSPACE_ID, NAME, EMOJI, COLOR, SORT_ORDER, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+      g.id, ws, g.name, g.emoji, g.color, i, `${months[0]}-01 09:00:00`, `${months[0]}-01 09:00:00`,
     ]);
   });
 
@@ -193,10 +205,10 @@ const result = db.transaction((tx) => {
     const ts = timestampIn(r.month, r.day);
     const id = randomUUID();
     tx.run(
-      `INSERT INTO LEDGER (ID, CREATED_AT, UPDATED_AT, DELETED_AT, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO LEDGER (ID, WORKSPACE_ID, CREATED_AT, UPDATED_AT, DELETED_AT, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        id, ts, ts, r.deleted ? timestampIn(r.month, r.day + 1) : null,
+        id, ws, ts, ts, r.deleted ? timestampIn(r.month, r.day + 1) : null,
         r.kind, r.category, r.group?.id ?? null, r.name, Math.round(r.amount * 100) / 100, r.month,
         Math.min(r.day, daysInMonth(r.month)), r.notes ?? null, r.recurring ? 1 : 0, r.tags ?? null, r.goal ?? null,
       ],
@@ -207,16 +219,16 @@ const result = db.transaction((tx) => {
     if (r.deleted) tx.run("INSERT INTO LEDGER_AUDIT (ID, LEDGER_ID, ACTION, BEFORE_JSON, AFTER_JSON, AT) VALUES (?, ?, 'delete', ?, ?, ?)", [randomUUID(), id, snap, snap, timestampIn(r.month, r.day + 1)]);
   }
 
-  for (const [cat, amt] of budgets) tx.run("INSERT INTO BUDGET (CATEGORY, AMOUNT) VALUES (?, ?)", [cat, amt]);
+  for (const [cat, amt] of budgets) tx.run("INSERT INTO BUDGET (WORKSPACE_ID, CATEGORY, AMOUNT) VALUES (?, ?, ?)", [ws, cat, amt]);
   // Budget history: groceries cap was raised in April 2026, everything else flat.
   for (const month of months) {
     for (const [cat, amt] of budgets) {
       const historic = cat === "groceries" && month < "2026-04" ? 400 : amt;
-      tx.run("INSERT INTO BUDGET_HISTORY (MONTH, CATEGORY, AMOUNT) VALUES (?, ?, ?)", [month, cat, historic]);
+      tx.run("INSERT INTO BUDGET_HISTORY (WORKSPACE_ID, MONTH, CATEGORY, AMOUNT) VALUES (?, ?, ?, ?)", [ws, month, cat, historic]);
     }
   }
   for (const [p, cat, g, prio] of patterns) {
-    tx.run("INSERT INTO IMPORT_PATTERN (ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY) VALUES (?, ?, ?, ?, ?)", [randomUUID(), p, cat, g?.id ?? null, prio]);
+    tx.run("INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY) VALUES (?, ?, ?, ?, ?, ?)", [randomUUID(), ws, p, cat, g?.id ?? null, prio]);
   }
 
   return {

@@ -4,9 +4,8 @@ import {
   SESSION_TTL_SECONDS,
   createSessionToken,
   getSessionSecret,
+  parseSessionTokenWithCurrentSecret,
   sessionCookieOptions,
-  sessionTokenExpiry,
-  verifySessionTokenWithCurrentSecret,
 } from "@/lib/session";
 
 // Proxy runs on the Node.js runtime in Next 16, so we can verify the HMAC
@@ -32,18 +31,16 @@ const REFRESH_WHEN_REMAINING_MS = SESSION_TTL_SECONDS * 500;
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(SESSION_COOKIE)?.value;
-  const authenticated = verifySessionTokenWithCurrentSecret(token);
+  const claims = parseSessionTokenWithCurrentSecret(token);
+  const authenticated = claims !== null;
 
   if (pathname === "/login" && authenticated) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
   if (isPublic(pathname) || authenticated) {
     const response = NextResponse.next();
-    if (authenticated && token) {
-      const exp = sessionTokenExpiry(token);
-      if (exp !== null && exp * 1000 - Date.now() < REFRESH_WHEN_REMAINING_MS) {
-        response.cookies.set(SESSION_COOKIE, createSessionToken(getSessionSecret()), sessionCookieOptions(process.env.NODE_ENV === "production"));
-      }
+    if (claims && claims.exp * 1000 - Date.now() < REFRESH_WHEN_REMAINING_MS) {
+      response.cookies.set(SESSION_COOKIE, createSessionToken(getSessionSecret(), claims), sessionCookieOptions(process.env.NODE_ENV === "production"));
     }
     return response;
   }

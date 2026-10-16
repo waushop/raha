@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
@@ -17,6 +18,7 @@ export default async function ComparePage({
   searchParams: Promise<{ m1?: string; m2?: string }>;
 }) {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   const params = await searchParams;
   const thisMonth = currentMonth();
 
@@ -26,16 +28,16 @@ export default async function ComparePage({
   // Category totals
   const [catRows] = await db.execute(
     `SELECT CATEGORY, MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH IN (?, ?)
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH IN (?, ?)
      GROUP BY CATEGORY, MONTH ORDER BY TOTAL DESC`,
-    [m1, m2]
+    [ws, m1, m2]
   );
   const catData = catRows as { CATEGORY: CategoryKey; MONTH: string; TOTAL: number }[];
 
   // Month totals
   const [totalRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
-    [m1, m2]
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
+    [ws, m1, m2]
   );
   const totals = totalRows as { MONTH: string; TOTAL: number; CNT: number }[];
   const t1 = totals.find(r => r.MONTH === m1);
@@ -43,8 +45,8 @@ export default async function ComparePage({
 
   // Income for both months (shown only when either has any)
   const [incomeRows] = await db.execute(
-    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE KIND = 'income' AND DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
-    [m1, m2]
+    "SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'income' AND DELETED_AT IS NULL AND MONTH IN (?, ?) GROUP BY MONTH",
+    [ws, m1, m2]
   );
   const incomeOf = (m: string) => (incomeRows as { MONTH: string; TOTAL: number }[]).find(r => r.MONTH === m)?.TOTAL ?? 0;
   const hasIncome = incomeOf(m1) > 0 || incomeOf(m2) > 0;
@@ -65,7 +67,7 @@ export default async function ComparePage({
 
   // Available months for selectors
   const [monthsRows] = await db.execute(
-    "SELECT DISTINCT MONTH FROM LEDGER WHERE DELETED_AT IS NULL ORDER BY MONTH DESC"
+    "SELECT DISTINCT MONTH FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH DESC", [ws]
   );
   const availableMonths = (monthsRows as { MONTH: string }[]).map(r => r.MONTH);
 

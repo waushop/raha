@@ -14,7 +14,7 @@ describe("schema", () => {
   test("fresh database gets every table, index and trigger", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
-    assert.deepEqual(tableNames(db), ["APP_SETTING", "BUDGET", "BUDGET_HISTORY", "CATEGORY_GROUP", "IMPORT_PATTERN", "LEDGER", "LEDGER_AUDIT", "LEDGER_TAG", "SAVINGS_GOAL"]);
+    assert.deepEqual(tableNames(db), ["APP_SETTING", "BUDGET", "BUDGET_HISTORY", "CATEGORY_GROUP", "IMPORT_PATTERN", "LEDGER", "LEDGER_AUDIT", "LEDGER_TAG", "SAVINGS_GOAL", "USER", "WORKSPACE", "WORKSPACE_MEMBER"]);
     assert.ok(columns(db, "LEDGER").includes("KIND"));
     assert.ok(columns(db, "LEDGER").includes("DAY"));
     assert.ok(columns(db, "LEDGER").includes("GOAL_ID"));
@@ -27,7 +27,7 @@ describe("schema", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
     initSchema(db);
-    assert.equal(tableNames(db).length, 9);
+    assert.equal(tableNames(db).length, 12);
   });
 
   test("migrates a pre-income database: renames tables and adds KIND", () => {
@@ -74,6 +74,29 @@ describe("schema", () => {
     db.exec("UPDATE LEDGER SET DAY = 5 WHERE ID = 't1'");
     const row = db.prepare("SELECT UPDATED_AT FROM LEDGER WHERE ID = 't1'").get() as { UPDATED_AT: string };
     assert.notEqual(row.UPDATED_AT, "2020-01-01 00:00:00");
+  });
+
+  test("single-user database becomes one workspace owned by the old PIN's user", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(`CREATE TABLE APP_SETTING (NAME TEXT PRIMARY KEY, VALUE TEXT NOT NULL, UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+    db.exec(`INSERT INTO APP_SETTING (NAME, VALUE) VALUES ('pin_hash', 'legacyhash')`);
+    db.exec(`CREATE TABLE LEDGER (ID TEXT PRIMARY KEY, CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      DELETED_AT TEXT, KIND TEXT NOT NULL DEFAULT 'expense', CATEGORY TEXT NOT NULL DEFAULT 'other', GROUP_ID TEXT, NAME TEXT NOT NULL,
+      AMOUNT REAL NOT NULL, MONTH TEXT NOT NULL, NOTES TEXT, IS_RECURRING INTEGER NOT NULL DEFAULT 0, TAGS TEXT)`);
+    db.exec(`INSERT INTO LEDGER (ID, NAME, AMOUNT, MONTH) VALUES ('l1', 'Rent', 900, '2026-01')`);
+    db.exec(`CREATE TABLE BUDGET (CATEGORY TEXT NOT NULL PRIMARY KEY, AMOUNT REAL NOT NULL, UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+    db.exec(`INSERT INTO BUDGET (CATEGORY, AMOUNT) VALUES ('_total', 2500)`);
+    initSchema(db);
+
+    const user = db.prepare("SELECT NAME, PIN_HASH, IS_ADMIN FROM USER").get() as { NAME: string; PIN_HASH: string; IS_ADMIN: number };
+    assert.deepEqual({ ...user }, { NAME: "Owner", PIN_HASH: "legacyhash", IS_ADMIN: 1 });
+    const ws = db.prepare("SELECT w.ID FROM WORKSPACE w JOIN WORKSPACE_MEMBER m ON m.WORKSPACE_ID = w.ID").get() as { ID: string };
+    const row = db.prepare("SELECT WORKSPACE_ID FROM LEDGER WHERE ID = 'l1'").get() as { WORKSPACE_ID: string };
+    assert.equal(row.WORKSPACE_ID, ws.ID, "existing rows belong to the owner's workspace");
+    const budget = db.prepare("SELECT WORKSPACE_ID, AMOUNT FROM BUDGET WHERE CATEGORY = '_total'").get() as { WORKSPACE_ID: string; AMOUNT: number };
+    assert.deepEqual({ ...budget }, { WORKSPACE_ID: ws.ID, AMOUNT: 2500 }, "budget rebuilt with the workspace in its key");
+    initSchema(db);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM USER").get() as { n: number }).n, 1, "idempotent");
   });
 
   test("UPDATED_AT trigger fires on data changes but not on insert", () => {

@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
@@ -38,6 +39,7 @@ function daysLeftInMonth(): number {
 
 export default async function DashboardPage() {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   const thisMonth = currentMonth();
   const prevMonth = previousMonth();
   const now = new Date();
@@ -48,8 +50,8 @@ export default async function DashboardPage() {
   // This month totals
   const [thisRows] = await db.execute(
     `SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT
-     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL`,
-    [thisMonth]
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL`,
+    [ws, thisMonth]
   );
   const thisData = (thisRows as Array<{ TOTAL: number | null; CNT: number }>)[0];
   const thisTotal = thisData?.TOTAL ?? 0;
@@ -58,8 +60,8 @@ export default async function DashboardPage() {
   // Previous month totals
   const [prevRows] = await db.execute(
     `SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT
-     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL`,
-    [prevMonth]
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL`,
+    [ws, prevMonth]
   );
   const prevData = (prevRows as Array<{ TOTAL: number | null; CNT: number }>)[0];
   const prevTotal = prevData?.TOTAL ?? 0;
@@ -69,19 +71,19 @@ export default async function DashboardPage() {
   const sixMonthStart = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`;
   const [avgRows] = await db.execute(
     `SELECT CAST(SUM(AMOUNT) / COUNT(DISTINCT MONTH) AS REAL) AS AVG_MONTHLY
-     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?`,
-    [sixMonthStart, thisMonth]
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?`,
+    [ws, sixMonthStart, thisMonth]
   );
 
   // Income: this month + last month + net.
   const [thisIncomeRows] = await db.execute(
-    "SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE MONTH = ? AND KIND = 'income' AND DELETED_AT IS NULL",
-    [thisMonth],
+    "SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'income' AND DELETED_AT IS NULL",
+    [ws, thisMonth],
   );
   const thisIncome = (thisIncomeRows as Array<{ TOTAL: number | null }>)[0]?.TOTAL ?? 0;
   const [prevIncomeRows] = await db.execute(
-    "SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE MONTH = ? AND KIND = 'income' AND DELETED_AT IS NULL",
-    [prevMonth],
+    "SELECT CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'income' AND DELETED_AT IS NULL",
+    [ws, prevMonth],
   );
   const prevIncome = (prevIncomeRows as Array<{ TOTAL: number | null }>)[0]?.TOTAL ?? 0;
   const thisNet = thisIncome - thisTotal;
@@ -91,18 +93,18 @@ export default async function DashboardPage() {
   // This month categories
   const [catRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
-    [thisMonth]
+    [ws, thisMonth]
   );
   const categories = catRows as { CATEGORY: CategoryKey; TOTAL: number }[];
 
   // Previous month categories (for comparison)
   const [prevCatRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
-    [prevMonth]
+    [ws, prevMonth]
   );
   const prevCatMap = new Map<string, number>();
   for (const r of prevCatRows as { CATEGORY: string; TOTAL: number }[]) {
@@ -111,8 +113,8 @@ export default async function DashboardPage() {
 
   // Budgets + per-category pacing (this month). Viewing a month freezes its
   // budget snapshot so analytics can show budget vs actual later.
-  await ensureBudgetSnapshot(thisMonth);
-  const budgets = await getBudgets();
+  await ensureBudgetSnapshot(ws, thisMonth);
+  const budgets = await getBudgets(ws);
   const budgetCatList = (Object.entries(budgets.categories) as Array<[CategoryKey, number]>)
     .filter(([, amt]) => amt > 0)
     .map(([cat, amt]) => {
@@ -145,19 +147,20 @@ export default async function DashboardPage() {
   const [recurringRows] = await db.execute(
     `SELECT e.NAME, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT
      FROM LEDGER e
-     WHERE e.IS_RECURRING = 1 AND e.KIND = 'expense' AND e.DELETED_AT IS NULL
-       AND e.MONTH = (SELECT MAX(MONTH) FROM LEDGER WHERE IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH < ?)
-       AND e.NAME NOT IN (SELECT NAME FROM LEDGER WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL)
+     WHERE e.WORKSPACE_ID = ? AND e.IS_RECURRING = 1 AND e.KIND = 'expense' AND e.DELETED_AT IS NULL
+       AND e.MONTH = (SELECT MAX(MONTH) FROM LEDGER WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH < ?)
+       AND e.NAME NOT IN (SELECT NAME FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL)
      GROUP BY e.NAME, e.CATEGORY, e.AMOUNT`,
-    [thisMonth, thisMonth]
+    [ws, ws, thisMonth, ws, thisMonth]
   );
   const missingRecurring = recurringRows as { NAME: string; CATEGORY: CategoryKey; AMOUNT: number }[];
 
   // Recent entries (last 5, both kinds — visual indicator below)
   const [recentRows] = await db.execute(
     `SELECT ID, NAME, CATEGORY, KIND, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT
-     FROM LEDGER WHERE DELETED_AT IS NULL
-     ORDER BY CREATED_AT DESC LIMIT 5`
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL
+     ORDER BY CREATED_AT DESC LIMIT 5`,
+    [ws]
   );
   const recentExpenses = recentRows as { ID: string; NAME: string; CATEGORY: CategoryKey; KIND: "expense" | "income"; AMOUNT: number; MONTH: string; CREATED_AT: string }[];
 
@@ -168,7 +171,7 @@ export default async function DashboardPage() {
 
   // Predicted end-of-month: spent + bills still due + typical variable spend
   // for the days left (see lib/forecast.ts).
-  const variableHistory = await monthlyVariableTotals(sixMonthStart, thisMonth);
+  const variableHistory = await monthlyVariableTotals(ws, sixMonthStart, thisMonth);
   const forecast = forecastMonth({
     spent: thisTotal,
     dayOfMonth,
@@ -183,26 +186,26 @@ export default async function DashboardPage() {
   // Day-level spending this month (rows entered with a date)
   const [dailyRows] = await db.execute(
     `SELECT DAY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER
-     WHERE MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND DAY IS NOT NULL GROUP BY DAY`,
-    [thisMonth],
+     WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND DAY IS NOT NULL GROUP BY DAY`,
+    [ws, thisMonth],
   );
   const daily = (dailyRows as { DAY: number; TOTAL: number }[]).map((r) => ({ day: r.DAY, total: r.TOTAL }));
   const datedTotal = daily.reduce((s, d) => s + d.total, 0);
   const savingsRate = thisIncome > 0 ? ((thisIncome - thisTotal) / thisIncome) * 100 : null;
 
   // Heatmap data (all months, expenses only)
-  const heatmapData = (await monthlyTotals("expense")).map(r => ({ month: r.MONTH, total: r.TOTAL }));
+  const heatmapData = (await monthlyTotals(ws, "expense")).map(r => ({ month: r.MONTH, total: r.TOTAL }));
 
-  const goals = (await listGoals()).filter((g) => g.status !== "done").slice(0, 3);
+  const goals = (await listGoals(ws)).filter((g) => g.status !== "done").slice(0, 3);
 
   // Names that behave like subscriptions but aren't flagged yet
-  const candidates = await recurringCandidates(addMonths(thisMonth, -3));
+  const candidates = await recurringCandidates(ws, addMonths(thisMonth, -3));
 
   // Welcome screen is for *truly* fresh installs — no expenses AND no groups
   // yet. Once the user has any groups, drop the Welcome and render the regular
   // dashboard (zeros + 0-row cards) so they can navigate to / and start adding.
   const [groupCountRows] = await db.execute(
-    "SELECT COUNT(*) AS CNT FROM CATEGORY_GROUP WHERE DELETED_AT IS NULL"
+    "SELECT COUNT(*) AS CNT FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]
   );
   const groupCount = (groupCountRows as Array<{ CNT: number }>)[0]?.CNT ?? 0;
   const isNewUser =

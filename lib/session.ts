@@ -4,8 +4,11 @@
 // so that proxy.ts (which runs before any route and must stay cheap) can
 // verify cookies with the same code path the login action uses to mint them.
 //
-// Token layout:  v1.<expiresAtUnixSeconds>.<nonceHex>.<hmacHex>
-//   hmac = HMAC-SHA256(secret, "v1.<exp>.<nonce>")
+// Token layout:  v2.<expiresAtUnixSeconds>.<userId>.<sessionVersion>.<nonceHex>.<hmacHex>
+//   hmac = HMAC-SHA256(secret, "v2.<exp>.<userId>.<version>.<nonce>")
+// sessionVersion is bumped on the USER row when that user changes their PIN,
+// which invalidates only their own sessions (checked by requireAuth, which
+// has database access; the proxy only checks signature and expiry).
 //
 // The signing secret is 32 random bytes persisted next to the SQLite file
 // (`<dirname DB_PATH>/.auth-secret`). It is generated on first use and
@@ -24,16 +27,19 @@ export function sessionCookieOptions(secure: boolean) {
   return { httpOnly: true, secure, sameSite: "lax" as const, maxAge: SESSION_TTL_SECONDS, path: "/" };
 }
 
+export type SessionClaims = { userId: string; version: number };
+
 /** Expiry (unix seconds) baked into a token, or null if it is malformed. Does not verify. */
 export function sessionTokenExpiry(token: string | null | undefined): number | null {
   if (!token) return null;
   const parts = token.split(".");
-  if (parts.length !== 4 || parts[0] !== TOKEN_VERSION || !/^\d{1,12}$/.test(parts[1])) return null;
+  if (parts.length !== 6 || parts[0] !== TOKEN_VERSION || !/^\d{1,12}$/.test(parts[1])) return null;
   return Number(parts[1]);
 }
 
 const SECRET_BYTES = 32;
-const TOKEN_VERSION = "v1";
+const TOKEN_VERSION = "v2";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 let cachedSecret: Buffer | null = null;
 
@@ -99,49 +105,60 @@ function sign(secret: Buffer, payload: string): string {
 
 export function createSessionToken(
   secret: Buffer,
+  claims: SessionClaims,
   nowMs: number = Date.now(),
   ttlSeconds: number = SESSION_TTL_SECONDS,
 ): string {
   const exp = Math.floor(nowMs / 1000) + ttlSeconds;
   const nonce = randomBytes(16).toString("hex");
-  const payload = `${TOKEN_VERSION}.${exp}.${nonce}`;
+  const payload = `${TOKEN_VERSION}.${exp}.${claims.userId}.${claims.version}.${nonce}`;
   return `${payload}.${sign(secret, payload)}`;
 }
 
 /**
- * Pure verification: true only when the token is well-formed, unexpired,
- * and its signature matches `secret`. Never throws.
+ * Pure verification: the claims when the token is well-formed, unexpired
+ * and its signature matches `secret`; null otherwise. Never throws.
  */
-export function verifySessionToken(
+export function parseSessionToken(
   secret: Buffer,
   token: string | null | undefined,
   nowMs: number = Date.now(),
-): boolean {
-  if (!token) return false;
+): (SessionClaims & { exp: number }) | null {
+  if (!token) return null;
   const parts = token.split(".");
-  if (parts.length !== 4) return false;
-  const [version, expStr, nonce, sig] = parts;
-  if (version !== TOKEN_VERSION) return false;
-  if (!/^\d{1,12}$/.test(expStr)) return false;
-  if (!/^[0-9a-f]{32}$/.test(nonce)) return false;
-  if (!/^[0-9a-f]{64}$/.test(sig)) return false;
+  if (parts.length !== 6) return null;
+  const [version, expStr, userId, verStr, nonce, sig] = parts;
+  if (version !== TOKEN_VERSION) return null;
+  if (!/^\d{1,12}$/.test(expStr)) return null;
+  if (!UUID_RE.test(userId)) return null;
+  if (!/^\d{1,9}$/.test(verStr)) return null;
+  if (!/^[0-9a-f]{32}$/.test(nonce)) return null;
+  if (!/^[0-9a-f]{64}$/.test(sig)) return null;
 
   const exp = Number(expStr);
-  if (exp * 1000 <= nowMs) return false;
+  if (exp * 1000 <= nowMs) return null;
 
-  const expected = sign(secret, `${version}.${expStr}.${nonce}`);
+  const expected = sign(secret, `${version}.${expStr}.${userId}.${verStr}.${nonce}`);
   const a = Buffer.from(sig, "hex");
   const b = Buffer.from(expected, "hex");
-  return a.length === b.length && timingSafeEqual(a, b);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return { userId, version: Number(verStr), exp };
+}
+
+export function verifySessionToken(secret: Buffer, token: string | null | undefined, nowMs: number = Date.now()): boolean {
+  return parseSessionToken(secret, token, nowMs) !== null;
 }
 
 /**
- * Verifies against the cached secret, and on failure retries once with a
+ * Parses against the cached secret, and on failure retries once with a
  * freshly-read secret so a rotation done by another process is honoured
  * without a restart. Cheap on the happy path, one file read on a miss.
  */
+export function parseSessionTokenWithCurrentSecret(token: string | null | undefined, nowMs: number = Date.now()): (SessionClaims & { exp: number }) | null {
+  if (!token) return null;
+  return parseSessionToken(getSessionSecret(), token, nowMs) ?? parseSessionToken(getSessionSecret({ fresh: true }), token, nowMs);
+}
+
 export function verifySessionTokenWithCurrentSecret(token: string | null | undefined, nowMs: number = Date.now()): boolean {
-  if (!token) return false;
-  if (verifySessionToken(getSessionSecret(), token, nowMs)) return true;
-  return verifySessionToken(getSessionSecret({ fresh: true }), token, nowMs);
+  return parseSessionTokenWithCurrentSecret(token, nowMs) !== null;
 }

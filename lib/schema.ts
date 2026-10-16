@@ -1,5 +1,96 @@
 import type { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
 import { parseTags } from "./tags";
+
+// Every data row belongs to a WORKSPACE. Today each USER owns exactly one
+// personal workspace; a shared household workspace later is just another
+// WORKSPACE row with two WORKSPACE_MEMBER rows.
+const TENANT_TABLES = ["LEDGER", "CATEGORY_GROUP", "IMPORT_PATTERN", "SAVINGS_GOAL"] as const;
+
+const USER_TABLES = [
+  `CREATE TABLE IF NOT EXISTS USER (
+    ID              TEXT NOT NULL PRIMARY KEY,
+    CREATED_AT      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UPDATED_AT      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    DELETED_AT      TEXT,
+    NAME            TEXT NOT NULL,
+    PIN_HASH        TEXT NOT NULL,
+    IS_ADMIN        INTEGER NOT NULL DEFAULT 0,
+    SESSION_VERSION INTEGER NOT NULL DEFAULT 1,
+    SORT_ORDER      INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS WORKSPACE (
+    ID         TEXT NOT NULL PRIMARY KEY,
+    CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    NAME       TEXT NOT NULL,
+    KIND       TEXT NOT NULL DEFAULT 'personal'
+  )`,
+  `CREATE TABLE IF NOT EXISTS WORKSPACE_MEMBER (
+    WORKSPACE_ID TEXT NOT NULL,
+    USER_ID      TEXT NOT NULL,
+    ROLE         TEXT NOT NULL DEFAULT 'owner',
+    PRIMARY KEY (WORKSPACE_ID, USER_ID)
+  )`,
+];
+
+function hasColumn(sqlite: DatabaseSync, table: string, column: string): boolean {
+  return (sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some((c) => c.name === column);
+}
+
+/**
+ * One-shot move from the single-user world: the first workspace is created,
+ * the old APP_SETTING pin (or AUTH_PIN_HASH) becomes the "Owner" user, and
+ * every existing row is assigned to that workspace.
+ */
+function migrateWorkspaces(sqlite: DatabaseSync, tables: Set<string>): void {
+  for (const stmt of USER_TABLES) sqlite.exec(stmt);
+
+  const needsAssign = (t: string) => tables.has(t) && !hasColumn(sqlite, t, "WORKSPACE_ID");
+  const legacy = [...TENANT_TABLES, "BUDGET", "BUDGET_HISTORY"].some(needsAssign);
+  if (!legacy) return;
+
+  let workspaceId = (sqlite.prepare("SELECT ID FROM WORKSPACE ORDER BY CREATED_AT LIMIT 1").get() as { ID: string } | undefined)?.ID;
+  if (!workspaceId) {
+    workspaceId = randomUUID();
+    sqlite.prepare("INSERT INTO WORKSPACE (ID, NAME, KIND) VALUES (?, 'Personal', 'personal')").run(workspaceId);
+    const pin = tables.has("APP_SETTING")
+      ? (sqlite.prepare("SELECT VALUE FROM APP_SETTING WHERE NAME = 'pin_hash'").get() as { VALUE: string } | undefined)?.VALUE
+      : undefined;
+    const hash = pin ?? process.env.AUTH_PIN_HASH;
+    if (hash) {
+      const userId = randomUUID();
+      sqlite.prepare("INSERT INTO USER (ID, NAME, PIN_HASH, IS_ADMIN) VALUES (?, 'Owner', ?, 1)").run(userId, hash);
+      sqlite.prepare("INSERT INTO WORKSPACE_MEMBER (WORKSPACE_ID, USER_ID, ROLE) VALUES (?, ?, 'owner')").run(workspaceId, userId);
+    }
+  }
+
+  for (const t of TENANT_TABLES) {
+    if (!needsAssign(t)) continue;
+    sqlite.exec(`ALTER TABLE ${t} ADD COLUMN WORKSPACE_ID TEXT`);
+    sqlite.prepare(`UPDATE ${t} SET WORKSPACE_ID = ? WHERE WORKSPACE_ID IS NULL`).run(workspaceId);
+    if (t === "LEDGER") sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
+    if (t === "CATEGORY_GROUP") sqlite.exec("DROP TRIGGER IF EXISTS TRG_CATEGORY_GROUP_UPDATED_AT");
+    if (t === "SAVINGS_GOAL") sqlite.exec("DROP TRIGGER IF EXISTS TRG_SAVINGS_GOAL_UPDATED_AT");
+  }
+  // BUDGET / BUDGET_HISTORY keys gain the workspace, which means rebuilding.
+  if (needsAssign("BUDGET")) {
+    sqlite.exec("DROP TRIGGER IF EXISTS TRG_BUDGET_UPDATED_AT");
+    sqlite.exec(`CREATE TABLE BUDGET_NEW (
+      WORKSPACE_ID TEXT NOT NULL, CATEGORY TEXT NOT NULL, AMOUNT REAL NOT NULL,
+      UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (WORKSPACE_ID, CATEGORY))`);
+    sqlite.prepare("INSERT INTO BUDGET_NEW (WORKSPACE_ID, CATEGORY, AMOUNT, UPDATED_AT) SELECT ?, CATEGORY, AMOUNT, UPDATED_AT FROM BUDGET").run(workspaceId);
+    sqlite.exec("DROP TABLE BUDGET");
+    sqlite.exec("ALTER TABLE BUDGET_NEW RENAME TO BUDGET");
+  }
+  if (needsAssign("BUDGET_HISTORY")) {
+    sqlite.exec(`CREATE TABLE BUDGET_HISTORY_NEW (
+      WORKSPACE_ID TEXT NOT NULL, MONTH TEXT NOT NULL, CATEGORY TEXT NOT NULL, AMOUNT REAL NOT NULL,
+      CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (WORKSPACE_ID, MONTH, CATEGORY))`);
+    sqlite.prepare("INSERT INTO BUDGET_HISTORY_NEW (WORKSPACE_ID, MONTH, CATEGORY, AMOUNT, CREATED_AT) SELECT ?, MONTH, CATEGORY, AMOUNT, CREATED_AT FROM BUDGET_HISTORY").run(workspaceId);
+    sqlite.exec("DROP TABLE BUDGET_HISTORY");
+    sqlite.exec("ALTER TABLE BUDGET_HISTORY_NEW RENAME TO BUDGET_HISTORY");
+  }
+}
 
 // One-shot migrations (idempotent). Run before the CREATE … IF NOT EXISTS
 // block so renamed tables exist under their new names by the time the
@@ -30,6 +121,8 @@ function migrate(sqlite: DatabaseSync): void {
     tables.delete("EXPENSE_GROUP");
     tables.add("CATEGORY_GROUP");
   }
+
+  migrateWorkspaces(sqlite, tables);
 
   // Add LEDGER.KIND / LEDGER.DAY if it's a pre-existing table without the
   // columns. New installs get them from CREATE TABLE below.
@@ -72,11 +165,13 @@ function backfillTags(sqlite: DatabaseSync): void {
 }
 
 const STATEMENTS = [
+  ...USER_TABLES,
   `CREATE TABLE IF NOT EXISTS CATEGORY_GROUP (
     ID          TEXT NOT NULL PRIMARY KEY,
     CREATED_AT  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UPDATED_AT  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     DELETED_AT  TEXT,
+    WORKSPACE_ID TEXT,
     NAME        TEXT NOT NULL,
     EMOJI       TEXT,
     COLOR       TEXT NOT NULL DEFAULT 'blue',
@@ -87,6 +182,7 @@ const STATEMENTS = [
     CREATED_AT   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UPDATED_AT   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     DELETED_AT   TEXT,
+    WORKSPACE_ID TEXT,
     KIND         TEXT NOT NULL DEFAULT 'expense',
     CATEGORY     TEXT NOT NULL DEFAULT 'other',
     GROUP_ID     TEXT,
@@ -106,6 +202,7 @@ const STATEMENTS = [
     CREATED_AT      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UPDATED_AT      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     DELETED_AT      TEXT,
+    WORKSPACE_ID    TEXT,
     NAME            TEXT NOT NULL,
     EMOJI           TEXT,
     TARGET_AMOUNT   REAL NOT NULL,
@@ -119,6 +216,7 @@ const STATEMENTS = [
   // Composite indexes for the two query shapes every page uses: spending
   // aggregates (KIND + live + month range) and "recent" lists.
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_KIND_LIVE_MONTH ON LEDGER(KIND, DELETED_AT, MONTH)`,
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_WS ON LEDGER(WORKSPACE_ID, KIND, DELETED_AT, MONTH)`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_LIVE_CREATED    ON LEDGER(DELETED_AT, CREATED_AT)`,
   `CREATE TABLE IF NOT EXISTS LEDGER_TAG (
     LEDGER_ID TEXT NOT NULL,
@@ -142,15 +240,17 @@ const STATEMENTS = [
   // edited and lazily when a month is first viewed, so "budget vs actual"
   // can be charted after the budget itself has moved on.
   `CREATE TABLE IF NOT EXISTS BUDGET_HISTORY (
+    WORKSPACE_ID TEXT NOT NULL,
     MONTH      TEXT NOT NULL,
     CATEGORY   TEXT NOT NULL,
     AMOUNT     REAL NOT NULL,
     CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (MONTH, CATEGORY)
+    PRIMARY KEY (WORKSPACE_ID, MONTH, CATEGORY)
   )`,
   `CREATE TABLE IF NOT EXISTS IMPORT_PATTERN (
     ID          TEXT NOT NULL PRIMARY KEY,
     CREATED_AT  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    WORKSPACE_ID TEXT,
     PATTERN     TEXT NOT NULL,
     CATEGORY    TEXT NOT NULL,
     GROUP_ID    TEXT,
@@ -165,9 +265,11 @@ const STATEMENTS = [
   // BUDGET.CATEGORY uses the category key from types/expense.ts, except for
   // the pseudo-key "_total" which holds the overall monthly cap.
   `CREATE TABLE IF NOT EXISTS BUDGET (
-    CATEGORY   TEXT NOT NULL PRIMARY KEY,
+    WORKSPACE_ID TEXT NOT NULL,
+    CATEGORY   TEXT NOT NULL,
     AMOUNT     REAL NOT NULL,
-    UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    UPDATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (WORKSPACE_ID, CATEGORY)
   )`,
   // Triggers replicate MySQL's ON UPDATE CURRENT_TIMESTAMP. Using AFTER UPDATE OF
   // a non-timestamp column avoids the recursive trigger that would fire when the
@@ -190,6 +292,12 @@ const STATEMENTS = [
    BEGIN
      UPDATE SAVINGS_GOAL SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
    END`,
+  `CREATE TRIGGER IF NOT EXISTS TRG_USER_UPDATED_AT
+   AFTER UPDATE OF NAME, PIN_HASH, IS_ADMIN, SESSION_VERSION, SORT_ORDER, DELETED_AT
+   ON USER
+   BEGIN
+     UPDATE USER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
+   END`,
   `CREATE TRIGGER IF NOT EXISTS TRG_APP_SETTING_UPDATED_AT
    AFTER UPDATE OF VALUE
    ON APP_SETTING
@@ -200,8 +308,12 @@ const STATEMENTS = [
    AFTER UPDATE OF AMOUNT
    ON BUDGET
    BEGIN
-     UPDATE BUDGET SET UPDATED_AT = CURRENT_TIMESTAMP WHERE CATEGORY = NEW.CATEGORY;
+     UPDATE BUDGET SET UPDATED_AT = CURRENT_TIMESTAMP WHERE WORKSPACE_ID = NEW.WORKSPACE_ID AND CATEGORY = NEW.CATEGORY;
    END`,
+  // Workspace indexes last: every table they reference exists by now.
+  `CREATE INDEX IF NOT EXISTS IDX_CATEGORY_GROUP_WS ON CATEGORY_GROUP(WORKSPACE_ID)`,
+  `CREATE INDEX IF NOT EXISTS IDX_IMPORT_PATTERN_WS ON IMPORT_PATTERN(WORKSPACE_ID)`,
+  `CREATE INDEX IF NOT EXISTS IDX_SAVINGS_GOAL_WS ON SAVINGS_GOAL(WORKSPACE_ID)`,
 ];
 
 export function initSchema(sqlite: DatabaseSync): void {

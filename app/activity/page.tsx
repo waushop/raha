@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
@@ -61,13 +62,16 @@ function describeChanges(before: AuditSnapshot | null, after: AuditSnapshot | nu
 
 export default async function ActivityPage() {
   await connection();
+  const { workspaceId: ws } = await currentContext();
 
   // Real history from the audit table; databases from before it existed fall
   // back to a timeline derived from CREATED_AT / UPDATED_AT / DELETED_AT.
   const [auditRows] = await db.execute(
     `SELECT a.ID, a.LEDGER_ID, a.ACTION, a.BEFORE_JSON, a.AFTER_JSON, a.AT, (e.DELETED_AT IS NOT NULL) AS IS_DELETED
-     FROM LEDGER_AUDIT a LEFT JOIN LEDGER e ON e.ID = a.LEDGER_ID
+     FROM LEDGER_AUDIT a JOIN LEDGER e ON e.ID = a.LEDGER_ID
+     WHERE e.WORKSPACE_ID = ?
      ORDER BY a.AT DESC, a.ROWID DESC LIMIT 60`,
+    [ws],
   );
   let events: Event[] = (auditRows as Array<{ ID: string; LEDGER_ID: string; ACTION: AuditAction; BEFORE_JSON: string | null; AFTER_JSON: string | null; AT: string; IS_DELETED: number }>).map((r) => {
     const before = r.BEFORE_JSON ? (JSON.parse(r.BEFORE_JSON) as AuditSnapshot) : null;
@@ -89,13 +93,13 @@ export default async function ActivityPage() {
 
   if (events.length === 0) {
     const [added] = await db.execute(
-      "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT AS AT, DELETED_AT FROM LEDGER ORDER BY CREATED_AT DESC LIMIT 30",
+      "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT AS AT, DELETED_AT FROM LEDGER WHERE WORKSPACE_ID = ? ORDER BY CREATED_AT DESC LIMIT 30", [ws],
     );
     const [deleted] = await db.execute(
-      "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DELETED_AT AS AT FROM LEDGER WHERE DELETED_AT IS NOT NULL ORDER BY DELETED_AT DESC LIMIT 15",
+      "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DELETED_AT AS AT FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NOT NULL ORDER BY DELETED_AT DESC LIMIT 15", [ws],
     );
     const [updated] = await db.execute(
-      "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, UPDATED_AT AS AT FROM LEDGER WHERE DELETED_AT IS NULL AND UPDATED_AT > CREATED_AT ORDER BY UPDATED_AT DESC LIMIT 15",
+      "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, UPDATED_AT AS AT FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND UPDATED_AT > CREATED_AT ORDER BY UPDATED_AT DESC LIMIT 15", [ws],
     );
     type Row = { ID: string; NAME: string; CATEGORY: CategoryKey; AMOUNT: number; MONTH: string; AT: string; DELETED_AT?: string | null };
     const mk = (action: AuditAction) => (r: Row): Event => ({

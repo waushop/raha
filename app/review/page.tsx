@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import Link from "next/link";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import { addMonths, currentMonth, isValidMonth, monthLabel, daysInMonth } from "@/lib/months";
@@ -16,17 +17,18 @@ const Delta = ({ value, invert = false }: { value: number | null; invert?: boole
 
 type Cat = { CATEGORY: CategoryKey; TOTAL: number };
 
-async function sum(kind: "expense" | "income", month: string): Promise<number> {
-  const [r] = await db.execute("SELECT CAST(SUM(AMOUNT) AS REAL) AS T FROM LEDGER WHERE KIND = ? AND MONTH = ? AND DELETED_AT IS NULL", [kind, month]);
+async function sum(ws: string, kind: "expense" | "income", month: string): Promise<number> {
+  const [r] = await db.execute("SELECT CAST(SUM(AMOUNT) AS REAL) AS T FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = ? AND MONTH = ? AND DELETED_AT IS NULL", [ws, kind, month]);
   return (r as Array<{ T: number | null }>)[0]?.T ?? 0;
 }
-async function categories(month: string): Promise<Cat[]> {
-  const [r] = await db.execute("SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL GROUP BY CATEGORY ORDER BY TOTAL DESC", [month]);
+async function categories(ws: string, month: string): Promise<Cat[]> {
+  const [r] = await db.execute("SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL GROUP BY CATEGORY ORDER BY TOTAL DESC", [ws, month]);
   return r as Cat[];
 }
 
 export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   const { month: param } = await searchParams;
   // A review is of a finished month, so default to last month.
   const month = isValidMonth(param) ? param : addMonths(currentMonth(), -1);
@@ -34,18 +36,18 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   const sixStart = addMonths(month, -6);
 
   const [spent, income, prevSpent, prevIncome, cats, prevCats] = await Promise.all([
-    sum("expense", month), sum("income", month), sum("expense", prev), sum("income", prev), categories(month), categories(prev),
+    sum(ws, "expense", month), sum(ws, "income", month), sum(ws, "expense", prev), sum(ws, "income", prev), categories(ws, month), categories(ws, prev),
   ]);
   const [avgRows] = await db.execute(
-    "SELECT CAST(SUM(AMOUNT) / NULLIF(COUNT(DISTINCT MONTH), 0) AS REAL) AS A FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?",
-    [sixStart, month],
+    "SELECT CAST(SUM(AMOUNT) / NULLIF(COUNT(DISTINCT MONTH), 0) AS REAL) AS A FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?",
+    [ws, sixStart, month],
   );
   const avg6 = (avgRows as Array<{ A: number | null }>)[0]?.A ?? 0;
   const net = income - spent;
   const savingsRate = income > 0 ? (net / income) * 100 : null;
 
   // Budget as it stood that month
-  const [current, history] = await Promise.all([getBudgets(), getBudgetHistory()]);
+  const [current, history] = await Promise.all([getBudgets(ws), getBudgetHistory(ws)]);
   const budget = resolveBudgetsFor(month, history, current);
   const overCats = cats
     .map((c) => ({ ...c, budget: budget.categories[c.CATEGORY] ?? 0 }))
@@ -55,34 +57,34 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
 
   // Largest expenses, new names, busiest day, tags, goals, recurring changes
   const [bigRows] = await db.execute(
-    "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL ORDER BY AMOUNT DESC LIMIT 5", [month]);
+    "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL ORDER BY AMOUNT DESC LIMIT 5", [ws, month]);
   const biggest = bigRows as Array<{ ID: string; NAME: string; CATEGORY: CategoryKey; AMOUNT: number }>;
   const [newRows] = await db.execute(
     `SELECT NAME, CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS AMOUNT FROM LEDGER e
-     WHERE KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL
-       AND NOT EXISTS (SELECT 1 FROM LEDGER p WHERE p.NAME = e.NAME AND p.DELETED_AT IS NULL AND p.MONTH >= ? AND p.MONTH < ?)
-     GROUP BY NAME ORDER BY AMOUNT DESC LIMIT 5`, [month, sixStart, month]);
+     WHERE e.WORKSPACE_ID = ? AND KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL
+       AND NOT EXISTS (SELECT 1 FROM LEDGER p WHERE p.WORKSPACE_ID = ? AND p.NAME = e.NAME AND p.DELETED_AT IS NULL AND p.MONTH >= ? AND p.MONTH < ?)
+     GROUP BY NAME ORDER BY AMOUNT DESC LIMIT 5`, [ws, month, ws, sixStart, month]);
   const newNames = newRows as Array<{ NAME: string; CATEGORY: CategoryKey; AMOUNT: number }>;
   const [dayRows] = await db.execute(
-    "SELECT DAY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS N FROM LEDGER WHERE KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL AND DAY IS NOT NULL GROUP BY DAY ORDER BY TOTAL DESC LIMIT 1", [month]);
+    "SELECT DAY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS N FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND MONTH = ? AND DELETED_AT IS NULL AND DAY IS NOT NULL GROUP BY DAY ORDER BY TOTAL DESC LIMIT 1", [ws, month]);
   const busiest = (dayRows as Array<{ DAY: number; TOTAL: number; N: number }>)[0];
   const [tagRows] = await db.execute(
     `SELECT t.TAG, CAST(SUM(e.AMOUNT) AS REAL) AS TOTAL FROM LEDGER_TAG t JOIN LEDGER e ON e.ID = t.LEDGER_ID
-     WHERE e.KIND = 'expense' AND e.MONTH = ? AND e.DELETED_AT IS NULL GROUP BY t.TAG ORDER BY TOTAL DESC LIMIT 5`, [month]);
+     WHERE e.WORKSPACE_ID = ? AND e.KIND = 'expense' AND e.MONTH = ? AND e.DELETED_AT IS NULL GROUP BY t.TAG ORDER BY TOTAL DESC LIMIT 5`, [ws, month]);
   const tags = tagRows as Array<{ TAG: string; TOTAL: number }>;
   const [goalRows] = await db.execute(
     `SELECT g.NAME, g.EMOJI, CAST(SUM(e.AMOUNT) AS REAL) AS AMOUNT FROM LEDGER e JOIN SAVINGS_GOAL g ON g.ID = e.GOAL_ID AND g.DELETED_AT IS NULL
-     WHERE e.MONTH = ? AND e.DELETED_AT IS NULL GROUP BY g.ID ORDER BY AMOUNT DESC`, [month]);
+     WHERE e.WORKSPACE_ID = ? AND e.MONTH = ? AND e.DELETED_AT IS NULL GROUP BY g.ID ORDER BY AMOUNT DESC`, [ws, month]);
   const goalContribs = goalRows as Array<{ NAME: string; EMOJI: string | null; AMOUNT: number }>;
   const [recRows] = await db.execute(
     `SELECT a.NAME, CAST(a.AMOUNT AS REAL) AS NOW_AMOUNT, CAST(b.AMOUNT AS REAL) AS PREV_AMOUNT FROM LEDGER a
-     JOIN LEDGER b ON b.NAME = a.NAME AND b.MONTH = ? AND b.IS_RECURRING = 1 AND b.DELETED_AT IS NULL AND b.KIND = 'expense'
-     WHERE a.MONTH = ? AND a.IS_RECURRING = 1 AND a.DELETED_AT IS NULL AND a.KIND = 'expense' AND ABS(a.AMOUNT - b.AMOUNT) > 0.01
-     GROUP BY a.NAME ORDER BY ABS(a.AMOUNT - b.AMOUNT) DESC LIMIT 5`, [prev, month]);
+     JOIN LEDGER b ON b.WORKSPACE_ID = a.WORKSPACE_ID AND b.NAME = a.NAME AND b.MONTH = ? AND b.IS_RECURRING = 1 AND b.DELETED_AT IS NULL AND b.KIND = 'expense'
+     WHERE a.WORKSPACE_ID = ? AND a.MONTH = ? AND a.IS_RECURRING = 1 AND a.DELETED_AT IS NULL AND a.KIND = 'expense' AND ABS(a.AMOUNT - b.AMOUNT) > 0.01
+     GROUP BY a.NAME ORDER BY ABS(a.AMOUNT - b.AMOUNT) DESC LIMIT 5`, [prev, ws, month]);
   const priceChanges = recRows as Array<{ NAME: string; NOW_AMOUNT: number; PREV_AMOUNT: number }>;
   const [missingRows] = await db.execute(
-    `SELECT NAME, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE MONTH = ? AND IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL
-       AND NAME NOT IN (SELECT NAME FROM LEDGER WHERE MONTH = ? AND DELETED_AT IS NULL) GROUP BY NAME`, [prev, month]);
+    `SELECT NAME, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL
+       AND NAME NOT IN (SELECT NAME FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL) GROUP BY NAME`, [ws, prev, ws, month]);
   const missing = missingRows as Array<{ NAME: string; AMOUNT: number }>;
 
   const prevCatMap = new Map(prevCats.map((c) => [c.CATEGORY, c.TOTAL]));

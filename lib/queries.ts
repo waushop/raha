@@ -6,9 +6,9 @@ import type { Kind } from "@/types/expense";
 export type MonthTotal = { MONTH: string; TOTAL: number };
 
 /** Per-month sums of live rows of one kind, optionally bounded (inclusive). */
-export async function monthlyTotals(kind: Kind, start?: string, end?: string): Promise<MonthTotal[]> {
-  const where = ["KIND = ?", "DELETED_AT IS NULL"];
-  const args: unknown[] = [kind];
+export async function monthlyTotals(ws: string, kind: Kind, start?: string, end?: string): Promise<MonthTotal[]> {
+  const where = ["WORKSPACE_ID = ?", "KIND = ?", "DELETED_AT IS NULL"];
+  const args: unknown[] = [ws, kind];
   if (start) { where.push("MONTH >= ?"); args.push(start); }
   if (end) { where.push("MONTH <= ?"); args.push(end); }
   const [rows] = await db.execute(
@@ -19,12 +19,12 @@ export async function monthlyTotals(kind: Kind, start?: string, end?: string): P
 }
 
 /** Per-month totals of non-recurring expenses — the "variable" part of spending. */
-export async function monthlyVariableTotals(start: string, endExclusive: string): Promise<MonthTotal[]> {
+export async function monthlyVariableTotals(ws: string, start: string, endExclusive: string): Promise<MonthTotal[]> {
   const [rows] = await db.execute(
     `SELECT MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER
-     WHERE KIND = 'expense' AND IS_RECURRING = 0 AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?
+     WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND IS_RECURRING = 0 AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH < ?
      GROUP BY MONTH ORDER BY MONTH`,
-    [start, endExclusive],
+    [ws, start, endExclusive],
   );
   return rows as MonthTotal[];
 }
@@ -36,16 +36,16 @@ export type RecurringCandidate = { NAME: string; CATEGORY: string; MONTHS: numbe
  * month, and aren't flagged recurring yet. Weekly shopping (several rows a
  * month) is excluded on purpose.
  */
-export async function recurringCandidates(sinceMonth: string): Promise<RecurringCandidate[]> {
+export async function recurringCandidates(ws: string, sinceMonth: string): Promise<RecurringCandidate[]> {
   const [rows] = await db.execute(
     `SELECT NAME, CATEGORY, COUNT(DISTINCT MONTH) AS MONTHS, CAST(AVG(AMOUNT) AS REAL) AS AVG_AMOUNT, MAX(MONTH) AS LAST_MONTH
      FROM LEDGER
-     WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ?
-       AND NAME NOT IN (SELECT NAME FROM LEDGER WHERE IS_RECURRING = 1 AND DELETED_AT IS NULL)
+     WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ?
+       AND NAME NOT IN (SELECT NAME FROM LEDGER WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND DELETED_AT IS NULL)
      GROUP BY NAME
      HAVING MONTHS >= 3 AND COUNT(*) <= MONTHS * 1.5
      ORDER BY AVG_AMOUNT DESC LIMIT 6`,
-    [sinceMonth],
+    [ws, sinceMonth, ws],
   );
   return rows as RecurringCandidate[];
 }

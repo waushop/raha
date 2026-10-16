@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 import db from "@/lib/db";
+import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
@@ -17,6 +18,7 @@ type CatMonth = { CATEGORY: CategoryKey; MONTH: string; TOTAL: number };
 
 export default async function AnalyticsPage() {
   await connection();
+  const { workspaceId: ws } = await currentContext();
   // Last 12 months of data
   const now = new Date();
   const endMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -24,32 +26,32 @@ export default async function AnalyticsPage() {
   const startMonth = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`;
 
   // Monthly totals
-  const monthlyTotals = await monthlyTotalsQuery("expense", startMonth, endMonth);
+  const monthlyTotals = await monthlyTotalsQuery(ws, "expense", startMonth, endMonth);
 
   // Category per month
   const [catMonthRows] = await db.execute(
     `SELECT CATEGORY, MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY CATEGORY, MONTH ORDER BY CATEGORY, MONTH`,
-    [startMonth, endMonth]
+    [ws, startMonth, endMonth]
   );
   const catMonthData = catMonthRows as CatMonth[];
 
   // Category totals (12 months)
   const [catTotalRows] = await db.execute(
     `SELECT CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT
-     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY CATEGORY ORDER BY TOTAL DESC`,
-    [startMonth, endMonth]
+    [ws, startMonth, endMonth]
   );
   const categoryTotals = catTotalRows as { CATEGORY: CategoryKey; TOTAL: number; CNT: number }[];
 
   // Top 10 most expensive individual items
   const [topItems] = await db.execute(
     `SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH
-     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      ORDER BY AMOUNT DESC LIMIT 10`,
-    [startMonth, endMonth]
+    [ws, startMonth, endMonth]
   );
   const topExpenses = topItems as { ID: string; NAME: string; CATEGORY: CategoryKey; AMOUNT: number; MONTH: string }[];
 
@@ -57,23 +59,23 @@ export default async function AnalyticsPage() {
   const [recurringRows] = await db.execute(
     `SELECT NAME, CATEGORY, CAST(AVG(AMOUNT) AS REAL) AS AVG_AMOUNT,
             COUNT(DISTINCT MONTH) AS MONTHS, CAST(SUM(AMOUNT) AS REAL) AS TOTAL
-     FROM LEDGER WHERE IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
      GROUP BY NAME, CATEGORY ORDER BY TOTAL DESC LIMIT 15`,
-    [startMonth, endMonth]
+    [ws, startMonth, endMonth]
   );
   const recurringExpenses = recurringRows as { NAME: string; CATEGORY: CategoryKey; AVG_AMOUNT: number; MONTHS: number; TOTAL: number }[];
 
   // Income per month (12 months) → savings rate
-  const monthlyIncome = await monthlyTotalsQuery("income", startMonth, endMonth);
+  const monthlyIncome = await monthlyTotalsQuery(ws, "income", startMonth, endMonth);
   const incomeTotal = monthlyIncome.reduce((s, m) => s + m.TOTAL, 0);
 
   // Tags (12 months, expenses)
   const [tagRows] = await db.execute(
     `SELECT t.TAG, COUNT(*) AS CNT, CAST(SUM(e.AMOUNT) AS REAL) AS TOTAL
      FROM LEDGER_TAG t JOIN LEDGER e ON e.ID = t.LEDGER_ID
-     WHERE e.KIND = 'expense' AND e.DELETED_AT IS NULL AND e.MONTH >= ? AND e.MONTH <= ?
+     WHERE e.WORKSPACE_ID = ? AND e.KIND = 'expense' AND e.DELETED_AT IS NULL AND e.MONTH >= ? AND e.MONTH <= ?
      GROUP BY t.TAG ORDER BY TOTAL DESC LIMIT 12`,
-    [startMonth, endMonth]
+    [ws, startMonth, endMonth]
   );
   const tagTotals = tagRows as { TAG: string; CNT: number; TOTAL: number }[];
 
@@ -93,7 +95,7 @@ export default async function AnalyticsPage() {
   }
 
   // Budget vs actual per month, using the budget that was in force then.
-  const [currentBudgets, budgetHistory] = await Promise.all([getBudgets(), getBudgetHistory()]);
+  const [currentBudgets, budgetHistory] = await Promise.all([getBudgets(ws), getBudgetHistory(ws)]);
   const budgetByMonth = new Map(allMonths.map((m) => [m, resolveBudgetsFor(m, budgetHistory, currentBudgets)]));
   const spentByMonth = new Map(monthlyTotals.map((m) => [m.MONTH, m.TOTAL]));
   const budgetedCategories = [...new Set(allMonths.flatMap((m) => Object.keys(budgetByMonth.get(m)!.categories)))] as CategoryKey[];
@@ -106,7 +108,7 @@ export default async function AnalyticsPage() {
 
   // All-time stats
   const [allTimeRows] = await db.execute(
-    "SELECT COUNT(*) AS CNT, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(DISTINCT MONTH) AS MONTHS FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL"
+    "SELECT COUNT(*) AS CNT, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(DISTINCT MONTH) AS MONTHS FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL", [ws]
   );
   const allTime = (allTimeRows as Array<{ CNT: number; TOTAL: number | null; MONTHS: number }>)[0];
   const allTimeTotal = allTime?.TOTAL ?? 0;
@@ -115,7 +117,7 @@ export default async function AnalyticsPage() {
   const avgPerExpense = allTimeCount > 0 ? allTimeTotal / allTimeCount : 0;
 
   // Max/min over every month, not just the 12 shown above.
-  const allMonthTotals: MonthTotal[] = await monthlyTotalsQuery("expense");
+  const allMonthTotals: MonthTotal[] = await monthlyTotalsQuery(ws, "expense");
   const mostExpensive = allMonthTotals.length > 0 ? allMonthTotals.reduce((max, m) => m.TOTAL > max.TOTAL ? m : max) : null;
   const cheapest = allMonthTotals.length > 0 ? allMonthTotals.reduce((min, m) => m.TOTAL < min.TOTAL ? m : min) : null;
 

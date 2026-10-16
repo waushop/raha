@@ -31,11 +31,12 @@ function monthsBetween(from: string, to: string): number {
   return (ty - fy) * 12 + (tm - fm);
 }
 
-export async function listGoals(): Promise<GoalProgress[]> {
+export async function listGoals(ws: string): Promise<GoalProgress[]> {
   const [goalRows] = await db.execute(
     `SELECT ID, NAME, EMOJI, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH,
             CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT, CREATED_AT
-     FROM SAVINGS_GOAL WHERE DELETED_AT IS NULL ORDER BY CREATED_AT`,
+     FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`,
+    [ws],
   );
   const goals = goalRows as Goal[];
   if (goals.length === 0) return [];
@@ -45,8 +46,8 @@ export async function listGoals(): Promise<GoalProgress[]> {
   const [sumRows] = await db.execute(
     `SELECT GOAL_ID, CAST(SUM(AMOUNT) AS REAL) AS TOTAL,
             CAST(SUM(CASE WHEN MONTH >= ? THEN AMOUNT ELSE 0 END) AS REAL) AS RECENT
-     FROM LEDGER WHERE GOAL_ID IS NOT NULL AND DELETED_AT IS NULL GROUP BY GOAL_ID`,
-    [recentStart],
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND GOAL_ID IS NOT NULL AND DELETED_AT IS NULL GROUP BY GOAL_ID`,
+    [recentStart, ws],
   );
   const sums = new Map((sumRows as Array<{ GOAL_ID: string; TOTAL: number; RECENT: number }>).map((r) => [r.GOAL_ID, r]));
 

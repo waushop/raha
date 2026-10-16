@@ -1,6 +1,8 @@
 import { connection } from "next/server";
 import Link from "next/link";
 import db from "@/lib/db";
+import { currentContext, listUsers } from "@/lib/auth";
+import UserManager from "@/components/UserManager";
 import pkg from "@/package.json";
 import { getBudgets, DEFAULT_CATEGORY_BUDGETS, DEFAULT_TOTAL_BUDGET } from "@/lib/budgets";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
@@ -15,8 +17,9 @@ const fmt = (n: number) =>
 
 export default async function SettingsPage() {
   await connection();
-  const existingMonths = await listMonths();
-  const budgets = await getBudgets();
+  const ctx = await currentContext();
+  const ws = ctx.workspaceId;
+  const [existingMonths, budgets, users] = await Promise.all([listMonths(), getBudgets(ws), listUsers()]);
   // Stats
   const [statsRows] = await db.execute(
     `SELECT COUNT(*) AS TOTAL_EXPENSES,
@@ -24,7 +27,7 @@ export default async function SettingsPage() {
             CAST(SUM(AMOUNT) AS REAL) AS TOTAL_AMOUNT,
             MIN(MONTH) AS FIRST_MONTH,
             MAX(MONTH) AS LAST_MONTH
-     FROM LEDGER WHERE KIND = 'expense' AND DELETED_AT IS NULL`
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL`, [ws]
   );
   const stats = (statsRows as Array<{
     TOTAL_EXPENSES: number;
@@ -35,12 +38,12 @@ export default async function SettingsPage() {
   }>)[0];
 
   const [recurringCount] = await db.execute(
-    "SELECT COUNT(DISTINCT NAME) AS CNT FROM LEDGER WHERE IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL"
+    "SELECT COUNT(DISTINCT NAME) AS CNT FROM LEDGER WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND KIND = 'expense' AND DELETED_AT IS NULL", [ws]
   );
   const recurring = (recurringCount as Array<{ CNT: number }>)[0]?.CNT ?? 0;
 
   const [deletedCount] = await db.execute(
-    "SELECT COUNT(*) AS CNT FROM LEDGER WHERE DELETED_AT IS NOT NULL"
+    "SELECT COUNT(*) AS CNT FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NOT NULL", [ws]
   );
   const deleted = (deletedCount as Array<{ CNT: number }>)[0]?.CNT ?? 0;
 
@@ -108,6 +111,18 @@ export default async function SettingsPage() {
             defaultTotal={DEFAULT_TOTAL_BUDGET}
             defaultCategories={DEFAULT_CATEGORY_BUDGETS}
           />
+        </div>
+
+        {/* Users */}
+        <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.085s" }}>
+          <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-teal-400">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
+            </svg>
+            Users
+          </h2>
+          <p className="text-xs text-[#5a6380] mb-4">Each user has a private ledger and their own PIN. Signed in as <span className="text-white/80">{ctx.name}</span>.</p>
+          <UserManager users={users} currentUserId={ctx.userId} isAdmin={ctx.isAdmin} />
         </div>
 
         {/* Security */}

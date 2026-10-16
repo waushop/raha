@@ -5,30 +5,31 @@ import { redirect } from "next/navigation";
 import {
   PIN_REGEX,
   clearSessionCookie,
-  getPinHash,
+  createUserWithWorkspace,
+  getUser,
+  hasAnyUser,
   hashPin,
   isLegacyPinHash,
-  isPinSetInDb,
   issueSessionCookie,
   requireAuth,
-  setPinHash,
+  setUserPin,
   verifyPin,
 } from "@/lib/auth";
-import { rotateSessionSecret } from "@/lib/session";
 import { clearFailures, lockoutRemainingMs, recordFailure } from "@/lib/ratelimit";
+import { parseName } from "@/lib/validate";
 
-// Lockout is keyed by client IP (first hop of X-Forwarded-For behind the
-// ingress). A single home deployment rarely sees more than one, so this is
-// effectively a global brake on PIN guessing.
-async function clientKey(): Promise<string> {
+// Lockout is keyed by client IP + user (first hop of X-Forwarded-For behind
+// the ingress), so guessing one person's PIN doesn't lock the other out.
+async function clientKey(userId: string): Promise<string> {
   const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || "local";
+  const ip = h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || "local";
+  return `${ip}:${userId}`;
 }
 
 const seconds = (ms: number) => Math.ceil(ms / 1000);
 
-async function checkPin(pin: string, expected: string): Promise<{ error: string } | null> {
-  const key = await clientKey();
+async function checkPin(userId: string, pin: string, expected: string): Promise<{ error: string } | null> {
+  const key = await clientKey(userId);
   const locked = lockoutRemainingMs(key);
   if (locked > 0) return { error: `Too many attempts. Try again in ${seconds(locked)}s` };
   if (!verifyPin(pin, expected)) {
@@ -40,60 +41,68 @@ async function checkPin(pin: string, expected: string): Promise<{ error: string 
 }
 
 export async function login(formData: FormData) {
+  const userId = String(formData.get("user_id") ?? "");
   const pin = formData.get("pin") as string;
   if (!pin || !PIN_REGEX.test(pin)) return { error: "Enter 6-digit PIN" };
 
-  const expected = await getPinHash();
-  if (!expected) return { error: "No PIN set" };
+  const user = await getUser(userId);
+  if (!user) return { error: "Pick who you are" };
 
-  const failure = await checkPin(pin, expected);
+  const failure = await checkPin(user.ID, pin, user.PIN_HASH);
   if (failure) return failure;
 
-  // Upgrade path: a legacy unsalted hash (DB or AUTH_PIN_HASH bootstrap) is
-  // replaced with salted scrypt in the DB on the first successful login.
-  if (isLegacyPinHash(expected) || !(await isPinSetInDb())) await setPinHash(hashPin(pin));
+  // Upgrade path: a legacy unsalted hash is replaced with salted scrypt on
+  // the first successful login (without bumping the session version).
+  if (isLegacyPinHash(user.PIN_HASH)) {
+    const { default: db } = await import("@/lib/db");
+    await db.execute("UPDATE USER SET PIN_HASH = ? WHERE ID = ?", [hashPin(pin), user.ID]);
+  }
 
-  await issueSessionCookie();
+  await issueSessionCookie(user);
   redirect("/dashboard");
 }
 
-export async function setupInitialPin(formData: FormData) {
-  // Defense in depth: setting an initial PIN is only valid when neither the
-  // DB nor the env var has one. The page also gates the UI on this, but a
-  // motivated user could replay the form action.
-  if (await getPinHash()) return { error: "PIN already set" };
+export async function setupInitialUser(formData: FormData) {
+  // Only valid on a fresh install: once a user exists, new ones come from
+  // Settings (admin only). The page gates the UI, but the action is public.
+  if (await hasAnyUser()) return { error: "Already set up — sign in instead" };
 
+  let name: string;
+  try { name = parseName(formData.get("name"), "Name", 40); } catch (e) { return { error: (e as Error).message }; }
   const pin = formData.get("pin") as string;
   const confirm = formData.get("confirm") as string;
   if (!pin || !PIN_REGEX.test(pin)) return { error: "Enter 6-digit PIN" };
   if (pin !== confirm) return { error: "PINs don't match" };
 
-  await setPinHash(hashPin(pin));
-  await issueSessionCookie();
+  const userId = createUserWithWorkspace(name, hashPin(pin), true);
+  const user = await getUser(userId);
+  if (!user) return { error: "Could not create user" };
+  await issueSessionCookie(user);
   redirect("/dashboard");
 }
 
 export async function changePin(formData: FormData) {
-  await requireAuth();
+  const ctx = await requireAuth();
+  const user = await getUser(ctx.userId);
+  if (!user) return { error: "No such user" };
 
   const current = formData.get("current") as string;
   const next = formData.get("next") as string;
   const confirm = formData.get("confirm") as string;
 
-  const expected = await getPinHash();
-  if (!expected) return { error: "No PIN set" };
   if (!current || !PIN_REGEX.test(current)) return { error: "Enter current 6-digit PIN" };
-  const failure = await checkPin(current, expected);
+  const failure = await checkPin(user.ID, current, user.PIN_HASH);
   if (failure) return { error: failure.error.replace("Wrong PIN", "Current PIN is wrong") };
   if (!next || !PIN_REGEX.test(next)) return { error: "New PIN must be 6 digits" };
   if (next !== confirm) return { error: "New PINs don't match" };
   if (next === current) return { error: "New PIN must differ from current" };
 
-  await setPinHash(hashPin(next));
-  // Changing the PIN logs out every other device: rotate the signing secret
-  // (invalidating all tokens) and re-issue a token for this browser only.
-  rotateSessionSecret();
-  await issueSessionCookie();
+  // Changing the PIN logs out this user's other devices (session version
+  // bump) and re-issues a token for this browser only. Other users are
+  // untouched.
+  await setUserPin(user.ID, hashPin(next));
+  const refreshed = await getUser(user.ID);
+  if (refreshed) await issueSessionCookie(refreshed);
   return { ok: true };
 }
 
