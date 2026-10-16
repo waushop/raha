@@ -1,8 +1,8 @@
 import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import {
-  HARD_LOCK_MS, LOCKOUT_THRESHOLD, LOCK_MS, RESET_AFTER_MS,
-  clearFailures, listLocks, lockoutRemainingMs, recordFailure, resetRateLimiterForTests, unlock,
+  GLOBAL_KEY, GLOBAL_LOCK_MS, GLOBAL_THRESHOLD, GLOBAL_WINDOW_MS, HARD_LOCK_MS, LOCKOUT_THRESHOLD, LOCK_MS, RESET_AFTER_MS,
+  clearFailures, globalLockoutRemainingMs, listLocks, lockoutRemainingMs, recordFailure, resetRateLimiterForTests, unlock,
 } from "@/lib/ratelimit";
 
 const t0 = 1_000_000;
@@ -35,6 +35,24 @@ describe("pin rate limiter", () => {
     const quiet = t0 + LOCK_MS + RESET_AFTER_MS + 1;  // lock long expired, then silence
     assert.equal(lockoutRemainingMs("ip", quiet), 0);
     assert.equal(fail("ip", LOCKOUT_THRESHOLD, quiet), LOCK_MS, "counts as a first lockout again, not a hard lock");
+  });
+
+  test("site-wide brake: many failures from many addresses pause everyone", () => {
+    for (let i = 0; i < GLOBAL_THRESHOLD - 1; i++) recordFailure(`ip-${i}`, t0 + i);
+    assert.equal(globalLockoutRemainingMs(t0 + 100), 0, "one short of the threshold");
+    recordFailure("ip-last", t0 + 100);
+    assert.equal(globalLockoutRemainingMs(t0 + 100), GLOBAL_LOCK_MS);
+    assert.equal(listLocks(t0 + 100)[0].key, GLOBAL_KEY);
+    assert.equal(globalLockoutRemainingMs(t0 + 100 + GLOBAL_LOCK_MS), 0, "pause ends");
+    // failures older than the window don't count
+    resetRateLimiterForTests();
+    for (let i = 0; i < GLOBAL_THRESHOLD - 1; i++) recordFailure(`ip-${i}`, t0);
+    recordFailure("ip-late", t0 + GLOBAL_WINDOW_MS + 1);
+    assert.equal(globalLockoutRemainingMs(t0 + GLOBAL_WINDOW_MS + 1), 0);
+    // admin can lift it
+    for (let i = 0; i < GLOBAL_THRESHOLD; i++) recordFailure(`x-${i}`, t0);
+    assert.equal(unlock(GLOBAL_KEY), true);
+    assert.equal(globalLockoutRemainingMs(t0), 0);
   });
 
   test("success clears; admin unlock clears; keys are independent", () => {

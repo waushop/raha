@@ -6,6 +6,7 @@ import { PIN_REGEX, createUserWithWorkspace, hashPin, pinTaken, requireAuth } fr
 import { parseId, parseName } from "@/lib/validate";
 import type { ActionResult } from "@/app/actions";
 import { unlock } from "@/lib/ratelimit";
+import { pinWeakness } from "@/lib/pin-policy";
 
 // Admin-only user management. Every user gets their own workspace; removing
 // a user keeps their data (soft delete) so it can be restored by hand.
@@ -22,6 +23,8 @@ export async function createUser(formData: FormData): Promise<ActionResult<{ id:
   try { name = parseName(formData.get("name"), "Name", 40); } catch (e) { return { ok: false, error: (e as Error).message }; }
   const pin = String(formData.get("pin") ?? "");
   if (!PIN_REGEX.test(pin)) return { ok: false, error: "Initial PIN must be 6 digits" };
+  const weak = pinWeakness(pin);
+  if (weak) return { ok: false, error: weak };
   if (await pinTaken(pin)) return { ok: false, error: "That PIN is already used by another user — pick a different one" };
   const id = createUserWithWorkspace(name, hashPin(pin), false);
   revalidatePath("/settings");
@@ -44,6 +47,8 @@ export async function resetUserPin(id: string, pin: string): Promise<ActionResul
   await requireAdmin();
   const target = parseId(id);
   if (!PIN_REGEX.test(pin)) return { ok: false, error: "PIN must be 6 digits" };
+  const weak = pinWeakness(pin);
+  if (weak) return { ok: false, error: weak };
   if (await pinTaken(pin, target)) return { ok: false, error: "That PIN is already used by another user — pick a different one" };
   await db.execute("UPDATE USER SET PIN_HASH = ?, SESSION_VERSION = SESSION_VERSION + 1 WHERE ID = ? AND DELETED_AT IS NULL", [hashPin(pin), target]);
   revalidatePath("/settings");

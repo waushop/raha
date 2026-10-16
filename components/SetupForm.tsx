@@ -57,9 +57,10 @@ export default function SetupForm() {
 
   return (
     <>
-      <p className="text-xs text-[#9ca3c0] mb-4">
+      <p className="text-xs text-[#9ca3c0] mb-1">
         {step === "choose" ? `Hi ${name.trim()}, choose a 6-digit PIN` : "Confirm PIN"}
       </p>
+      {step === "choose" && <p className="text-[10px] text-[#5a6380] mb-4">Not a sequence, a repeat, a pattern or a date.</p>}
 
       <PinGrid ref={gridRef} onComplete={handleComplete} disabled={isPending} shake={!!error} autoFocus />
 

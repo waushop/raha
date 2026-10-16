@@ -17,7 +17,8 @@ import {
   setUserPin,
   verifyPin,
 } from "@/lib/auth";
-import { clearFailures, lockoutRemainingMs, recordFailure } from "@/lib/ratelimit";
+import { clearFailures, globalLockoutRemainingMs, lockoutRemainingMs, recordFailure } from "@/lib/ratelimit";
+import { pinWeakness } from "@/lib/pin-policy";
 import { parseName } from "@/lib/validate";
 
 // Lockout is keyed by client IP (first hop of X-Forwarded-For behind the
@@ -29,6 +30,7 @@ async function clientKey(): Promise<string> {
 }
 
 const seconds = (ms: number) => Math.ceil(ms / 1000);
+const siteMessage = (ms: number) => `Sign-in is paused for ${seconds(ms)}s after too many failed attempts site-wide`;
 const lockedMessage = (ms: number) =>
   ms >= 3_600_000
     ? `Locked for ${Math.ceil(ms / 3_600_000)} hours after repeated attempts — an admin can unlock from Settings`
@@ -36,6 +38,8 @@ const lockedMessage = (ms: number) =>
 
 async function checkPin(pin: string, expected: string): Promise<{ error: string } | null> {
   const key = await clientKey();
+  const site = globalLockoutRemainingMs();
+  if (site > 0) return { error: siteMessage(site) };
   const locked = lockoutRemainingMs(key);
   if (locked > 0) return { error: lockedMessage(locked) };
   if (!verifyPin(pin, expected)) {
@@ -51,6 +55,8 @@ export async function login(formData: FormData) {
   if (!pin || !PIN_REGEX.test(pin)) return { error: "Enter 6-digit PIN" };
 
   const key = await clientKey();
+  const site = globalLockoutRemainingMs();
+  if (site > 0) return { error: siteMessage(site) };
   const locked = lockoutRemainingMs(key);
   if (locked > 0) return { error: lockedMessage(locked) };
 
@@ -83,6 +89,8 @@ export async function setupInitialUser(formData: FormData) {
   const pin = formData.get("pin") as string;
   const confirm = formData.get("confirm") as string;
   if (!pin || !PIN_REGEX.test(pin)) return { error: "Enter 6-digit PIN" };
+  const weak = pinWeakness(pin);
+  if (weak) return { error: weak };
   if (pin !== confirm) return { error: "PINs don't match" };
   if (await pinTaken(pin)) return { error: "That PIN is already in use" };
 
@@ -106,6 +114,8 @@ export async function changePin(formData: FormData) {
   const failure = await checkPin(current, user.PIN_HASH);
   if (failure) return { error: failure.error.replace("Wrong PIN", "Current PIN is wrong") };
   if (!next || !PIN_REGEX.test(next)) return { error: "New PIN must be 6 digits" };
+  const weak = pinWeakness(next);
+  if (weak) return { error: weak };
   if (next !== confirm) return { error: "New PINs don't match" };
   if (next === current) return { error: "New PIN must differ from current" };
   // PINs identify users at login, so two people can't share one.

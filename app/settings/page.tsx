@@ -128,7 +128,7 @@ export default async function SettingsPage() {
           {ctx.isAdmin && (
             <div className="mt-4 pt-4 border-t border-white/[0.06]">
               <p className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380] mb-2">Sign-in locks</p>
-              <p className="text-[10px] text-[#5a6380] mb-2">5 wrong PINs lock a device for a minute; a second time in the same hour locks it for 24 hours. An hour of quiet resets the count.</p>
+              <p className="text-[10px] text-[#5a6380] mb-2">5 wrong PINs lock a device for a minute; a second time in the same hour locks it for 24 hours. An hour of quiet resets the count. 20 failures from anywhere within 15 minutes pause sign-in for everyone for 15 minutes.</p>
               <LockList locks={listLocks()} />
             </div>
           )}
