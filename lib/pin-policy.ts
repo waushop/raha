@@ -30,7 +30,8 @@ function isDateLike(pin: string): boolean {
   const ddmmyy = n(pin.slice(0, 2)) >= 1 && n(pin.slice(0, 2)) <= 31 && n(pin.slice(2, 4)) >= 1 && n(pin.slice(2, 4)) <= 12;
   const yymmdd = n(pin.slice(2, 4)) >= 1 && n(pin.slice(2, 4)) <= 12 && n(pin.slice(4, 6)) >= 1 && n(pin.slice(4, 6)) <= 31;
   const mmddyy = n(pin.slice(0, 2)) >= 1 && n(pin.slice(0, 2)) <= 12 && n(pin.slice(2, 4)) >= 1 && n(pin.slice(2, 4)) <= 31;
-  const yyyy = /^(19|20)\d{2}/.test(pin) || /(19|20)\d{2}$/.test(pin);
+  // A plausible year (1920–2039) at either end, e.g. 1988xx or xx2012.
+  const yyyy = /^(19[2-9]\d|20[0-3]\d)/.test(pin) || /(19[2-9]\d|20[0-3]\d)$/.test(pin);
   return ddmmyy || yymmdd || mmddyy || yyyy;
 }
 
