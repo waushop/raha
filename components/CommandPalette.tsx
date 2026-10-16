@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { label: "Goals", path: "/goals", icon: "🎯" },
   { label: "Recurring", path: "/recurring", icon: "🔄" },
   { label: "Activity", path: "/activity", icon: "📝" },
+  { label: "Monthly review", path: "/review", icon: "📝" },
   { label: "Analytics", path: "/analytics", icon: "📈" },
   { label: "Compare", path: "/compare", icon: "⚖️" },
   { label: "Year overview", path: `/year?year=${new Date().getFullYear()}`, icon: "📅" },

@@ -7,8 +7,9 @@ A small, fast, single-user expense and income tracker. Next.js 16 + React 19 on 
 - Monthly ledger grouped by your own category groups, with income shown separately and a Spent / Income / Net summary; entries can carry a day and tags
 - Dashboard with budgets and pacing, forecasting, insights, a monthly and a daily spending heatmap, savings rate, and "looks recurring" suggestions
 - Year overview and 12-month analytics with income, savings rate, budget-vs-actual history and tag totals; side-by-side month comparison; search with filters; a full audit-backed activity timeline with restore
-- Recurring items with one-click "add recurring" and "copy last month"
-- Bank CSV import (Swedbank Estonia auto-detected, generic `Date,Name,Amount` otherwise) with learnable categorisation patterns
+- Savings goals with pace and projected finish; a monthly review page that narrates a finished month
+- Recurring items with one-click "add recurring" and "copy last month"; a subscription tracker with charge day, price changes and yearly cost
+- Bank CSV import (Swedbank Estonia auto-detected, generic `Date,Name,Amount` otherwise) with learnable patterns plus a classifier trained on your own history
 - JSON backup/restore of everything (ledger, groups, budgets, import patterns) and CSV export
 - 6-digit PIN login, light/dark theme, installable PWA
 

@@ -577,7 +577,11 @@ export default async function DashboardPage() {
         )}
 
         {/* Quick links */}
-        <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: "0.17s" }}>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-up" style={{ animationDelay: "0.17s" }}>
+          <Link href={`/review?month=${prevMonth}`} className="card rounded-2xl p-4 text-center card-hover">
+            <span className="text-2xl block mb-1">🧾</span>
+            <span className="text-xs font-semibold text-[#9ca3c0]">Review {monthLabel(prevMonth, "short")}</span>
+          </Link>
           <Link href={`/?month=${thisMonth}`} className="card rounded-2xl p-4 text-center card-hover">
             <span className="text-2xl block mb-1">📝</span>
             <span className="text-xs font-semibold text-[#9ca3c0]">This month</span>

@@ -16,16 +16,18 @@
 - **LEDGER_TAG**: one row per tag per ledger row, kept in sync with `TAGS` by `lib/ledger.ts` (`syncTags`); search/analytics filter on it.
 - **LEDGER_AUDIT**: before/after JSON for every ledger write (`lib/ledger.ts` `audit` / `auditedUpdate`); `/activity` reads it, falling back to timestamps on pre-audit databases.
 - **CATEGORY_GROUP** table: `ID`, `NAME`, `EMOJI`, `COLOR`, `SORT_ORDER` (reorderable from `/groups`)
+- **SAVINGS_GOAL**: targets with optional deadline and starting balance; contributions are LEDGER rows with `GOAL_ID`.
 - **BUDGET** (current targets, `_total` pseudo-key), **BUDGET_HISTORY** (snapshot per month, written on edit and when the dashboard first renders a month; analytics "Budget vs actual" uses `resolveBudgetsFor`), **IMPORT_PATTERN**, **APP_SETTING** (PIN hash)
 - Soft deletes via `DELETED_AT` (config tables BUDGET / IMPORT_PATTERN hard-delete by design)
 - Schema + idempotent migrations (EXPENSE→LEDGER rename, KIND and DAY columns, tag backfill): `lib/schema.ts`
+- Import categorisation order: learned regex patterns → `lib/classifier.ts` (naive Bayes trained on the ledger at page load) → keyword guesses. Dashboard forecast is `lib/forecast.ts` (spent + recurring still due + variable daily rate × days left).
 - Shared write logic in `lib/ledger.ts` (copy/backfill/import/dedup, audit, tags); shared read queries in `lib/queries.ts`; month helpers in `lib/months.ts`; input parsing in `lib/validate.ts`
 
 ### Categories
 25 predefined categories with icons in `types/expense.ts` (housing, fuel, groceries, etc.)
 Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
-### Pages (11)
+### Pages (14)
 | Route | Purpose |
 |-------|---------|
 | `/dashboard` | Home — metrics, forecasting, insights, heatmap |
@@ -37,12 +39,14 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 | `/compare` | Side-by-side month comparison |
 | `/analytics` | 12-month deep analytics |
 | `/year` | Yearly overview |
+| `/goals` | Savings goals (SAVINGS_GOAL + LEDGER.GOAL_ID), progress/pace from `lib/goals.ts` |
+| `/review` | Monthly review narrative for a finished month (defaults to last month) |
 | `/settings` | DB stats, budgets, backup/restore |
 | `/login` | PIN authentication |
 
 ### APIs (3)
 - `GET /api/export?month=` or `?year=` — CSV download
-- `GET/POST /api/backup` — JSON backup/restore (v5: ledger incl. DAY + groups + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
+- `GET/POST /api/backup` — JSON backup/restore (v6: ledger incl. DAY and GOAL_ID + goals + groups + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
 ## Conventions
