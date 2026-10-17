@@ -60,7 +60,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
-      <body className="bg-dark-mesh min-h-screen antialiased">
+      <body className="min-h-screen antialiased">
         <ToastProvider>
           {children}
           <Suspense><Sidebar /></Suspense>
