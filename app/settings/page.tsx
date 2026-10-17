@@ -1,5 +1,7 @@
 import { connection } from "next/server";
 import PushSettings from "@/components/PushSettings";
+import PreferencesForm from "@/components/PreferencesForm";
+import { getPreferences } from "@/lib/preferences-db";
 import HouseholdSettings from "@/components/HouseholdSettings";
 import { listMembers, listWorkspacesFor } from "@/lib/household";
 import Link from "next/link";
@@ -21,7 +23,7 @@ import BackfillMonth from "@/components/BackfillMonth";
 import BudgetEditor from "@/components/BudgetEditor";
 import { listMonths } from "@/app/actions";
 import CategoryIcon from "@/components/CategoryIcon";
-import { Database, Layers, Lock, Mail, Maximize2, Upload, Users } from "lucide-react";
+import { Database, Layers, Lock, Mail, Maximize2, SlidersHorizontal, Upload, Users } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -31,7 +33,7 @@ export default async function SettingsPage() {
   const ctx = await currentContext();
   const ws = ctx.workspaceId;
   const [existingMonths, budgets, users, me, devices] = await Promise.all([listMonths(), getBudgets(ws), listUsers(), getUser(ctx.userId), listDevices(ctx.userId)]);
-  const [myWs, members] = await Promise.all([listWorkspacesFor(ctx.userId), listMembers(ws)]);
+  const [myWs, members, prefs] = await Promise.all([listWorkspacesFor(ctx.userId), listMembers(ws), getPreferences(ctx.userId)]);
   // Stats
   const [statsRows] = await db.execute(
     `SELECT COUNT(*) AS TOTAL_EXPENSES,
@@ -105,6 +107,16 @@ export default async function SettingsPage() {
               <p className="text-xs font-bold text-white">{stats.FIRST_MONTH} – {stats.LAST_MONTH}</p>
             </div>
           </div>
+        </div>
+
+        {/* Preferences (per user) */}
+        <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.07s" }}>
+          <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+            <SlidersHorizontal size={14} className="text-teal-400" />
+            Preferences
+          </h2>
+          <p className="text-xs text-[#5a6380] mb-4">Just for you, on every device you sign in from.</p>
+          <PreferencesForm initial={prefs} />
         </div>
 
         {/* Budget targets */}

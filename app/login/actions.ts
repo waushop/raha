@@ -26,6 +26,8 @@ import { sendMail } from "@/lib/mailer";
 import { clearFailures, globalLockoutRemainingMs, lockoutRemainingMs, recordFailure } from "@/lib/ratelimit";
 import { pinWeakness } from "@/lib/pin-policy";
 import { parseName } from "@/lib/validate";
+import { landingPath } from "@/lib/preferences";
+import { getPreferences } from "@/lib/preferences-db";
 
 // Lockout is keyed by client IP (first hop of X-Forwarded-For behind the
 // ingress). The PIN alone identifies the user, so there is no user to key on
@@ -54,6 +56,16 @@ async function checkPin(pin: string, expected: string): Promise<{ error: string 
   }
   clearFailures(key);
   return null;
+}
+
+// The user's chosen start page (Settings → Preferences); never throws, so a
+// bad preference row can't block sign-in.
+async function landingFor(userId: string): Promise<string> {
+  try {
+    return landingPath(await getPreferences(userId));
+  } catch {
+    return "/dashboard";
+  }
 }
 
 export async function login(formData: FormData) {
@@ -89,7 +101,7 @@ export async function login(formData: FormData) {
   }
 
   await issueSessionCookie(user);
-  redirect("/dashboard");
+  redirect(await landingFor(user.ID));
 }
 
 async function startEmailChallenge(userId: string, email: string): Promise<{ error: string } | { ok: true }> {
@@ -137,7 +149,7 @@ export async function verifyCode(formData: FormData): Promise<CodeStepResult> {
     cookieStore.set(DEVICE_COOKIE, token, { ...sessionCookieOptions(process.env.NODE_ENV === "production"), maxAge: DEVICE_TTL_MS / 1000 });
   }
   await issueSessionCookie(user);
-  redirect("/dashboard");
+  redirect(await landingFor(user.ID));
 }
 
 export async function resendCode(): Promise<CodeStepResult | { ok: true }> {

@@ -5,6 +5,7 @@ import type { Expense, CategoryKey } from "@/types/expense";
 import { getGroups } from "@/app/actions";
 import MonthNav from "@/components/MonthNav";
 import ExpenseTable from "@/components/ExpenseTable";
+import { parseAddLink } from "@/lib/add-link";
 import { planByGroup } from "@/lib/plan-db";
 import TrendChart from "@/components/TrendChart";
 import SwipeContainer from "@/components/SwipeContainer";
@@ -17,11 +18,14 @@ import { monthlyTotals } from "@/lib/queries";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; add?: string; name?: string; amount?: string; category?: string; tags?: string; kind?: string }>;
 }) {
   await connection();
   const { workspaceId: ws, workspaceKind } = await currentContext();
-  const { month: monthParam } = await searchParams;
+  const params = await searchParams;
+  const monthParam = params.month;
+  // `/?add=1&name=…` (from the /add deep link) opens the add form prefilled.
+  const addPrefill = params.add === "1" ? parseAddLink({ get: (k) => (params as Record<string, string | undefined>)[k] ?? null }).prefill : undefined;
   const month = isValidMonth(monthParam) ? monthParam : currentMonth();
 
   // Fetch expenses with group info
@@ -106,7 +110,7 @@ export default async function Page({
         {/* Expense cards */}
         <div className="animate-fade-up" style={{ animationDelay: "0.1s" }}>
           {settle && <SettleUpCard settlement={settle} monthLabel={monthLabel(month)} />}
-          <ExpenseTable expenses={expenses} month={month} groups={groups} plan={plan} members={members} />
+          <ExpenseTable expenses={expenses} month={month} groups={groups} plan={plan} members={members} addPrefill={addPrefill} />
         </div>
 
         {/* Footer */}

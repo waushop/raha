@@ -1,12 +1,12 @@
 import Link from "next/link";
 import type { WeekdaySplit } from "@/lib/reports";
+import { weekdayOrder, type WeekStart } from "@/lib/preferences";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-type Props = { split: WeekdaySplit };
+type Props = { split: WeekdaySplit; weekStart?: WeekStart };
 
-const DOW_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Monday first
 const DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function dayLabel(month: string, day: number): string {
@@ -15,7 +15,7 @@ function dayLabel(month: string, day: number): string {
 }
 
 /** Weekday vs weekend spending and the single most expensive day. */
-export default function WeekdaySplitCard({ split }: Props) {
+export default function WeekdaySplitCard({ split, weekStart = "mon" }: Props) {
   const { weekday, weekend, dated, skipped, topDay, byDow } = split;
   if (dated === 0) {
     return (
@@ -75,7 +75,7 @@ export default function WeekdaySplitCard({ split }: Props) {
       <div>
         <p className="text-[10px] text-[#5a6380] mb-1.5">By day of the week</p>
         <div className="grid grid-cols-7 gap-1.5 items-end">
-          {DOW_ORDER.map((d) => (
+          {weekdayOrder(weekStart).map((d) => (
             <div key={d} className="flex flex-col items-center gap-1" title={`${DOW_SHORT[d]}: ${fmt(byDow[d])} €`}>
               <div className="w-full h-12 flex items-end">
                 <div

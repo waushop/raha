@@ -1,6 +1,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseSwedbankCSV, parseGenericCSV, classifyTransactions } from "@/lib/import-parser";
+import {
+  parseSwedbankCSV, parseGenericCSV, classifyTransactions, detectCSVFormat, mapSourceCategory, parseMoney, parseDate,
+} from "@/lib/import-parser";
 import type { Rule } from "@/lib/rules";
 
 const rule = (o: Partial<Rule> & { ID: string; PATTERN: string; CATEGORY: string }): Rule => ({
@@ -96,5 +98,108 @@ describe("classifyTransactions", () => {
     const simple = parseGenericCSV("Date,Name,Amount\n2026-01-05,CIRCLE K TALLINN 1234 EE 17.10.2026,-30");
     assert.equal(simple[0].merchant, "Circle K");
     assert.equal(simple[0].description, "CIRCLE K TALLINN 1234 EE 17.10.2026");
+  });
+});
+
+const YNAB = [
+  '"Account","Flag","Date","Payee","Category Group/Category","Category Group","Category","Memo","Outflow","Inflow","Cleared"',
+  '"Checking","","10/03/2026","Rimi","Everyday Expenses: Groceries","Everyday Expenses","Groceries","weekly shop","$42.10","$0.00","Cleared"',
+  '"Checking","","10/05/2026","Employer","Inflow: Ready to Assign","Inflow","Ready to Assign","","$0.00","$2,500.00","Cleared"',
+  '"Checking","","10/06/2026","Transfer : Savings","","","","","$300.00","$0.00","Cleared"',
+  '"Checking","Red","10/07/2026","Landlord","Bills: Rent/Mortgage","Bills","Rent/Mortgage","","$1,200.00","$0.00","Uncleared"',
+].join("\n");
+
+const EVERYDOLLAR = [
+  "Date,Description,Amount,Budget Item",
+  "2026-09-01,NETFLIX.COM 1234,-12.99,Streaming",
+  "2026-09-02,Paycheck,2400.00,Paycheck",
+  "2026-09-03,Shell Oil 5555,-55.20,Gas",
+  "2026-09-04,Corner store,-3.00,Miscellaneous",
+].join("\n");
+
+const ROCKET = [
+  "Date,Original Date,Account Type,Account Name,Account Number,Institution Name,Name,Custom Name,Amount,Description,Category,Note,Ignored From,Tax Deductible",
+  "2026-08-02,2026-08-01,Credit Card,Visa,1234,Chase,STARBUCKS #123,,5.75,STARBUCKS #123,Dining & Drinks,,,",
+  "2026-08-03,2026-08-03,Checking,Main,9876,Chase,ACME PAYROLL,Salary,-3000.00,ACME PAYROLL,Income,,,",
+  "2026-08-04,2026-08-04,Checking,Main,9876,Chase,Chewy,,40.00,Chewy,Pets,food,,",
+  "2026-08-05,2026-08-05,Checking,Main,9876,Chase,Transfer,,500.00,Transfer,Internal Transfers,,,",
+  "2026-08-06,2026-08-06,Checking,Main,9876,Chase,Hidden,,9.00,Hidden,Shopping,,everything,",
+  "2026-08-07,2026-08-07,Checking,Main,9876,Chase,Refund Co,,-15.00,Refund Co,Shopping,,,",
+].join("\n");
+
+describe("other budgeting apps", () => {
+  test("header sniffing picks the right format and leaves Swedbank/generic alone", () => {
+    assert.equal(detectCSVFormat(YNAB), "ynab");
+    assert.equal(detectCSVFormat(EVERYDOLLAR), "everydollar");
+    assert.equal(detectCSVFormat(ROCKET), "rocketmoney");
+    assert.equal(detectCSVFormat(SWEDBANK), "swedbank");
+    assert.equal(detectCSVFormat("Date,Name,Amount\n2026-01-05,Coffee,-3"), "generic");
+    assert.equal(detectCSVFormat("\uFEFF" + EVERYDOLLAR), "everydollar");
+  });
+
+  test("YNAB: outflow = expense, inflow = income, transfers skipped, US dates", () => {
+    const rows = parseGenericCSV(YNAB);
+    assert.deepEqual(rows.map((r) => [r.merchant, r.amount, r.isIncome, r.date, r.category, r.confidence]), [
+      ["Rimi", 42.1, false, "2026-10-03", "groceries", "source"],
+      ["Employer", 2500, true, "2026-10-05", "other", "none"],
+      ["Landlord", 1200, false, "2026-10-07", "housing", "source"],
+    ]);
+    assert.equal(rows[0].description, "Rimi — weekly shop");
+  });
+
+  test("EveryDollar: negative = expense, positive = income", () => {
+    const rows = parseGenericCSV(EVERYDOLLAR);
+    assert.deepEqual(rows.map((r) => [r.amount, r.isIncome, r.category, r.month]), [
+      [12.99, false, "subscriptions", "2026-09"],
+      [2400, true, "other", "2026-09"],
+      [55.2, false, "fuel", "2026-09"],
+      [3, false, "other", "2026-09"],
+    ]);
+    assert.equal(rows[0].merchant, "Netflix.com");
+  });
+
+  test("Rocket Money: positive = expense, negative or Income category = income; ignored and transfers skipped", () => {
+    const rows = parseGenericCSV(ROCKET);
+    assert.deepEqual(rows.map((r) => [r.description, r.amount, r.isIncome, r.category]), [
+      ["STARBUCKS #123", 5.75, false, "dining"],
+      ["Salary", 3000, true, "other"],
+      ["Chewy — food", 40, false, "pets"],
+      ["Refund Co", 15, true, "other"],
+    ]);
+  });
+
+  test("an app's own category beats keyword guesses, but user rules still win", () => {
+    const rows = parseGenericCSV(EVERYDOLLAR);
+    const out = classifyTransactions(rows, []);
+    assert.equal(out[0].category, "subscriptions");
+    assert.equal(out[0].confidence, "source");
+    const ruled = classifyTransactions(rows, [rule({ ID: "r", PATTERN: "netflix", CATEGORY: "entertainment" })]);
+    assert.equal(ruled[0].category, "entertainment");
+    assert.equal(ruled[0].confidence, "pattern");
+  });
+
+  test("category keyword table", () => {
+    const cases: [string, string][] = [
+      ["Groceries", "groceries"], ["Restaurants", "dining"], ["Gas & Fuel", "fuel"], ["Mortgage", "housing"],
+      ["Utilities", "utilities"], ["Auto Insurance", "insurance"], ["Medical", "health"], ["Streaming", "subscriptions"],
+      ["Cell Phone", "phone"], ["Internet", "internet"], ["Travel & Vacation", "travel"], ["Clothing", "clothing"],
+      ["Entertainment", "entertainment"], ["Childcare", "kids"], ["Pet Food", "pets"], ["Gifts", "gifts"],
+      ["Education", "education"], ["Auto & Transport", "transport"], ["Savings", "savings"], ["Student Loan", "loan"],
+      ["Taxes", "tax"], ["Miscellaneous", "other"], ["", "other"],
+    ];
+    for (const [label, key] of cases) assert.equal(mapSourceCategory(label), key, label);
+  });
+
+  test("money and date parsing", () => {
+    assert.equal(parseMoney("$1,234.56"), 1234.56);
+    assert.equal(parseMoney("(12.00)"), -12);
+    assert.equal(parseMoney("-3,50"), -3.5);
+    assert.equal(parseMoney("1 234,50 €"), 1234.5);
+    assert.ok(Number.isNaN(parseMoney("")));
+    assert.equal(parseDate("2026-10-03"), "2026-10-03");
+    assert.equal(parseDate("10/03/2026"), "2026-10-03");
+    assert.equal(parseDate("1/2/26"), "2026-01-02");
+    assert.equal(parseDate("03.10.2026"), "2026-10-03");
+    assert.equal(parseDate("13/40/2026"), null);
   });
 });

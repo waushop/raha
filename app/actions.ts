@@ -73,14 +73,14 @@ function readLedgerForm(formData: FormData): { row: ledger.LedgerSource; month: 
   return { row, month };
 }
 
-export async function createExpense(formData: FormData): Promise<ActionResult> {
+export async function createExpense(formData: FormData): Promise<ActionResult<{ id: string }>> {
   const { workspaceId: ws, workspaceKind, userId } = await requireAuth();
   return attempt(() => {
     const { row, month } = readLedgerForm(formData);
     // In a household every expense has a payer; default to whoever is adding it.
     if (workspaceKind === "shared" && row.KIND === "expense" && !row.PAID_BY) row.PAID_BY = userId;
     if (workspaceKind !== "shared") row.PAID_BY = null;
-    db.transaction((tx) => {
+    const id = db.transaction((tx) => {
       ledger.assertMember(tx, ws, row.PAID_BY);
       ledger.assertGroupExists(tx, ws, row.GROUP_ID);
       ledger.assertGoalExists(tx, ws, row.GOAL_ID);
@@ -91,10 +91,10 @@ export async function createExpense(formData: FormData): Promise<ActionResult> {
         if (hit?.name) row.NAME = hit.name;
         if (hit?.tags) row.TAGS = ledger.mergeTags(row.TAGS, hit.tags);
       }
-      ledger.insertRow(tx, ws, row, month);
+      return ledger.insertRow(tx, ws, row, month);
     });
     revalidatePath("/");
-    return {};
+    return { id };
   });
 }
 

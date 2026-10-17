@@ -50,9 +50,9 @@ function Chart({ days, buffer }: { days: DayPoint[]; buffer: number }) {
 
 export default async function CashflowPage() {
   await connection();
-  const { workspaceId: ws } = await currentContext();
+  const { workspaceId: ws, userId } = await currentContext();
   const today = isoDate(new Date());
-  const view = await getCashflow(ws, today);
+  const view = await getCashflow(ws, today, { userId });
   const p = view.projection;
   const events: Event[] = [...view.bills, ...(p ? p.days.flatMap((d) => d.events.filter((e) => e.kind === "payday")) : [])]
     .filter((e) => e.date >= today)

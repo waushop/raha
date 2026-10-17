@@ -5,7 +5,7 @@ import { importTransactions, createImportPattern } from "@/app/actions";
 import type { ImportPatternRow } from "@/app/actions";
 import type { ParsedTransaction } from "@/lib/import-parser";
 import type { ClassifierModel } from "@/lib/classifier";
-import { parseGenericCSV, classifyTransactions } from "@/lib/import-parser";
+import { parseGenericCSV, classifyTransactions, detectCSVFormat, CSV_FORMAT_LABELS, type CSVFormat } from "@/lib/import-parser";
 import { applyRules, literalPattern, type Rule } from "@/lib/rules";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
 import type { CategoryKey, ExpenseGroup } from "@/types/expense";
@@ -32,6 +32,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
   const [isPending, startTransition] = useTransition();
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
+  const [format, setFormat] = useState<CSVFormat>("generic");
   const toast = useToast();
 
   const handleFile = useCallback((file: File) => {
@@ -40,9 +41,10 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
       const csv = e.target?.result as string;
       const parsed = parseGenericCSV(csv).filter(tx => tx.month);
       if (parsed.length === 0) {
-        toast.showError("No transactions found in that file. Expected Swedbank CSV or Date,Name,Amount.");
+        toast.showError("No transactions found in that file. Expected a Swedbank, YNAB, EveryDollar or Rocket Money CSV, or Date,Name,Amount.");
         return;
       }
+      setFormat(detectCSVFormat(csv));
       // Income rows (credits) are kept and imported as income.
       const classified = classifyTransactions(parsed, patterns, model);
       setTransactions(classified);
@@ -118,7 +120,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
           name: tx.name ?? tx.merchant,
           amount: tx.amount,
           month: tx.month,
-          notes: `Imported from bank CSV (${tx.date}): ${tx.description}`,
+          notes: `Imported from ${format === "swedbank" || format === "generic" ? "bank CSV" : CSV_FORMAT_LABELS[format]} (${tx.date}): ${tx.description}`,
           kind: tx.isIncome ? "income" as const : "expense" as const,
           day: /^\d{4}-\d{2}-\d{2}$/.test(tx.date) ? Number(tx.date.slice(8, 10)) : null,
           tags: tx.tags ?? null,
@@ -152,7 +154,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
             </div>
             <div>
               <p className="text-sm font-semibold text-white">Drop CSV file here</p>
-              <p className="text-xs text-[#5a6380] mt-1">or click to browse — supports Swedbank Estonia format</p>
+              <p className="text-xs text-[#5a6380] mt-1">or click to browse — Swedbank Estonia, YNAB, EveryDollar, Rocket Money or Date,Name,Amount</p>
             </div>
           </div>
         </div>
@@ -198,7 +200,14 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
   return (
     <div className="space-y-4">
       {/* Summary bar */}
-      <div className="card rounded-2xl px-5 py-4 flex items-center justify-between">
+      <div className="card rounded-2xl px-5 py-4 space-y-3">
+        <p className="text-xs text-[#9ca3c0]">
+          Detected: <span className="text-white font-medium">{CSV_FORMAT_LABELS[format]}</span>
+          {format !== "swedbank" && format !== "generic" && (
+            <span className="text-[#5a6380]"> · categories mapped from the app&apos;s own, amounts read as EUR</span>
+          )}
+        </p>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-4">
           <button onClick={toggleAll} className="text-xs text-[#5a6380] hover:text-white transition-colors">
             {selected.size === transactions.length ? "Deselect all" : "Select all"}
@@ -219,6 +228,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
             className="gradient-pink text-white rounded-xl px-5 py-2 text-xs font-bold hover:opacity-90 disabled:opacity-50 transition-all btn-press shadow-lg shadow-pink-500/20">
             {isPending ? "Importing..." : `Import ${selectedCount}`}
           </button>
+        </div>
         </div>
       </div>
 
@@ -288,6 +298,9 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
                         )}
                         {tx.confidence === "learned" && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-400" title="Learned from your past entries">learned</span>
+                        )}
+                        {tx.confidence === "source" && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400" title="Category from the exporting app">from app</span>
                         )}
                         {tx.confidence === "guess" && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400">guess</span>

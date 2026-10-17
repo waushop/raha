@@ -40,7 +40,10 @@ export default function Welcome() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
-        <Link href="/groups" className="px-6 py-2.5 rounded-xl gradient-pink text-white text-sm font-bold shadow-lg shadow-pink-500/20 btn-press hover:opacity-90 transition-opacity">
+        <Link href="/welcome" className="px-6 py-2.5 rounded-xl gradient-pink text-white text-sm font-bold shadow-lg shadow-pink-500/20 btn-press hover:opacity-90 transition-opacity">
+          Guided setup
+        </Link>
+        <Link href="/groups" className="px-6 py-2.5 rounded-xl border border-white/[0.08] text-[#9ca3c0] text-sm font-medium hover:bg-white/5 hover:text-white transition-all btn-press">
           Create first group
         </Link>
         <Link href="/" className="px-6 py-2.5 rounded-xl border border-white/[0.08] text-[#9ca3c0] text-sm font-medium hover:bg-white/5 hover:text-white transition-all btn-press">

@@ -1,6 +1,7 @@
 // Database side of subscriptions: the list view with charge history,
 // price changes, next due date and the unused flag.
-import db from "./db";
+import { randomUUID } from "node:crypto";
+import db, { type Tx } from "./db";
 import { currentMonth } from "./months";
 import {
   isUnused, monthlyEquivalent, nextDue, yearlyCost, type Cadence, type Charge, type SubscriptionStatus,
@@ -32,6 +33,22 @@ export type SubscriptionView = SubscriptionRow & {
   /** 1–12 month used for the yearly calendar strip. */
   anchorMonth: number;
 };
+
+export type NewSubscription = {
+  name: string; category: string; groupId: string | null; amount: number; cadence: Cadence;
+  day: number | null; monthOfYear: number | null; trialEnds: string | null; cancelUrl: string | null; notes: string | null;
+};
+
+/** Inserts an active subscription inside a transaction; returns its id. */
+export function insertSubscription(tx: Tx, ws: string, f: NewSubscription): string {
+  const id = randomUUID();
+  tx.run(
+    `INSERT INTO SUBSCRIPTION (ID, WORKSPACE_ID, NAME, CATEGORY, GROUP_ID, AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, STATUS_CHANGED_AT, TRIAL_ENDS, CANCEL_URL, NOTES)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, ?, ?, ?)`,
+    [id, ws, f.name, f.category, f.groupId, f.amount, f.cadence, f.day, f.monthOfYear, f.trialEnds, f.cancelUrl, f.notes],
+  );
+  return id;
+}
 
 type ChargeRow = { SUBSCRIPTION_ID: string; AMOUNT: number; MONTH: string; DAY: number | null };
 

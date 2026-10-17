@@ -1,6 +1,5 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import db from "@/lib/db";
 import { requireAuth } from "@/lib/auth";
@@ -11,6 +10,7 @@ import {
   parseOptionalIsoDate, parseOptionalMonthOfYear, parseOptionalText, parseOptionalUrl, parseSubscriptionStatus,
 } from "@/lib/validate";
 import { isoDate, nextDue } from "@/lib/subscriptions";
+import { insertSubscription } from "@/lib/subscriptions-db";
 
 function revalidate() {
   revalidatePath("/subscriptions");
@@ -38,14 +38,9 @@ export async function createSubscription(formData: FormData): Promise<ActionResu
   const { workspaceId: ws } = await requireAuth();
   return attempt(() => {
     const f = readForm(formData);
-    const id = randomUUID();
-    db.transaction((tx) => {
+    const id = db.transaction((tx) => {
       ledger.assertGroupExists(tx, ws, f.groupId);
-      tx.run(
-        `INSERT INTO SUBSCRIPTION (ID, WORKSPACE_ID, NAME, CATEGORY, GROUP_ID, AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, STATUS_CHANGED_AT, TRIAL_ENDS, CANCEL_URL, NOTES)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP, ?, ?, ?)`,
-        [id, ws, f.name, f.category, f.groupId, f.amount, f.cadence, f.day, f.monthOfYear, f.trialEnds, f.cancelUrl, f.notes],
-      );
+      return insertSubscription(tx, ws, f);
     });
     revalidate();
     return { id };

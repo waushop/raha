@@ -1,11 +1,14 @@
 {
+  "id": "/",
   "name": "Empty Wallet",
   "short_name": "Wallet",
   "description": "Personal expense tracker",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#1a1a2e",
   "theme_color": "#1a1a2e",
+  "categories": ["finance"],
   "icons": [
     {
       "src": "/icon-192.png",
@@ -16,6 +19,32 @@
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add expense",
+      "short_name": "Add",
+      "url": "/add",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "This month",
+      "short_name": "Month",
+      "url": "/",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Subscriptions",
+      "short_name": "Subs",
+      "url": "/subscriptions",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Safe to spend",
+      "short_name": "Safe",
+      "url": "/cashflow",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

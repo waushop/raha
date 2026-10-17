@@ -6,6 +6,7 @@ import { useToast } from "./Toast";
 import type { CategoryKey } from "@/types/expense";
 import { currentMonth, monthKey } from "@/lib/months";
 import { parseQuickAdd } from "@/lib/quickadd";
+import { submitOrQueue } from "@/lib/offline-queue";
 import { CornerDownLeft, Zap } from "lucide-react";
 import CategoryIcon from "./CategoryIcon";
 
@@ -38,14 +39,21 @@ export default function QuickAddBar({ presets, month }: Props) {
     return data;
   }
 
+  // Offline (or the request never reached the server) → the entry is queued
+  // in IndexedDB and OfflineSync replays it when the connection is back.
+  // Resolves true when the entry was added or queued.
+  async function send(data: FormData, name: string): Promise<boolean> {
+    const res = await submitOrQueue(createExpense, data);
+    if (res === "lost") { toast.showError("You're offline and this browser can't store entries — try again when you're back"); return false; }
+    if (res !== "queued" && !res.ok) { toast.showError(res.error); return false; }
+    navigator.vibrate?.(10);
+    toast.show(res === "queued" ? "Saved offline — will sync when you're back" : `"${name}" added`);
+    return true;
+  }
+
   function quickAdd(preset: Preset) {
     const data = baseForm(preset.CATEGORY, preset.NAME, preset.AMOUNT);
-    startTransition(async () => {
-      const res = await createExpense(data);
-      if (!res.ok) { toast.showError(res.error); return; }
-      navigator.vibrate?.(10);
-      toast.show(`"${preset.NAME}" added`);
-    });
+    startTransition(async () => { await send(data, preset.NAME); });
   }
 
   // "coffee 3.5 #work" → one row. The category comes from a preset with the
@@ -58,11 +66,7 @@ export default function QuickAddBar({ presets, month }: Props) {
     data.set("kind", parsed.kind);
     data.set("tags", parsed.tags ?? "");
     startTransition(async () => {
-      const res = await createExpense(data);
-      if (!res.ok) { toast.showError(res.error); return; }
-      navigator.vibrate?.(10);
-      setText("");
-      toast.show(`"${parsed.name}" added`);
+      if (await send(data, parsed.name)) setText("");
     });
   }
 

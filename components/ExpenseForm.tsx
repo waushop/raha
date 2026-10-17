@@ -4,6 +4,8 @@ import { useRef, useState, useTransition, useEffect } from "react";
 import { createExpense, updateExpense, getRecentNames, createGroup, getTags, getGoalOptions, splitExpense } from "@/app/actions";
 import { currentMonth, monthKey } from "@/lib/months";
 import { formatTags, parseTags } from "@/lib/tags";
+import { submitOrQueue } from "@/lib/offline-queue";
+import type { AddPrefill } from "@/lib/add-link";
 import type { Expense, CategoryKey, ExpenseGroup, Kind } from "@/types/expense";
 import { CATEGORIES, CATEGORY_KEYS, GROUP_COLORS, GROUP_COLOR_CLASSES } from "@/types/expense";
 import { useToast } from "./Toast";
@@ -12,7 +14,7 @@ import Glyph from "./Glyph";
 import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
 import { CirclePlus, Plus, Repeat, Split, X } from "lucide-react";
 
-type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; members?: Array<{ ID: string; NAME: string }>; onDone: () => void };
+type Props = { month: string; editing?: Expense; prefill?: AddPrefill; groups: ExpenseGroup[]; members?: Array<{ ID: string; NAME: string }>; onDone: () => void };
 
 type Part = { category: CategoryKey; groupId: string; name: string; amount: string };
 
@@ -21,17 +23,17 @@ const partAmount = (p: Part) => { const n = parseFloat(p.amount.replace(",", "."
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const selectCls = "min-w-0 w-full border border-white/[0.08] rounded-xl px-2.5 py-2 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all";
 
-export default function ExpenseForm({ month, editing, groups, members = [], onDone }: Props) {
+export default function ExpenseForm({ month, editing, prefill, groups, members = [], onDone }: Props) {
   const [paidBy, setPaidBy] = useState<string>(editing?.PAID_BY ?? "");
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
-  const [kind, setKind] = useState<Kind>(editing?.KIND ?? "expense");
-  const [category, setCategory] = useState<CategoryKey>(editing?.CATEGORY ?? "other");
+  const [kind, setKind] = useState<Kind>(editing?.KIND ?? prefill?.kind ?? "expense");
+  const [category, setCategory] = useState<CategoryKey>(editing?.CATEGORY ?? prefill?.category ?? "other");
   const [groupId, setGroupId] = useState<string>(editing?.GROUP_ID ?? "");
   const [isRecurring, setIsRecurring] = useState(editing?.IS_RECURRING === 1);
-  const [showExtra, setShowExtra] = useState(!!editing?.NOTES || !!editing?.TAGS);
-  const [tags, setTags] = useState(editing?.TAGS ?? "");
+  const [showExtra, setShowExtra] = useState(!!editing?.NOTES || !!editing?.TAGS || !!prefill?.tags);
+  const [tags, setTags] = useState(editing?.TAGS ?? prefill?.tags ?? "");
   const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [goalId, setGoalId] = useState<string>(editing?.GOAL_ID ?? "");
   const [goalOptions, setGoalOptions] = useState<{ ID: string; NAME: string; ICON: string | null }[]>([]);
@@ -112,10 +114,13 @@ export default function ExpenseForm({ month, editing, groups, members = [], onDo
     data.set("group_id", groupId || "");
     data.set("goal_id", showGoals ? goalId : "");
     startTransition(async () => {
-      const res = editing ? await updateExpense(editing.ID, data) : await createExpense(data);
-      if (!res.ok) { toast.showError(res.error); return; }
+      // New entries fall back to the offline queue (replayed by OfflineSync);
+      // edits need the server.
+      const res = editing ? await updateExpense(editing.ID, data) : await submitOrQueue(createExpense, data);
+      if (res === "lost") { toast.showError("You're offline and this browser can't store entries — try again when you're back"); return; }
+      if (res !== "queued" && !res.ok) { toast.showError(res.error); return; }
       navigator.vibrate?.(10);
-      toast.show(editing ? "Saved" : `"${data.get("name")}" added`);
+      toast.show(res === "queued" ? "Saved offline — will sync when you're back" : editing ? "Saved" : `"${data.get("name")}" added`);
       onDone();
     });
   }
@@ -258,12 +263,12 @@ export default function ExpenseForm({ month, editing, groups, members = [], onDo
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-3 min-w-0">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Name</label>
-          <input ref={nameRef} name="name" required defaultValue={editing?.NAME} placeholder="e.g. Grocery store, Netflix..."
+          <input ref={nameRef} name="name" required defaultValue={editing?.NAME ?? prefill?.name} placeholder="e.g. Grocery store, Netflix..."
             className="border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all placeholder:text-[#5a6380]" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Amount (€)</label>
-          <input ref={amountRef} name="amount" type="number" step="0.01" min="0" required defaultValue={editing?.AMOUNT} placeholder="0.00"
+          <input ref={amountRef} name="amount" type="number" step="0.01" min="0" required defaultValue={editing?.AMOUNT ?? prefill?.amount} placeholder="0.00"
             className="border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all placeholder:text-[#5a6380] font-mono tabular-nums" />
         </div>
         <div className="flex flex-col gap-1">

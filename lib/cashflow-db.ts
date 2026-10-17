@@ -6,10 +6,12 @@ import { variableDailyRate } from "./forecast";
 import { monthlyVariableTotals } from "./queries";
 import { listSubscriptions } from "./subscriptions-db";
 import { upcoming } from "./subscriptions";
+import { DEFAULT_PREFERENCES } from "./preferences";
+import { getPreferences } from "./preferences-db";
 import { addDays, paydayOccurrences, project, type Event, type Payday, type Projection } from "./cashflow";
 
 export const HORIZON_DAYS = 60;
-export const DEFAULT_BUFFER = 100;
+export const DEFAULT_BUFFER = DEFAULT_PREFERENCES.safeBuffer;
 
 export type Checkpoint = { ID: string; DATE: string; AMOUNT: number; NOTE: string | null };
 
@@ -51,7 +53,12 @@ export type CashflowView = {
   bills: Event[];
 };
 
-export async function getCashflow(ws: string, today: string, buffer = DEFAULT_BUFFER): Promise<CashflowView> {
+/**
+ * `buffer` is the amount kept aside before money counts as safe to spend:
+ * a number, or `{ userId }` to use that user's Settings → Preferences value.
+ */
+export async function getCashflow(ws: string, today: string, bufferOrUser: number | { userId: string } = DEFAULT_BUFFER): Promise<CashflowView> {
+  const buffer = typeof bufferOrUser === "number" ? bufferOrUser : (await getPreferences(bufferOrUser.userId)).safeBuffer;
   const [paydays, checkpoint, subs] = await Promise.all([listPaydays(ws), latestCheckpoint(ws), listSubscriptions(ws, today)]);
   const thisMonth = currentMonth();
   const history = await monthlyVariableTotals(ws, addMonths(thisMonth, -6), thisMonth);

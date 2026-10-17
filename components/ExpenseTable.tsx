@@ -15,6 +15,7 @@ import CategoryIcon from "./CategoryIcon";
 import Glyph from "./Glyph";
 import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
 import { literalPattern } from "@/lib/rules";
+import type { AddPrefill } from "@/lib/add-link";
 import { Banknote, CalendarArrowDown, Check, Copy, ListChecks, Plus, Repeat, Split, SquarePen, Tag, Target, Trash2, Wallet, Wand2, X } from "lucide-react";
 
 const fmt = (n: number) =>
@@ -28,6 +29,8 @@ type Props = {
   groups: ExpenseGroup[];
   /** Household members (shared workspaces only) for the payer picker and badges. */
   members?: Array<{ ID: string; NAME: string }>;
+  /** From the /add deep link: open the add form straight away with these values. */
+  addPrefill?: AddPrefill;
 };
 
 type BulkPatch = Parameters<typeof bulkUpdateExpenses>[1];
@@ -38,6 +41,9 @@ function subscribeHash(onChange: () => void) {
   window.addEventListener("hashchange", onChange);
   return () => window.removeEventListener("hashchange", onChange);
 }
+// True after hydration; portals need document.body, which the server lacks.
+const noopSubscribe = () => () => {};
+
 function readHashId(): string | null {
   const h = window.location.hash;
   return h.startsWith("#e-") ? h.slice(3) : null;
@@ -46,14 +52,17 @@ function readHashId(): string | null {
 const barSelectCls = "h-11 min-w-0 border border-white/[0.08] rounded-xl px-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all disabled:opacity-40";
 const barBtnCls = "h-11 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all btn-press disabled:opacity-40";
 
-export default function ExpenseTable({ expenses, month, groups, plan = {}, members = [] }: Props) {
-  const [showForm, setShowForm] = useState(false);
+export default function ExpenseTable({ expenses, month, groups, plan = {}, members = [], addPrefill }: Props) {
+  const [showForm, setShowForm] = useState(!!addPrefill);
+  // The deep-link values apply to the first form only; "n" or the + button later opens a blank one.
+  const [prefill, setPrefill] = useState<AddPrefill | undefined>(addPrefill);
   const [editing, setEditing] = useState<Expense | undefined>();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
   const [isCopying, startCopyTransition] = useTransition();
   const toast = useToast();
   const hashId = useSyncExternalStore(subscribeHash, readHashId, () => null);
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
   // Selection mode: checkboxes on every row, bulk bar at the bottom.
   const [selectMode, setSelectMode] = useState(false);
@@ -68,6 +77,11 @@ export default function ExpenseTable({ expenses, month, groups, plan = {}, membe
     if (!hashId) return;
     document.getElementById(`e-${hashId}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [hashId]);
+
+  // Drop ?add=1&… from the address bar so a reload doesn't reopen the form.
+  useEffect(() => {
+    if (addPrefill) window.history.replaceState(null, "", `/?month=${month}`);
+  }, [addPrefill, month]);
 
   useEffect(() => {
     function onOpenAdd() { setEditing(undefined); setShowForm(true); }
@@ -88,7 +102,7 @@ export default function ExpenseTable({ expenses, month, groups, plan = {}, membe
 
   function openAdd() { setEditing(undefined); setShowForm(true); }
   function openEdit(e: Expense) { setEditing(e); setShowForm(true); }
-  function closeForm() { setShowForm(false); setEditing(undefined); }
+  function closeForm() { setShowForm(false); setEditing(undefined); setPrefill(undefined); }
 
   const handleDelete = useCallback((id: string, name: string) => {
     setDeletedIds(prev => new Set(prev).add(id));
@@ -398,7 +412,7 @@ export default function ExpenseTable({ expenses, month, groups, plan = {}, membe
         document.body
       )}
 
-      {showForm && createPortal(
+      {showForm && mounted && createPortal(
         <>
           <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={closeForm} />
           <div className="fixed inset-0 z-[70] flex items-start sm:items-center justify-center p-4 pt-16 sm:pt-4 pointer-events-none">
@@ -414,7 +428,7 @@ export default function ExpenseTable({ expenses, month, groups, plan = {}, membe
                   <X size={16} />
                 </button>
               </div>
-              <ExpenseForm month={month} editing={editing} groups={groups} members={members} onDone={closeForm} />
+              <ExpenseForm month={month} editing={editing} prefill={editing ? undefined : prefill} groups={groups} members={members} onDone={closeForm} />
             </div>
           </div>
         </>,

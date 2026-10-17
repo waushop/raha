@@ -6,18 +6,21 @@ import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import { listMonths, whoAmI } from "@/app/actions";
+import { myPreferences } from "@/app/settings/preferences-actions";
+import { DEFAULT_PREFERENCES } from "@/lib/preferences";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
 import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks, ChartLine, Landmark } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { OPEN_MENU_EVENT } from "./BottomNav";
 
-// Current month back to the oldest month with data, newest first. A fresh
-// ledger shows just the current month; the list grows as entries are added
-// (earlier months are still reachable with the arrows on the month page).
-function generateMonths(oldestMonth: string): { value: string; label: string }[] {
+// Current month back to the oldest month with data, newest first, capped at
+// the user's "months in the sidebar" preference. A fresh ledger shows just the
+// current month; the list grows as entries are added (earlier months are
+// still reachable with the arrows on the month page).
+function generateMonths(oldestMonth: string, limit: number): { value: string; label: string }[] {
   const months: { value: string; label: string }[] = [];
   const floor = oldestMonth < currentMonth() ? oldestMonth : currentMonth();
-  for (let m = currentMonth(); m >= floor; m = addMonths(m, -1)) {
+  for (let m = currentMonth(); m >= floor && months.length < limit; m = addMonths(m, -1)) {
     months.push({ value: m, label: monthLabel(m) });
   }
   return months;
@@ -26,6 +29,7 @@ function generateMonths(oldestMonth: string): { value: string; label: string }[]
 export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const [oldestMonth, setOldestMonth] = useState<string>(currentMonth());
+  const [monthLimit, setMonthLimit] = useState(DEFAULT_PREFERENCES.sidebarMonths);
   const [userName, setUserName] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<{ name: string; kind: "personal" | "shared" } | null>(null);
   const router = useRouter();
@@ -60,6 +64,7 @@ export default function Sidebar() {
   useEffect(() => {
     if (pathname === "/login") return;
     listMonths().then((ms) => { const oldest = ms.at(-1); if (oldest) setOldestMonth(oldest); }).catch(() => {});
+    myPreferences().then((p) => setMonthLimit(p.sidebarMonths)).catch(() => {});
     whoAmI().then((u) => { setUserName(u?.name ?? null); setWorkspace(u ? { name: u.workspaceName, kind: u.workspaceKind } : null); }).catch(() => {});
   }, [pathname]);
 
@@ -69,7 +74,7 @@ export default function Sidebar() {
   const activeMonth = searchParams.get("month") ?? currentMonth();
   const isYearPage = pathname === "/year";
   const currentYear = searchParams.get("year") ?? String(new Date().getFullYear());
-  const months = generateMonths(oldestMonth);
+  const months = generateMonths(oldestMonth, monthLimit);
 
   return (
     <>

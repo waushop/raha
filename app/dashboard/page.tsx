@@ -7,6 +7,9 @@ import Link from "next/link";
 import SpendingHeatmap from "@/components/SpendingHeatmap";
 import Insights from "@/components/Insights";
 import Welcome from "@/components/Welcome";
+import SetupBanner from "@/components/SetupBanner";
+import { redirect } from "next/navigation";
+import { onboardedKey } from "@/lib/onboarding";
 import { getBudgets, ensureBudgetSnapshot } from "@/lib/budgets";
 import DailyHeatmap from "@/components/DailyHeatmap";
 import RecurringSuggestions from "@/components/RecurringSuggestions";
@@ -22,6 +25,7 @@ import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, ChartLine, Lan
 import { listSubscriptions } from "@/lib/subscriptions-db";
 import { getPlan } from "@/lib/plan-db";
 import { getCashflow } from "@/lib/cashflow-db";
+import { getPreferences } from "@/lib/preferences-db";
 import { getNetWorth } from "@/lib/networth-db";
 import { isoDate, upcoming } from "@/lib/subscriptions";
 import type { Insight } from "@/components/Insights";
@@ -48,7 +52,8 @@ function daysLeftInMonth(): number {
 
 export default async function DashboardPage() {
   await connection();
-  const { workspaceId: ws } = await currentContext();
+  const { workspaceId: ws, userId } = await currentContext();
+  const prefs = await getPreferences(userId);
   const thisMonth = currentMonth();
   const prevMonth = previousMonth();
   const now = new Date();
@@ -225,7 +230,7 @@ export default async function DashboardPage() {
   );
   const nextBill = dueSoon[0] ?? null;
   // Cash flow (only once a balance checkpoint exists)
-  const cash = await getCashflow(ws, today);
+  const cash = await getCashflow(ws, today, { userId });
   // Net worth (only once an account exists)
   const netWorth = await getNetWorth(ws, thisMonth);
   const cashInsights: Insight[] = cash.projection && cash.projection.lowPoint.balance < 0
@@ -252,6 +257,13 @@ export default async function DashboardPage() {
   const isNewUser =
     thisTotal === 0 && prevTotal === 0 && heatmapData.length === 0 && groupCount === 0;
 
+  // First-run wizard: brand-new workspaces go straight to /welcome; others see
+  // a banner until they finish or dismiss it. Welcome stays as the fallback
+  // for an empty workspace that skipped the wizard.
+  const [onboardedRows] = await db.execute("SELECT VALUE FROM APP_SETTING WHERE NAME = ?", [onboardedKey(ws)]);
+  const onboarded = (onboardedRows as Array<{ VALUE: string }>).length > 0;
+  if (isNewUser && !onboarded) redirect("/welcome");
+
   if (isNewUser) {
     return (
       <main className="min-h-screen flex items-center justify-center py-10 px-4 lg:pl-[19.5rem] lg:pr-6">
@@ -275,6 +287,8 @@ export default async function DashboardPage() {
             Today is day {dayOfMonth}, {daysLeft} days left.
           </p>
         </div>
+
+        {!onboarded && <SetupBanner />}
 
         {/* Income + Net (only renders if user has any income tracked) */}
         {(thisIncome > 0 || prevIncome > 0) && (
@@ -692,7 +706,7 @@ export default async function DashboardPage() {
         {/* Daily heatmap (this month) */}
         {daily.length > 0 && (
           <div className="animate-fade-up" style={{ animationDelay: "0.14s" }}>
-            <DailyHeatmap month={thisMonth} days={daily} undated={Math.max(0, thisTotal - datedTotal)} />
+            <DailyHeatmap weekStart={prefs.weekStart} month={thisMonth} days={daily} undated={Math.max(0, thisTotal - datedTotal)} />
           </div>
         )}
 

@@ -11,7 +11,8 @@ export type ParsedTransaction = {
   currency: string;
   isIncome: boolean;
   category: CategoryKey;
-  confidence: "pattern" | "learned" | "guess" | "manual" | "none";
+  // "source" = category mapped from another budgeting app's own category.
+  confidence: "pattern" | "learned" | "source" | "guess" | "manual" | "none";
   patternId?: string;    // which rule matched
   groupId?: string | null; // suggested by a rule or the learned model
   merchant: string;      // cleanMerchant(description): what a human would type
@@ -92,14 +93,15 @@ export function parseSwedbankCSV(csv: string): ParsedTransaction[] {
  * Returns parsed transactions regardless of format.
  */
 export function parseGenericCSV(csv: string): ParsedTransaction[] {
+  csv = csv.replace(/^\uFEFF/, "");
   const firstLine = csv.split(/\r?\n/)[0] || "";
 
-  // Detect Swedbank format: semicolon-separated with typical headers
-  if (firstLine.includes(";") && (
-    firstLine.toLowerCase().includes("client account") ||
-    firstLine.toLowerCase().includes("kliendi konto")
-  )) {
-    return parseSwedbankCSV(csv);
+  switch (detectCSVFormat(csv)) {
+    case "swedbank": return parseSwedbankCSV(csv);
+    case "ynab": return parseYNABCSV(csv);
+    case "everydollar": return parseEveryDollarCSV(csv);
+    case "rocketmoney": return parseRocketMoneyCSV(csv);
+    case "generic": break;
   }
 
   // Simple format: Date, Name, Amount (comma or semicolon separated)
@@ -137,6 +139,193 @@ export function parseGenericCSV(csv: string): ParsedTransaction[] {
   return results;
 }
 
+export type CSVFormat = "swedbank" | "ynab" | "everydollar" | "rocketmoney" | "generic";
+
+export const CSV_FORMAT_LABELS: Record<CSVFormat, string> = {
+  swedbank: "Swedbank statement",
+  ynab: "YNAB export",
+  everydollar: "EveryDollar export",
+  rocketmoney: "Rocket Money export",
+  generic: "Date, Name, Amount CSV",
+};
+
+/** Sniff the header row to tell which app or bank produced the CSV. */
+export function detectCSVFormat(csv: string): CSVFormat {
+  const firstLine = (csv.replace(/^\uFEFF/, "").split(/\r?\n/)[0] || "");
+  const lower = firstLine.toLowerCase();
+  if (lower.includes(";") && (lower.includes("client account") || lower.includes("kliendi konto"))) return "swedbank";
+  const cols = new Set(parseCSVLine(firstLine, firstLine.includes(";") && !firstLine.includes(",") ? ";" : ",").map(normHeader));
+  if (cols.has("payee") && cols.has("outflow") && cols.has("inflow")) return "ynab";
+  if (cols.has("original date") && cols.has("account name") && cols.has("amount") && (cols.has("custom name") || cols.has("institution name"))) return "rocketmoney";
+  if (cols.has("date") && cols.has("amount") && (cols.has("description") || cols.has("merchant")) && (cols.has("budget item") || cols.has("budget group"))) return "everydollar";
+  return "generic";
+}
+
+function normHeader(h: string): string {
+  return h.trim().replace(/^"|"$/g, "").toLowerCase();
+}
+
+/** Header-indexed rows: [{ "date": "...", "payee": "..." }, ...]. */
+function readTable(csv: string): Record<string, string>[] {
+  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const sep = lines[0].includes(",") ? "," : ";";
+  const header = parseCSVLine(lines[0], sep).map(normHeader);
+  return lines.slice(1).map((line) => {
+    const fields = parseCSVLine(line, sep);
+    const row: Record<string, string> = {};
+    header.forEach((h, i) => { row[h] = (fields[i] ?? "").trim(); });
+    return row;
+  });
+}
+
+/** "$1,234.56", "(12.00)", "-3,50", "1 234,50 €" → signed number (NaN when unreadable). */
+export function parseMoney(raw: string): number {
+  let s = (raw ?? "").trim();
+  if (!s) return NaN;
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1); }
+  s = s.replace(/[^\d.,\-]/g, "");
+  if (s.startsWith("-")) { negative = !negative; s = s.slice(1); }
+  s = s.replace(/-/g, "");
+  const lastComma = s.lastIndexOf(",");
+  const lastDot = s.lastIndexOf(".");
+  if (lastComma > lastDot) {
+    // Comma is the decimal separator when followed by 1–2 digits ("3,50");
+    // otherwise it groups thousands ("1,234").
+    s = /,\d{1,2}$/.test(s) ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  } else {
+    s = s.replace(/,/g, "");
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? NaN : negative ? -n : n;
+}
+
+// Other apps' category names → our keys. First match wins, so the more
+// specific words come before the broad ones ("auto insurance" → insurance,
+// "kids activities" → kids before "entertainment").
+const SOURCE_CATEGORY_KEYWORDS: [RegExp, CategoryKey][] = [
+  [/insurance/, "insurance"],
+  [/\btax(es)?\b/, "tax"],
+  [/child ?care|daycare|kindergarten|\bkids?\b|children|baby|babysit/, "kids"],
+  [/\bpets?\b|veterinar|\bvet\b/, "pets"],
+  [/grocer|supermarket/, "groceries"],
+  [/dining|restaurant|eating out|fast food|coffee|takeout|food delivery|\bbars?\b/, "dining"],
+  [/\bgas\b|fuel|petrol/, "fuel"],
+  [/maintenance|repair|home improvement/, "maintenance"],
+  [/\brent\b|mortgage|housing|\bhome\b/, "housing"],
+  [/phone|mobile|\bcell\b/, "phone"],
+  [/internet|broadband|wifi/, "internet"],
+  [/utilit|electric|water|heating|energy|trash/, "utilities"],
+  [/health|medical|doctor|dentist|pharmacy|wellness/, "health"],
+  [/subscription|streaming|software|membership/, "subscriptions"],
+  [/travel|vacation|holiday|hotel|flight|airfare/, "travel"],
+  [/clothing|apparel|shopping/, "clothing"],
+  [/gift|donation|charit|giving/, "gifts"],
+  [/education|tuition|school|books|course/, "education"],
+  [/gym|fitness|\bsports?\b/, "sports"],
+  [/auto|\bcar\b|vehicle|transport|parking|transit|taxi|ride ?share|uber|lyft/, "transport"],
+  [/entertainment|\bfun\b|hobb|movies|music|games/, "entertainment"],
+  [/saving|invest|emergency fund|retirement/, "savings"],
+  [/loan|debt|credit card payment|student loan/, "loan"],
+  [/personal|hair|beauty|self.?care/, "personal"],
+];
+
+/** Map another app's category label ("Category Group: Category" style too) to one of ours. */
+export function mapSourceCategory(label: string): CategoryKey {
+  const s = (label ?? "").toLowerCase().trim();
+  if (!s) return "other";
+  for (const [re, key] of SOURCE_CATEGORY_KEYWORDS) if (re.test(s)) return key;
+  return "other";
+}
+
+function sourceTx(date: string | null, description: string, signed: number, categoryLabel: string, isIncome: boolean): ParsedTransaction | null {
+  const amount = Math.abs(signed);
+  if (!date || !description || isNaN(amount) || amount === 0) return null;
+  const category = isIncome ? "other" : mapSourceCategory(categoryLabel);
+  return {
+    date,
+    month: date.substring(0, 7),
+    description,
+    merchant: cleanMerchant(description),
+    amount: Math.round(amount * 100) / 100,
+    currency: "EUR",
+    isIncome,
+    category,
+    confidence: category === "other" ? "none" : "source",
+  };
+}
+
+/**
+ * YNAB register export: Account, Flag, Date, Payee, Category Group/Category,
+ * Category Group, Category, Memo, Outflow, Inflow, Cleared. Outflow is an
+ * expense, Inflow income; transfers between accounts ("Transfer : …") are skipped.
+ */
+export function parseYNABCSV(csv: string): ParsedTransaction[] {
+  const out: ParsedTransaction[] = [];
+  for (const r of readTable(csv)) {
+    const payee = r["payee"] ?? "";
+    if (/^transfer\s*:/i.test(payee)) continue;
+    const outflow = parseMoney(r["outflow"] ?? "");
+    const inflow = parseMoney(r["inflow"] ?? "");
+    const signed = (isNaN(inflow) ? 0 : inflow) - (isNaN(outflow) ? 0 : outflow);
+    const memo = r["memo"] ?? "";
+    const description = [payee, memo].filter(Boolean).join(" — ") || memo;
+    const category = r["category"] || r["category group/category"] || r["category group"] || "";
+    const tx = sourceTx(parseDate(r["date"] ?? ""), description, signed, category, signed > 0);
+    if (tx) out.push(tx);
+  }
+  return out;
+}
+
+/**
+ * EveryDollar transaction export: Date, Description, Amount, Budget Item
+ * (sometimes also Budget Group / Type). Negative amount = expense, positive
+ * = income, matching how the app shows them.
+ */
+export function parseEveryDollarCSV(csv: string): ParsedTransaction[] {
+  const out: ParsedTransaction[] = [];
+  for (const r of readTable(csv)) {
+    const signed = parseMoney(r["amount"] ?? "");
+    const type = (r["type"] ?? "").toLowerCase();
+    const isIncome = type === "income" || type === "credit" ? true : type === "expense" || type === "debit" ? false : signed > 0;
+    const category = [r["budget group"], r["budget item"]].filter(Boolean).join(": ");
+    const description = r["description"] || r["merchant"] || "";
+    const tx = sourceTx(parseDate(r["date"] ?? ""), description, signed, category, isIncome);
+    if (tx) out.push(tx);
+  }
+  return out;
+}
+
+/**
+ * Rocket Money transaction export: Date, Original Date, Account Type, Account
+ * Name, Account Number, Institution Name, Name, Custom Name, Amount,
+ * Description, Category, Note, Ignored From, Tax Deductible.
+ *
+ * Sign convention assumed: Rocket Money exports money leaving the account as a
+ * positive amount and money coming in as negative. The "Income" category (or
+ * "Paycheck"/"Refund" style categories) overrides the sign, so a file written
+ * with the opposite convention still lands paychecks on the income side.
+ * Rows marked "Ignored From" everything and internal transfers are skipped.
+ */
+export function parseRocketMoneyCSV(csv: string): ParsedTransaction[] {
+  const out: ParsedTransaction[] = [];
+  for (const r of readTable(csv)) {
+    const ignored = (r["ignored from"] ?? "").toLowerCase();
+    if (ignored === "everything") continue;
+    const category = r["category"] ?? "";
+    if (/^(internal )?transfers?$|credit card payment/i.test(category)) continue;
+    const signed = parseMoney(r["amount"] ?? "");
+    const incomeCategory = /income|paycheck|salary|refund|reimburse/i.test(category);
+    const isIncome = incomeCategory || signed < 0;
+    const name = r["custom name"] || r["name"] || r["description"] || "";
+    const description = [name, r["note"]].filter(Boolean).join(" — ");
+    const tx = sourceTx(parseDate(r["date"] || r["original date"] || ""), description, signed, category, isIncome);
+    if (tx) out.push(tx);
+  }
+  return out;
+}
+
 /**
  * Auto-categorise parsed transactions: user rules first (lib/rules.ts), then
  * the model learned from the ledger, then built-in keyword guesses.
@@ -161,6 +350,9 @@ export function classifyTransactions(
       if (patch.isRecurring !== undefined) out.isRecurring = patch.isRecurring;
       return out;
     }
+
+    // The exporting app already categorised it: trust that over our guesses.
+    if (tx.confidence === "source") return tx;
 
     // Learned from the user's own history (beats generic keyword guesses).
     if (model) {
@@ -209,16 +401,26 @@ function guessCategory(desc: string): CategoryKey | null {
   return null;
 }
 
-function parseDate(str: string): string | null {
+export function parseDate(str: string): string | null {
+  str = (str ?? "").trim().replace(/^"|"$/g, "");
   if (!str) return null;
 
   // DD.MM.YYYY
   const dotMatch = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   if (dotMatch) return `${dotMatch[3]}-${dotMatch[2]}-${dotMatch[1]}`;
 
-  // YYYY-MM-DD
-  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) return str;
+  // YYYY-MM-DD (also with a time part)
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  // MM/DD/YYYY (US exports: YNAB, EveryDollar, Rocket Money), M/D/YY too
+  const usMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (usMatch) {
+    const year = usMatch[3].length === 2 ? `20${usMatch[3]}` : usMatch[3];
+    const mm = Number(usMatch[1]), dd = Number(usMatch[2]);
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+    return `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  }
 
   // YYYYMMDD
   const compactMatch = str.match(/^(\d{4})(\d{2})(\d{2})$/);

@@ -8,6 +8,7 @@ import Sidebar from "@/components/Sidebar";
 import CommandPalette from "@/components/CommandPalette";
 import BottomNav from "@/components/BottomNav";
 import ServiceWorker from "@/components/ServiceWorker";
+import OfflineSync from "@/components/OfflineSync";
 import "./globals.css";
 
 // Self-hosted by next/font: no runtime request to Google, no layout shift.
@@ -69,6 +70,7 @@ export default function RootLayout({
           <Suspense><CommandPalette /></Suspense>
           <ScrollToTop />
           <ServiceWorker />
+          <OfflineSync />
         </ToastProvider>
       </body>
     </html>

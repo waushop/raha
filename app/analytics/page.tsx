@@ -16,6 +16,7 @@ import SankeyChart from "@/components/SankeyChart";
 import SavingsRateChart from "@/components/SavingsRateChart";
 import MerchantLeaderboard from "@/components/MerchantLeaderboard";
 import WeekdaySplitCard from "@/components/WeekdaySplitCard";
+import { getPreferences } from "@/lib/preferences-db";
 import { Download } from "lucide-react";
 
 const fmt = (n: number) =>
@@ -28,7 +29,8 @@ type CatMonth = { CATEGORY: CategoryKey; MONTH: string; TOTAL: number };
 
 export default async function AnalyticsPage() {
   await connection();
-  const { workspaceId: ws } = await currentContext();
+  const { workspaceId: ws, userId } = await currentContext();
+  const { weekStart } = await getPreferences(userId);
   // Last 12 months of data
   const now = new Date();
   const endMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -409,7 +411,7 @@ export default async function AnalyticsPage() {
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.11s" }}>
           <h2 className="text-sm font-bold text-white mb-1">Weekdays vs weekends</h2>
           <p className="text-[10px] text-[#5a6380] mb-4">Only expenses with a day of the month count; per-day averages divide by the calendar days in the last 12 months.</p>
-          <WeekdaySplitCard split={split} />
+          <WeekdaySplitCard split={split} weekStart={weekStart} />
         </div>
 
         {/* Merchant leaderboard */}
