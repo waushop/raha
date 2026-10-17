@@ -74,23 +74,32 @@ export default async function Page({
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Header */}
         {/* Sticky, so it gets a solid background: the translucent card would show rows through it. */}
-        <div className="card rounded-2xl px-4 py-3 sm:px-6 sm:py-5 flex items-center justify-between gap-2 animate-fade-up sticky top-3 z-30" style={{ background: "var(--bg-card-solid)" }}>
-          <div className="min-w-0">
-            <h1 className="text-3xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight whitespace-nowrap" style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}>
+        <div className="card rounded-2xl px-4 py-3 sm:px-6 sm:py-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 animate-fade-up sticky top-3 z-30" style={{ background: "var(--bg-card-solid)" }}>
+          {/* Phones: wordmark on its own line, then the total and the month switcher. */}
+          <div className="min-w-0 w-full sm:w-auto">
+            <h1 className="text-[1.9rem] sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight whitespace-nowrap" style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}>
               Empty Wallet
             </h1>
             {spent.length > 0 && (
-              <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
-                <span className="text-xs sm:text-sm font-mono font-bold text-white/80 tabular-nums whitespace-nowrap">
+              <div className="hidden sm:flex items-center gap-2 mt-1">
+                <span className="text-sm font-mono font-bold text-white/80 tabular-nums whitespace-nowrap">
                   {spent.reduce((s, e) => s + e.AMOUNT, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} €
                 </span>
-                <span className="hidden sm:inline text-[9px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">
+                <span className="text-[9px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">
                   {spent.length} expense{spent.length !== 1 ? "s" : ""}
                 </span>
               </div>
             )}
           </div>
-          <div className="shrink-0"><MonthNav month={month} /></div>
+          <div className="flex items-center justify-between gap-3 w-full sm:w-auto">
+            {spent.length > 0 && (
+              <span className="sm:hidden text-sm font-mono font-bold text-white/85 tabular-nums whitespace-nowrap">
+                {spent.reduce((s, e) => s + e.AMOUNT, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} €
+                <span className="ml-1.5 text-[9px] font-sans font-semibold text-[#5a6380]">{spent.length} expense{spent.length !== 1 ? "s" : ""}</span>
+              </span>
+            )}
+            <div className="shrink-0 ml-auto"><MonthNav month={month} /></div>
+          </div>
         </div>
 
         {/* Trend */}

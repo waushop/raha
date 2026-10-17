@@ -547,3 +547,113 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
   padding-bottom: 0.08em;
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6)) drop-shadow(0 0 14px rgba(255, 255, 255, 0.10));
 }
+
+/* ============================================
+   POLISH: legibility, glow, motion
+   ============================================ */
+/* Legibility: the smallest sizes step up one notch, and the muted greys get
+   enough contrast to read on smoke glass. */
+:root:not([data-theme="light"]) { --text-secondary: #b3b3bb; --text-muted: #85858e; }
+.text-\[8px\] { font-size: 9px; }
+.text-\[9px\] { font-size: 10px; }
+.text-\[10px\] { font-size: 11px; }
+.text-\[11px\] { font-size: 12px; }
+.uppercase.tracking-widest, .uppercase.tracking-wider { letter-spacing: 0.12em; font-weight: 600; }
+
+/* Page titles (geometric headline face): a faint halo so the chrome lifts off. */
+[style*="font-hand"]:not([style*="font-brand"]) {
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.55)) drop-shadow(0 0 18px rgba(255, 255, 255, 0.07));
+}
+
+/* The wordmark: liquid chrome that slowly catches the light. */
+[style*="font-brand"] {
+  background-image: linear-gradient(100deg, #8f8f99 0%, #e9e9ee 22%, #b7b7c0 38%, #ffffff 50%, #a3a3ad 64%, #ececf1 82%, #8f8f99 100%) !important;
+  background-size: 220% 100% !important;
+  animation: chrome-sheen 9s ease-in-out infinite;
+}
+@keyframes chrome-sheen {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Headline numbers glow faintly in their own colour. */
+.text-xl.font-bold, .text-2xl.font-bold, .text-3xl.font-bold, .text-lg.font-bold.font-mono, .text-xl.font-mono, .text-2xl.font-mono {
+  text-shadow: 0 0 22px color-mix(in srgb, currentColor 22%, transparent);
+}
+
+/* Progress bars grow in from the left when a page opens. */
+[class*="rounded-full"][style*="width:"] {
+  transform-origin: left center;
+  animation: bar-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes bar-grow {
+  from { transform: scaleX(0); opacity: 0.4; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+/* Primary buttons: a light sweep across the pearl on hover/press. */
+.gradient-pink, .btn-primary, [class~="from-pink-500"][class~="to-purple-500"] {
+  background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.7) 50%, transparent 65%), linear-gradient(180deg, #ffffff, #d9d9de) !important;
+  background-size: 250% 100%, 100% 100% !important;
+  background-position: 120% 0, 0 0 !important;
+  transition: background-position 0.7s ease, transform 0.15s ease, box-shadow 0.3s ease;
+}
+.gradient-pink:hover, .btn-primary:hover, [class~="from-pink-500"][class~="to-purple-500"]:hover {
+  background-position: -20% 0, 0 0 !important;
+  box-shadow: inset 0 1px 0 #fff, 0 10px 30px -10px rgba(255, 255, 255, 0.5);
+}
+[data-theme="light"] .gradient-pink, [data-theme="light"] .btn-primary, [data-theme="light"] [class~="from-pink-500"][class~="to-purple-500"] {
+  background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.25) 50%, transparent 65%), linear-gradient(180deg, #3f3f46, #18181b) !important;
+}
+
+/* Selected nav items (sidebar + mobile bar): a glass pill with a lit rim and
+   a little starlight, as in the reference. */
+.nav-active,
+[class*="from-pink-500/15"][class*="to-purple-500/15"] {
+  background-image:
+    radial-gradient(1px 1px at 18% 32%, rgba(255,255,255,.9), transparent 60%),
+    radial-gradient(1px 1px at 72% 26%, rgba(255,255,255,.7), transparent 60%),
+    radial-gradient(1.4px 1.4px at 86% 70%, rgba(255,255,255,.8), transparent 60%),
+    radial-gradient(1px 1px at 40% 78%, rgba(255,255,255,.5), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.03)) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 0 22px -8px rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+.nav-active svg { filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.45)); }
+[data-theme="light"] .nav-active,
+[data-theme="light"] [class*="from-pink-500/15"][class*="to-purple-500/15"] {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.6)) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: inset 0 1px 0 #fff, 0 6px 18px -8px rgba(0, 0, 0, 0.3);
+  color: #18181b;
+}
+
+/* Mobile bar: the Add orb. */
+.add-orb {
+  background: radial-gradient(circle at 35% 25%, #ffffff, #d4d4da 55%, #9c9ca5 100%);
+  color: #0b0b0c;
+  box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(255, 255, 255, 0.25), 0 8px 24px -6px rgba(255, 255, 255, 0.45);
+  animation: orb-breathe 4.5s ease-in-out infinite;
+}
+@keyframes orb-breathe {
+  0%, 100% { box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(255,255,255,.25), 0 8px 24px -6px rgba(255,255,255,.35); }
+  50% { box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(255,255,255,.35), 0 8px 30px -4px rgba(255,255,255,.55); }
+}
+[data-theme="light"] .add-orb { background: radial-gradient(circle at 35% 25%, #52525b, #27272a 60%, #09090b); color: #fafafa; box-shadow: 0 8px 22px -6px rgba(0,0,0,.45); animation: none; }
+
+/* Cards lift a touch more and catch light on hover (pointer devices). */
+@media (hover: hover) {
+  .card-hover:hover { box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(255,255,255,0.05), 0 24px 50px -20px rgba(0,0,0,0.9), 0 0 40px -18px rgba(255,255,255,0.18); }
+}
+
+/* Inputs: a soft silver focus halo instead of a hard ring. */
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08), 0 0 18px -6px rgba(255, 255, 255, 0.35);
+}
+
+/* Respect reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  [style*="font-brand"], .add-orb, [class*="rounded-full"][style*="width:"] { animation: none !important; }
+  .gradient-pink, .btn-primary { transition: none; }
+}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Calendar, CirclePlus, LayoutDashboard, Menu, Search } from "lucide-react";
+import { Calendar, LayoutDashboard, Menu, Plus, Search } from "lucide-react";
 
 // Thumb-reachable navigation for phones and tablets, in the same flat style
 // as onebetwonder's bar: equal icon + label tabs on a translucent blurred
@@ -47,26 +47,29 @@ export default function BottomNav() {
     const active = item.match(pathname);
     return (
       <button key={item.path} onClick={() => router.push(item.path)} aria-label={item.label} aria-current={active ? "page" : undefined}
-        className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${active ? "text-pink-400" : "text-[#5a6380] hover:text-[#9ca3c0]"}`}>
-        {item.icon}
-        <span className="text-[9px] font-semibold">{item.label}</span>
+        className={`flex-1 flex items-center justify-center py-1.5 transition-colors ${active ? "text-white" : "text-[#5a6380] hover:text-[#9ca3c0]"}`}>
+        <span className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-[18px] transition-all duration-300 ${active ? "nav-active" : ""}`}>
+          {item.icon}
+          <span className="text-[10px] font-semibold tracking-tight">{item.label}</span>
+        </span>
       </button>
     );
   };
 
   return (
     <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/[0.08] bottom-bar" aria-label="Main" style={{ paddingBottom: "var(--sab, 0px)" }}>
-      <div className="flex items-center justify-around px-1 h-14 max-w-xl mx-auto">
+      <div className="flex items-center justify-around px-1 h-16 max-w-xl mx-auto">
         {ITEMS.map(tab)}
-        <button onClick={add} aria-label="Add expense" className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-pink-400 hover:text-pink-300 transition-colors">
-          <CirclePlus size={20} />
-          <span className="text-[9px] font-semibold">Add</span>
+        <button onClick={add} aria-label="Add expense" className="flex-1 flex items-center justify-center py-1 group">
+          <span className="add-orb w-12 h-12 rounded-full flex items-center justify-center transition-transform duration-200 group-active:scale-95">
+            <Plus size={22} strokeWidth={2.4} />
+          </span>
         </button>
         {ITEMS_RIGHT.map(tab)}
         <button onClick={() => window.dispatchEvent(new Event(OPEN_MENU_EVENT))} aria-label="Menu"
-          className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[#5a6380] hover:text-[#9ca3c0] transition-colors">
+          className="flex-1 flex flex-col items-center justify-center gap-0.5 py-3 text-[#5a6380] hover:text-[#9ca3c0] transition-colors">
           <Menu size={20} />
-          <span className="text-[9px] font-semibold">Menu</span>
+          <span className="text-[10px] font-semibold tracking-tight">Menu</span>
         </button>
       </div>
     </nav>

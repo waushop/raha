@@ -589,7 +589,7 @@ function ExpenseRow({ expense: e, payerName, highlighted, onEdit, onDelete, onDu
         <button onClick={() => onDuplicate(e.ID)} className="w-7 h-7 rounded-lg hover:bg-purple-500/10 hidden sm:flex items-center justify-center text-[#5a6380] hover:text-purple-400 transition-colors" aria-label="Duplicate">
           <Copy size={11} />
         </button>
-        <button onClick={() => onCreateRule(e)} className="w-7 h-7 rounded-lg hover:bg-amber-500/10 flex items-center justify-center text-[#5a6380] hover:text-amber-400 transition-colors" aria-label="Create rule" title="Create rule from this row">
+        <button onClick={() => onCreateRule(e)} className="w-7 h-7 rounded-lg hover:bg-amber-500/10 hidden sm:flex items-center justify-center text-[#5a6380] hover:text-amber-400 transition-colors" aria-label="Create rule" title="Create rule from this row">
           <Wand2 size={11} />
         </button>
         <button onClick={() => onEdit(e)} className="w-7 h-7 rounded-lg hover:bg-blue-500/10 flex items-center justify-center text-[#5a6380] hover:text-blue-400 transition-colors" aria-label="Edit">
