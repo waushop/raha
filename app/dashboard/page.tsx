@@ -284,7 +284,7 @@ export default async function DashboardPage() {
           <div className="flex items-start justify-between gap-3">
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
-            style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
+            style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}
           >
             Empty Wallet
           </h1>

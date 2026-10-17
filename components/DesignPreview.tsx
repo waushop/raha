@@ -8,14 +8,19 @@ import {
 } from "lucide-react";
 
 type Glass = "clear" | "smoke" | "ink";
-type Font = "serif" | "sans" | "hand";
+type Font = "sora" | "grotesk" | "unbounded" | "syne";
 type Data = "mono" | "muted";
+type Brand = "tag" | "spray" | "marker";
+const BRAND: Record<Brand, string> = { tag: "var(--font-lux-tag), cursive", spray: "var(--font-lux-spray), cursive", marker: "var(--font-lux-marker), cursive" };
 
 const FONT: Record<Font, string> = {
-  serif: "var(--font-lux-serif), Georgia, serif",
-  sans: "var(--font-lux-sans), system-ui, sans-serif",
-  hand: "var(--font-hand), cursive",
+  sora: "var(--font-lux-sora), system-ui, sans-serif",
+  grotesk: "var(--font-lux-grotesk), system-ui, sans-serif",
+  unbounded: "var(--font-lux-unbounded), system-ui, sans-serif",
+  syne: "var(--font-lux-syne), system-ui, sans-serif",
 };
+const FONT_WEIGHT: Record<Font, number> = { sora: 300, grotesk: 400, unbounded: 300, syne: 500 };
+const FONT_TRACK: Record<Font, string> = { sora: "-0.035em", grotesk: "-0.03em", unbounded: "-0.02em", syne: "-0.01em" };
 
 // Muted data colours for charts/income-expense when not strictly monochrome.
 const DATA = {
@@ -46,13 +51,14 @@ function Seg<T extends string>({ value, options, onChange, label }: { value: T; 
 
 export default function DesignPreview() {
   const [glass, setGlass] = useState<Glass>("smoke");
-  const [font, setFont] = useState<Font>("serif");
+  const [font, setFont] = useState<Font>("sora");
   const [data, setData] = useState<Data>("muted");
+  const [brand, setBrand] = useState<Brand>("tag");
   const [toggle, setToggle] = useState(true);
   const [tab, setTab] = useState(1);
   const c = DATA[data];
-  const head = { fontFamily: FONT[font], fontWeight: font === "hand" ? 700 : 400 } as const;
-  const body = { fontFamily: FONT.sans } as const;
+  const head = { fontFamily: FONT[font], fontWeight: FONT_WEIGHT[font], letterSpacing: FONT_TRACK[font] } as const;
+  const body = { fontFamily: "var(--font-lux-sans), system-ui, sans-serif" } as const;
   const bars = [62, 74, 58, 90, 70, 48];
 
   return (
@@ -64,10 +70,11 @@ export default function DesignPreview() {
         </div>
 
         {/* Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
           <Seg label="Glass" value={glass} onChange={setGlass} options={[["clear", "Clear"], ["smoke", "Smoke"], ["ink", "Ink"]]} />
-          <Seg label="Headline font" value={font} onChange={setFont} options={[["serif", "Serif"], ["sans", "Sans"], ["hand", "Hand"]]} />
+          <Seg label="Headline font" value={font} onChange={setFont} options={[["sora", "Sora"], ["grotesk", "Grotesk"], ["unbounded", "Unbounded"], ["syne", "Syne"]]} />
           <Seg label="Data colour" value={data} onChange={setData} options={[["mono", "Mono"], ["muted", "Muted"]]} />
+          <Seg label="Wordmark" value={brand} onChange={setBrand} options={[["tag", "Tag"], ["spray", "Spray"], ["marker", "Marker"]]} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -164,7 +171,7 @@ export default function DesignPreview() {
 
           {/* PIN + buttons */}
           <section className="glass rounded-[28px] p-5">
-            <h2 className="text-2xl mb-1" style={head}>Empty Wallet</h2>
+            <h2 className="text-4xl mb-1 bg-gradient-to-b from-white to-[#9c9ca5] bg-clip-text text-transparent" style={{ fontFamily: BRAND[brand], filter: "drop-shadow(0 0 14px rgba(255,255,255,.12))" }}>Empty Wallet</h2>
             <p className="text-xs lux-sub mb-4">Enter your PIN</p>
             <div className="flex justify-center gap-2 mb-5">
               {[1, 1, 1, 0, 0, 0].map((f, i) => (

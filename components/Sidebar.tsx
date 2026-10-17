@@ -94,7 +94,7 @@ export default function Sidebar() {
           <div className="flex items-center justify-between">
             <h2
               className="text-2xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent"
-              style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
+              style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}
             >
               Empty Wallet
             </h2>

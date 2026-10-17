@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Serif, Inter_Tight } from "next/font/google";
+import { Inter_Tight, Sedgwick_Ave_Display, Sora } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
 import KeyboardHints from "@/components/KeyboardHints";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -12,12 +12,20 @@ import OfflineSync from "@/components/OfflineSync";
 import "./globals.css";
 
 // Self-hosted by next/font: no runtime request to Google, no layout shift.
-// Headlines use the serif through --font-hand (the variable name predates the
-// leather + glass makeover); body text uses Inter Tight through --font-ui.
-const headline = Instrument_Serif({
+// Headlines use Sora (geometric, futuristic) through --font-hand (the variable
+// name predates the leather + glass makeover); body text uses Inter Tight
+// through --font-ui.
+const headline = Sora({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-hand",
+  display: "swap",
+});
+// The "Empty Wallet" wordmark is a graffiti tag (--font-brand).
+const brand = Sedgwick_Ave_Display({
   subsets: ["latin"],
   weight: "400",
-  variable: "--font-hand",
+  variable: "--font-brand",
   display: "swap",
 });
 const ui = Inter_Tight({
@@ -64,7 +72,7 @@ export default function RootLayout({
 }) {
   return (
     // suppressHydrationWarning: THEME_INIT may add data-theme before React hydrates.
-    <html lang="en" className={`${headline.variable} ${ui.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${headline.variable} ${brand.variable} ${ui.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
