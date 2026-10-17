@@ -165,15 +165,15 @@ export default function Sidebar() {
               Activity
             </button>
             <button
-              onClick={() => router.push("/recurring")}
+              onClick={() => router.push("/subscriptions")}
               className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mb-0.5 ${
-                pathname === "/recurring"
+                pathname === "/subscriptions"
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
                   : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Repeat size={14} strokeWidth={2.5} />
-              Recurring
+              Subscriptions
             </button>
             <button
               onClick={() => router.push("/groups")}

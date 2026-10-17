@@ -13,7 +13,8 @@ import db from "../lib/db";
 import type { CategoryKey } from "../types/expense";
 import { parseTags } from "../lib/tags";
 import { hashPin } from "../lib/pin";
-import { daysInMonth, addMonths as addMonthsKey } from "../lib/months";
+import { daysInMonth, addMonths as addMonthsKey, currentMonth } from "../lib/months";
+import { backfillSubscriptions } from "../lib/subscriptions";
 
 const force = process.argv.includes("--force");
 const MONTHS = 14; // ending with the current month
@@ -189,7 +190,7 @@ const result = db.transaction((tx) => {
     throw new Error(`LEDGER already has ${existing} rows. Re-run with --force to wipe and reseed.`);
   }
   if (force) {
-    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL"]) tx.run(`DELETE FROM ${t}`);
+    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL", "SUBSCRIPTION"]) tx.run(`DELETE FROM ${t}`);
   }
 
   tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Emergency fund', 'shield', 6000, ?, 1500, ?)", [GOAL_FUND, ws, addMonthsKey(months[months.length - 1], 8), `${months[0]}-01 09:00:00`]);
@@ -231,8 +232,11 @@ const result = db.transaction((tx) => {
     tx.run("INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY) VALUES (?, ?, ?, ?, ?, ?)", [randomUUID(), ws, p, cat, g?.id ?? null, prio]);
   }
 
+  const subscriptions = backfillSubscriptions(tx, currentMonth(), randomUUID);
+
   return {
     months: `${months[0]} … ${months[months.length - 1]}`,
+    subscriptions,
     ledger: rows.length,
     deleted: rows.filter((r) => r.deleted).length,
     income: rows.filter((r) => r.kind === "income").length,

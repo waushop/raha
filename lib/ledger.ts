@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 import db, { type Tx } from "./db";
 import type { Kind } from "@/types/expense";
 import { ValidationError } from "./validate";
-import { daysInMonth } from "./months";
+import { currentMonth, daysInMonth } from "./months";
+import { syncRowLink } from "./subscriptions";
 import { parseTags } from "./tags";
 
 export type LedgerSource = {
@@ -95,7 +96,13 @@ export function insertRow(tx: Tx, ws: string, row: LedgerSource, month: string):
   tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null]);
   if (row.TAGS) syncTags(tx, id, row.TAGS);
   audit(tx, id, "create", null, { ID: id, ...row, MONTH: month, DAY: day });
+  if (row.IS_RECURRING && row.KIND === "expense") linkSubscription(tx, ws, id);
   return id;
+}
+
+/** Keeps LEDGER.SUBSCRIPTION_ID in step with the row's recurring flag and identity. */
+export function linkSubscription(tx: Tx, ws: string, id: string): void {
+  syncRowLink(tx, ws, id, currentMonth(), randomUUID);
 }
 
 /** Copies every live row of `sourceMonth` into `targetMonth`, skipping duplicates. */

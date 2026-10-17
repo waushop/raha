@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { iconFromLegacy } from "@/lib/icon-names";
+import { CADENCES, STATUSES, backfillSubscriptions } from "@/lib/subscriptions";
+import { currentMonth } from "@/lib/months";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import db from "@/lib/db";
@@ -20,7 +22,8 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //   v6  + GOAL_ID per row, plus goals section.
 //   v7  groups and goals carry ICON (a lib/icon-names.ts name) instead of
 //       EMOJI; older files' EMOJI values are mapped on restore.
-const BACKUP_VERSION = 7;
+//   v8  + subscriptions section and SUBSCRIPTION_ID per row.
+const BACKUP_VERSION = 8;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,7 +38,7 @@ export async function GET() {
   const ws = ctx.workspaceId;
 
   const [expenses] = await db.execute(
-    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, NOTES, IS_RECURRING, TAGS, CREATED_AT
+    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, NOTES, IS_RECURRING, TAGS, CREATED_AT
      FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`, [ws]
   );
   const [groups] = await db.execute(
@@ -49,6 +52,10 @@ export async function GET() {
     "SELECT ID, NAME, ICON, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH, CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]
   );
   const [budgetHistory] = await db.execute("SELECT MONTH, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM BUDGET_HISTORY WHERE WORKSPACE_ID = ? ORDER BY MONTH, CATEGORY", [ws]);
+  const [subscriptions] = await db.execute(
+    `SELECT ID, NAME, CATEGORY, GROUP_ID, CAST(AMOUNT AS REAL) AS AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, STATUS_CHANGED_AT, NOTES, CANCEL_URL, TRIAL_ENDS
+     FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`, [ws]
+  );
 
   const data = {
     version: BACKUP_VERSION,
@@ -57,6 +64,7 @@ export async function GET() {
     budgets,
     budget_history: budgetHistory,
     goals,
+    subscriptions,
     import_patterns: patterns,
     expenses, // legacy field name kept so older importers still find the rows
   };
@@ -106,10 +114,11 @@ export async function POST(request: NextRequest) {
   const patterns = Array.isArray(body.import_patterns) ? body.import_patterns : [];
   const budgetHistory = Array.isArray(body.budget_history) ? body.budget_history : [];
   const goals = Array.isArray(body.goals) ? body.goals : [];
+  const subscriptions = Array.isArray(body.subscriptions) ? body.subscriptions : [];
   const expenses = body.expenses;
 
   const result = db.transaction((tx) => {
-    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0 };
+    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0, subscriptions: 0 };
 
     for (const g of groups) {
       if (!isObj(g)) continue;
@@ -148,6 +157,35 @@ export async function POST(request: NextRequest) {
 
     const liveGroupIds = new Set(
       tx.all<{ ID: string }>("SELECT ID FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]).map((r) => r.ID),
+    );
+
+    for (const sub of subscriptions) {
+      if (!isObj(sub)) continue;
+      const id = str(sub.ID);
+      const name = str(sub.NAME);
+      const amount = num(sub.AMOUNT);
+      const cadence = str(sub.CADENCE) ?? "monthly";
+      const status = str(sub.STATUS) ?? "active";
+      if (!id || !UUID_RE.test(id) || !name || amount === null || amount <= 0) continue;
+      if (!(CADENCES as readonly string[]).includes(cadence) || !(STATUSES as readonly string[]).includes(status)) continue;
+      if (foreign(tx, ws, "SUBSCRIPTION", id)) continue;
+      const groupId = str(sub.GROUP_ID);
+      const day = num(sub.DAY);
+      const moy = num(sub.MONTH_OF_YEAR);
+      tx.run(
+        `INSERT INTO SUBSCRIPTION (ID, WORKSPACE_ID, NAME, CATEGORY, GROUP_ID, AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, STATUS_CHANGED_AT, NOTES, CANCEL_URL, TRIAL_ENDS)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET NAME = excluded.NAME, CATEGORY = excluded.CATEGORY, GROUP_ID = excluded.GROUP_ID, AMOUNT = excluded.AMOUNT,
+           CADENCE = excluded.CADENCE, DAY = excluded.DAY, MONTH_OF_YEAR = excluded.MONTH_OF_YEAR, STATUS = excluded.STATUS,
+           STATUS_CHANGED_AT = excluded.STATUS_CHANGED_AT, NOTES = excluded.NOTES, CANCEL_URL = excluded.CANCEL_URL, TRIAL_ENDS = excluded.TRIAL_ENDS, DELETED_AT = NULL`,
+        [id, ws, name, isCategory(sub.CATEGORY) ? sub.CATEGORY : "subscriptions", groupId && liveGroupIds.has(groupId) ? groupId : null, amount, cadence,
+         day !== null && Number.isInteger(day) && day >= 1 && day <= 31 ? day : null, moy !== null && Number.isInteger(moy) && moy >= 1 && moy <= 12 ? moy : null,
+         status, str(sub.STATUS_CHANGED_AT), str(sub.NOTES), str(sub.CANCEL_URL), str(sub.TRIAL_ENDS)],
+      );
+      stats.subscriptions++;
+    }
+    const liveSubIds = new Set(
+      tx.all<{ ID: string }>("SELECT ID FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]).map((r) => r.ID),
     );
 
     for (const b of budgets) {
@@ -210,13 +248,14 @@ export async function POST(request: NextRequest) {
       const day = rawDay !== null && Number.isInteger(rawDay) && rawDay >= 1 && rawDay <= 31 ? rawDay : null;
       const tags = str(e.TAGS);
       const goalId = str(e.GOAL_ID);
+      const subId = str(e.SUBSCRIPTION_ID);
 
       tx.run(
-        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, NOTES, IS_RECURRING, TAGS)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, NOTES, IS_RECURRING, TAGS)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ID) DO UPDATE SET KIND = excluded.KIND, CATEGORY = excluded.CATEGORY, GROUP_ID = excluded.GROUP_ID,
            NAME = excluded.NAME, AMOUNT = excluded.AMOUNT, MONTH = excluded.MONTH, DAY = excluded.DAY, GOAL_ID = excluded.GOAL_ID,
-           NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
+           SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
         [
           id,
           ws,
@@ -228,6 +267,7 @@ export async function POST(request: NextRequest) {
           month,
           day,
           goalId && liveGoalIds.has(goalId) ? goalId : null,
+          subId && liveSubIds.has(subId) ? subId : null,
           str(e.NOTES),
           num(e.IS_RECURRING) ? 1 : 0,
           tags,
@@ -237,6 +277,8 @@ export async function POST(request: NextRequest) {
       if (exists) stats.updated++;
       else stats.imported++;
     }
+    // Recurring rows from older backups (or without a live subscription) get linked now.
+    backfillSubscriptions(tx, currentMonth(), randomUUID);
     return stats;
   });
 

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import db from "@/lib/db";
 import { PIN_REGEX, createUserWithWorkspace, hashPin, pinTaken, requireAuth } from "@/lib/auth";
 import { parseId, parseName } from "@/lib/validate";
-import type { ActionResult } from "@/app/actions";
+import type { ActionResult } from "@/lib/action-result";
 import { unlock } from "@/lib/ratelimit";
 import { pinWeakness } from "@/lib/pin-policy";
 import { createChallenge, forgetAllDevices, forgetDevice, latestChallengeId, verifyChallenge } from "@/lib/twofa";

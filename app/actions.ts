@@ -34,17 +34,7 @@ import type { ExpenseGroup, Kind } from "@/types/expense";
 // and propagates. Actions that only take ids/months from our own UI throw
 // on bad input instead, since that can only mean a programming error.
 
-export type ActionResult<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string };
-
-async function attempt<T extends object>(fn: () => T | Promise<T>): Promise<ActionResult<T>> {
-  try {
-    const value = await fn();
-    return { ok: true, ...value } as ActionResult<T>;
-  } catch (e) {
-    if (e instanceof ValidationError) return { ok: false, error: e.message };
-    throw e;
-  }
-}
+import { attempt, type ActionResult } from "@/lib/action-result";
 
 /** Name of the signed-in user, for the sidebar. Null when signed out. */
 export async function whoAmI(): Promise<{ name: string; isAdmin: boolean } | null> {
@@ -110,8 +100,10 @@ export async function updateExpense(id: string, formData: FormData): Promise<Act
         );
         ledger.syncTags(tx, rowId, row.TAGS);
       });
+      ledger.linkSubscription(tx, ws, rowId);
     });
     revalidatePath("/");
+    revalidatePath("/subscriptions");
     return {};
   });
 }
@@ -156,12 +148,13 @@ export async function markRecurringByName(name: string): Promise<number> {
     const ids = tx.all<{ ID: string }>("SELECT ID FROM LEDGER WHERE WORKSPACE_ID = ? AND NAME = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND IS_RECURRING = 0", [ws, target]);
     for (const { ID } of ids) {
       ledger.auditedUpdate(tx, ID, "update", () => tx.run("UPDATE LEDGER SET IS_RECURRING = 1 WHERE ID = ?", [ID]));
+      ledger.linkSubscription(tx, ws, ID);
     }
     return ids.length;
   });
   revalidatePath("/");
   revalidatePath("/dashboard");
-  revalidatePath("/recurring");
+  revalidatePath("/subscriptions");
   return changed;
 }
 
@@ -182,10 +175,14 @@ export async function duplicateExpense(id: string, month: string) {
 export async function toggleRecurring(id: string) {
   const { workspaceId: ws } = await requireAuth();
   const rowId = parseId(id);
-  db.transaction((tx) => ledger.auditedUpdate(tx, rowId, "update", () => {
-    tx.run("UPDATE LEDGER SET IS_RECURRING = NOT IS_RECURRING WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [rowId, ws]);
-  }));
+  db.transaction((tx) => {
+    ledger.auditedUpdate(tx, rowId, "update", () => {
+      tx.run("UPDATE LEDGER SET IS_RECURRING = NOT IS_RECURRING WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [rowId, ws]);
+    });
+    ledger.linkSubscription(tx, ws, rowId);
+  });
   revalidatePath("/");
+  revalidatePath("/subscriptions");
 }
 
 // Bulk-copy every ledger row from `sourceMonth` into each of `targetMonths`.

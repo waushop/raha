@@ -18,7 +18,10 @@ import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
 import CategoryIcon from "@/components/CategoryIcon";
 import Glyph from "@/components/Glyph";
-import { CalendarDays, CalendarRange, ChartColumn, Layers, Receipt, Repeat } from "lucide-react";
+import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, Layers, Receipt, Repeat, TriangleAlert, TrendingUp } from "lucide-react";
+import { listSubscriptions } from "@/lib/subscriptions-db";
+import { isoDate, upcoming } from "@/lib/subscriptions";
+import type { Insight } from "@/components/Insights";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -204,6 +207,25 @@ export default async function DashboardPage() {
   // Names that behave like subscriptions but aren't flagged yet
   const candidates = await recurringCandidates(ws, addMonths(thisMonth, -3));
 
+  // Subscription hub summary + alerts
+  const today = isoDate(new Date());
+  const subs = await listSubscriptions(ws, today);
+  const activeSubs = subs.filter((s) => s.STATUS === "active");
+  const subsMonthly = activeSubs.reduce((s, r) => s + r.monthly, 0);
+  const dueSoon = upcoming(
+    activeSubs.map((s) => ({ name: s.NAME, amount: s.AMOUNT, status: s.STATUS, cadence: s.CADENCE, day: s.DAY, monthOfYear: s.MONTH_OF_YEAR, lastCharge: s.lastCharge })),
+    today, 7,
+  );
+  const nextBill = dueSoon[0] ?? null;
+  const subInsights: Insight[] = [
+    ...activeSubs.filter((s) => s.TRIAL_ENDS && s.TRIAL_ENDS >= today && Date.parse(s.TRIAL_ENDS) - Date.parse(today) <= 3 * 86400000)
+      .map((s) => ({ icon: CalendarClock, text: `${s.NAME} trial ends ${s.TRIAL_ENDS} — ${fmt(s.AMOUNT)} € after that`, type: "warning" as const })),
+    ...activeSubs.filter((s) => s.previousAmount !== null && s.AMOUNT > s.previousAmount && s.changedIn !== null && s.changedIn >= addMonths(thisMonth, -1))
+      .map((s) => ({ icon: TrendingUp, text: `${s.NAME} went up to ${fmt(s.AMOUNT)} € (was ${fmt(s.previousAmount!)})`, type: "warning" as const })),
+    ...activeSubs.filter((s) => s.unused).slice(0, 1)
+      .map((s) => ({ icon: TriangleAlert, text: `${s.NAME} looks unused — no charge since ${monthLabel(s.lastCharge!.month, "short")}`, type: "info" as const })),
+  ];
+
   // Welcome screen is for *truly* fresh installs — no expenses AND no groups
   // yet. Once the user has any groups, drop the Welcome and render the regular
   // dashboard (zeros + 0-row cards) so they can navigate to / and start adding.
@@ -314,6 +336,7 @@ export default async function DashboardPage() {
             thisCount={thisCount}
             daysLeft={daysLeft}
             predicted={predicted}
+            extra={subInsights}
           />
         </div>
 
@@ -472,6 +495,35 @@ export default async function DashboardPage() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Subscriptions */}
+          {activeSubs.length > 0 && (
+            <Link href="/subscriptions" className="card card-hover rounded-2xl p-5 animate-fade-up block" style={{ animationDelay: "0.085s" }}>
+              <div className="flex items-center gap-2 mb-3">
+                <CalendarClock size={14} className="text-pink-400" />
+                <h2 className="text-sm font-bold text-white">Subscriptions</h2>
+                <span className="ml-auto text-[10px] text-[#5a6380]">{activeSubs.length} active</span>
+              </div>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380]">Monthly burn</p>
+                  <p className="text-xl font-bold text-white font-mono tabular-nums">{fmt(subsMonthly)} €</p>
+                  <p className="text-[10px] text-[#5a6380]">{fmt(subsMonthly * 12)} € per year</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380]">Next bill</p>
+                  {nextBill ? (
+                    <>
+                      <p className="text-sm font-semibold text-white/90 truncate max-w-[10rem]">{nextBill.sub.name}</p>
+                      <p className="text-[10px] text-pink-400 font-mono tabular-nums">{fmt(nextBill.amount)} € · {nextBill.date === today ? "today" : nextBill.date.slice(5).replace("-", "/")}</p>
+                    </>
+                  ) : (
+                    <p className="text-[10px] text-[#5a6380]">nothing in 7 days</p>
+                  )}
+                </div>
+              </div>
+            </Link>
+          )}
+
           {/* Missing recurring */}
           {missingRecurring.length > 0 && (
             <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.09s" }}>

@@ -9,14 +9,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## Code Style
 - TypeScript strict mode, no `any`
 - Server Components by default, `"use client"` only when needed
-- Server Actions for all data mutations (no API routes for CRUD); every action starts with `await requireAuth()`, parses its inputs with `lib/validate.ts`, and form-driven mutations return `ActionResult` (`{ ok: false, error }` for validation failures, shown via `toast.showError`). Ledger write logic lives in `lib/ledger.ts` so it is unit-testable.
+- Server Actions for all data mutations (no API routes for CRUD); every action starts with `await requireAuth()`, parses its inputs with `lib/validate.ts`, and form-driven mutations return `ActionResult` (`lib/action-result.ts`, `attempt()` wraps the body) (`{ ok: false, error }` for validation failures, shown via `toast.showError`). Ledger write logic lives in `lib/ledger.ts` so it is unit-testable.
 - Multi-row writes go through `db.transaction((tx) => …)` with the synchronous `tx.run` / `tx.all` — never `await` inside
 - Tailwind CSS only — no CSS modules, no styled-components
 - All strings in English
 
 ## Database
 - Table/column names in UPPERCASE
-- Always filter `DELETED_AT IS NULL` in queries, and always scope by `WORKSPACE_ID = ?` (from `currentContext()` in pages / `requireAuth()` in actions) on LEDGER, CATEGORY_GROUP, BUDGET, BUDGET_HISTORY, IMPORT_PATTERN and SAVINGS_GOAL; mutations by id must include `AND WORKSPACE_ID = ?`
+- Always filter `DELETED_AT IS NULL` in queries, and always scope by `WORKSPACE_ID = ?` (from `currentContext()` in pages / `requireAuth()` in actions) on LEDGER, CATEGORY_GROUP, BUDGET, BUDGET_HISTORY, IMPORT_PATTERN, SAVINGS_GOAL and SUBSCRIPTION; mutations by id must include `AND WORKSPACE_ID = ?`
 - Spending aggregates must also filter `KIND = 'expense'`; income rows live in the same LEDGER table
 - Use `CAST(AMOUNT AS REAL)` when selecting amounts (SQLite has no DOUBLE)
 - Generate UUIDs with `crypto.randomUUID()`, not MySQL UUID()

@@ -17,6 +17,7 @@
 - **LEDGER_AUDIT**: before/after JSON for every ledger write (`lib/ledger.ts` `audit` / `auditedUpdate`); `/activity` reads it, falling back to timestamps on pre-audit databases.
 - **CATEGORY_GROUP** table: `ID`, `NAME`, `ICON` (a `lib/icon-names.ts` name or NULL; the old `EMOJI` column is renamed and mapped by `migrateIcons`), `COLOR`, `SORT_ORDER` (reorderable from `/groups`)
 - **SAVINGS_GOAL**: targets with optional deadline and starting balance; contributions are LEDGER rows with `GOAL_ID`.
+- **SUBSCRIPTION**: recurring commitments (`NAME`, `CATEGORY`, `GROUP_ID`, `AMOUNT`, `CADENCE` weekly|monthly|quarterly|yearly, `DAY`, `MONTH_OF_YEAR`, `STATUS` active|paused|cancelled, `TRIAL_ENDS`, `CANCEL_URL`, `NOTES`). Charges are LEDGER rows with `SUBSCRIPTION_ID`; `lib/ledger.ts` `insertRow`/`linkSubscription` keep the link in step with `IS_RECURRING` (find-or-create by name+category+group, latest price wins, cancelled ones revive). `backfillSubscriptions` runs at startup, after restore and in the seed. Pure logic (cadence detection, next due, upcoming charges, unused detection, yearly calendar) in `lib/subscriptions.ts`; the list view with price history in `lib/subscriptions-db.ts`.
 - **USER**, **WORKSPACE**, **WORKSPACE_MEMBER**: see Auth above. `BUDGET` and `BUDGET_HISTORY` are keyed by `(WORKSPACE_ID, …)`.
 - **BUDGET** (current targets, `_total` pseudo-key), **BUDGET_HISTORY** (snapshot per month, written on edit and when the dashboard first renders a month; analytics "Budget vs actual" uses `resolveBudgetsFor`), **IMPORT_PATTERN**, **APP_SETTING** (PIN hash)
 - Soft deletes via `DELETED_AT` (config tables BUDGET / IMPORT_PATTERN hard-delete by design)
@@ -28,14 +29,14 @@
 25 predefined categories with icons in `types/expense.ts` (housing, fuel, groceries, etc.)
 Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
-### Pages (14)
+### Pages (15)
 | Route | Purpose |
 |-------|---------|
 | `/dashboard` | Home — metrics, forecasting, insights, heatmap |
 | `/` | Monthly view — expenses grouped by custom groups |
 | `/search` | Global search across all months with URL filters (kind, category, group, tag, amount, month range) |
 | `/groups` | Group management (CRUD) |
-| `/recurring` | Recurring expense overview |
+| `/subscriptions` | Subscription hub: monthly burn, upcoming bills with one-tap "Paid", price changes, unused/trial alerts, cadence editor (`/recurring` redirects here) |
 | `/activity` | Timeline of all changes |
 | `/compare` | Side-by-side month comparison |
 | `/analytics` | 12-month deep analytics |
@@ -47,7 +48,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
 ### APIs (3)
 - `GET /api/export?month=` or `?year=` — CSV download
-- `GET/POST /api/backup` — JSON backup/restore (v7: ledger incl. DAY and GOAL_ID + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
+- `GET/POST /api/backup` — JSON backup/restore (v8: ledger incl. DAY, GOAL_ID and SUBSCRIPTION_ID + subscriptions + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
 ## Conventions

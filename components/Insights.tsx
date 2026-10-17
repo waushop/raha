@@ -15,10 +15,14 @@ type Props = {
   thisCount: number;
   daysLeft: number;
   predicted: number;
+  /** Alerts computed elsewhere (subscriptions, cash flow…) shown first. */
+  extra?: Insight[];
 };
 
-export default function Insights({ thisTotal, prevTotal, avgMonthly, recurringCount, thisCount, daysLeft, predicted }: Props) {
-  const insights: Insight[] = [];
+export type { Insight };
+
+export default function Insights({ thisTotal, prevTotal, avgMonthly, recurringCount, thisCount, daysLeft, predicted, extra = [] }: Props) {
+  const insights: Insight[] = [...extra];
 
   // Spending pace
   if (thisTotal > 0 && avgMonthly > 0) {
@@ -68,7 +72,7 @@ export default function Insights({ thisTotal, prevTotal, avgMonthly, recurringCo
 
   return (
     <div className="space-y-2">
-      {insights.slice(0, 3).map((insight, i) => (
+      {insights.slice(0, 4).map((insight, i) => (
         <div key={i} className={`card rounded-xl px-4 py-2.5 flex items-center gap-3 border ${colorMap[insight.type]}`}>
           <insight.icon size={16} className="shrink-0 text-[#9ca3c0]" />
           <span className="text-xs text-white/80">{insight.text}</span>

@@ -1,5 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { iconFromLegacy } from "./icon-names";
+import { backfillSubscriptions } from "./subscriptions";
+import { currentMonth } from "./months";
 import { randomUUID } from "node:crypto";
 import { parseTags } from "./tags";
 
@@ -161,6 +163,10 @@ function migrate(sqlite: DatabaseSync): void {
       sqlite.exec("ALTER TABLE LEDGER ADD COLUMN GOAL_ID TEXT");
       sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
     }
+    if (!cols.includes("SUBSCRIPTION_ID")) {
+      sqlite.exec("ALTER TABLE LEDGER ADD COLUMN SUBSCRIPTION_ID TEXT");
+      sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
+    }
   }
 }
 
@@ -232,7 +238,8 @@ const STATEMENTS = [
     IS_RECURRING INTEGER NOT NULL DEFAULT 0,
     TAGS         TEXT,
     DAY          INTEGER,
-    GOAL_ID      TEXT
+    GOAL_ID      TEXT,
+    SUBSCRIPTION_ID TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_GOAL ON LEDGER(GOAL_ID)`,
   // Savings goals; contributions are LEDGER rows with GOAL_ID set.
@@ -335,7 +342,7 @@ const STATEMENTS = [
   // a non-timestamp column avoids the recursive trigger that would fire when the
   // trigger itself updates UPDATED_AT.
   `CREATE TRIGGER IF NOT EXISTS TRG_LEDGER_UPDATED_AT
-   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT
+   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT, SUBSCRIPTION_ID
    ON LEDGER
    BEGIN
      UPDATE LEDGER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
@@ -373,6 +380,33 @@ const STATEMENTS = [
   // Workspace indexes last: every table they reference exists by now.
   `CREATE INDEX IF NOT EXISTS IDX_CATEGORY_GROUP_WS ON CATEGORY_GROUP(WORKSPACE_ID)`,
   `CREATE INDEX IF NOT EXISTS IDX_IMPORT_PATTERN_WS ON IMPORT_PATTERN(WORKSPACE_ID)`,
+  `CREATE TABLE IF NOT EXISTS SUBSCRIPTION (
+    ID                TEXT NOT NULL PRIMARY KEY,
+    CREATED_AT        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UPDATED_AT        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    DELETED_AT        TEXT,
+    WORKSPACE_ID      TEXT NOT NULL,
+    NAME              TEXT NOT NULL,
+    CATEGORY          TEXT NOT NULL DEFAULT 'subscriptions',
+    GROUP_ID          TEXT,
+    AMOUNT            REAL NOT NULL,
+    CADENCE           TEXT NOT NULL DEFAULT 'monthly',
+    DAY               INTEGER,
+    MONTH_OF_YEAR     INTEGER,
+    STATUS            TEXT NOT NULL DEFAULT 'active',
+    STATUS_CHANGED_AT TEXT,
+    NOTES             TEXT,
+    CANCEL_URL        TEXT,
+    TRIAL_ENDS        TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS IDX_SUBSCRIPTION_WS ON SUBSCRIPTION(WORKSPACE_ID, STATUS)`,
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_SUBSCRIPTION ON LEDGER(SUBSCRIPTION_ID)`,
+  `CREATE TRIGGER IF NOT EXISTS TRG_SUBSCRIPTION_UPDATED_AT
+   AFTER UPDATE OF NAME, CATEGORY, GROUP_ID, AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, NOTES, CANCEL_URL, TRIAL_ENDS, DELETED_AT
+   ON SUBSCRIPTION
+   BEGIN
+     UPDATE SUBSCRIPTION SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
+   END`,
   `CREATE INDEX IF NOT EXISTS IDX_SAVINGS_GOAL_WS ON SAVINGS_GOAL(WORKSPACE_ID)`,
 ];
 
@@ -383,4 +417,14 @@ export function initSchema(sqlite: DatabaseSync): void {
     sqlite.exec(stmt);
   }
   backfillTags(sqlite);
+  // Recurring rows that predate SUBSCRIPTION (or were flagged by a path
+  // that doesn't link) get their subscription here.
+  backfillSubscriptions(
+    {
+      all: <T,>(sql: string, params: unknown[] = []) => sqlite.prepare(sql).all(...(params as never[])) as T[],
+      run: (sql: string, params: unknown[] = []) => sqlite.prepare(sql).run(...(params as never[])),
+    },
+    currentMonth(),
+    randomUUID,
+  );
 }

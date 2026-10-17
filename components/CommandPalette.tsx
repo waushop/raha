@@ -25,7 +25,7 @@ const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
   { label: "Search", path: "/search", icon: Search },
   { label: "Groups", path: "/groups", icon: Folder },
   { label: "Goals", path: "/goals", icon: Target },
-  { label: "Recurring", path: "/recurring", icon: Repeat },
+  { label: "Subscriptions", path: "/subscriptions", icon: Repeat },
   { label: "Activity", path: "/activity", icon: Activity },
   { label: "Monthly review", path: "/review", icon: ClipboardList },
   { label: "Analytics", path: "/analytics", icon: ChartColumn },
