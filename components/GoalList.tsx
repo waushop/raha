@@ -30,7 +30,7 @@ export function GoalRing({ pct, size = 56, stroke = 6, className = "" }: { pct: 
         style={{ transition: "stroke-dashoffset 0.7s ease-out" }} />
       <defs>
         <linearGradient id="goal-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#2dd4bf" /><stop offset="100%" stopColor="#8b5cf6" />
+          <stop offset="0%" stopColor="#2dd4bf" /><stop offset="100%" stopColor="#a9a9b2" />
         </linearGradient>
       </defs>
     </svg>

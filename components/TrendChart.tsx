@@ -75,7 +75,7 @@ export default function TrendChart({ data, currentMonth }: Props) {
   return (
     <div className="card rounded-2xl p-5">
       <div className="flex items-center gap-3 mb-1">
-        <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+        <span className="w-7 h-7 rounded-lg gradient-blue flex items-center justify-center">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
           </svg>
@@ -99,12 +99,12 @@ export default function TrendChart({ data, currentMonth }: Props) {
       <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
         <defs>
           <linearGradient id="trendAreaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.01" />
+            <stop offset="0%" stopColor="#a9a9b2" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#a9a9b2" stopOpacity="0.01" />
           </linearGradient>
           <linearGradient id="trendLineGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#8b5cf6" />
-            <stop offset="100%" stopColor="#ec4899" />
+            <stop offset="0%" stopColor="#a9a9b2" />
+            <stop offset="100%" stopColor="#e7e7ec" />
           </linearGradient>
         </defs>
 
@@ -142,15 +142,15 @@ export default function TrendChart({ data, currentMonth }: Props) {
             <g key={p.month}>
               {isCurrent && (
                 <>
-                  <circle cx={p.x} cy={p.y} r="12" fill="#ec4899" opacity="0.08" />
-                  <circle cx={p.x} cy={p.y} r="8" fill="#ec4899" opacity="0.12" />
+                  <circle cx={p.x} cy={p.y} r="12" fill="#e7e7ec" opacity="0.08" />
+                  <circle cx={p.x} cy={p.y} r="8" fill="#e7e7ec" opacity="0.12" />
                 </>
               )}
               <circle
                 cx={p.x}
                 cy={p.y}
                 r={isCurrent ? 4.5 : 2.5}
-                fill={isCurrent ? "#ec4899" : "#8b5cf6"}
+                fill={isCurrent ? "#e7e7ec" : "#a9a9b2"}
                 style={{ stroke: "var(--bg-card-solid)" }}
                 strokeWidth="2"
               />
@@ -169,7 +169,7 @@ export default function TrendChart({ data, currentMonth }: Props) {
                 x={p.x}
                 y={chartH - 6}
                 textAnchor="middle"
-                style={{ fill: isCurrent ? "#ec4899" : "var(--text-muted)", textTransform: "capitalize" }}
+                style={{ fill: isCurrent ? "#e7e7ec" : "var(--text-muted)", textTransform: "capitalize" }}
                 fontSize="9"
                 fontWeight={isCurrent ? "700" : "400"}
               >

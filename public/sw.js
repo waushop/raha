@@ -1,5 +1,5 @@
-const CACHE_NAME = "empty-wallet-v4";
-const STATIC_CACHE = "empty-wallet-static-v4";
+const CACHE_NAME = "empty-wallet-v5";
+const STATIC_CACHE = "empty-wallet-static-v5";
 const SHELL = ["/", "/dashboard", "/login", "/manifest.json", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 
 // A page that ended up on /login (signed out) or came through a redirect is
@@ -72,8 +72,8 @@ function transient(response) {
 }
 
 function retryPage() {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#1a1a2e"><title>Empty Wallet</title>
-<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#fff;font-family:system-ui,-apple-system,sans-serif}p{margin:6px 0;text-align:center}small{color:#9ca3c0}</style></head>
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111112"><title>Empty Wallet</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#111112;color:#fff;font-family:system-ui,-apple-system,sans-serif}p{margin:6px 0;text-align:center}small{color:#a3a3ab}</style></head>
 <body><div><p><b>Empty Wallet is updating</b></p><p><small>Trying again in a few seconds…</small></p></div>
 <script>setTimeout(function(){location.reload()},3000)</script></body></html>`;
   return new Response(html, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });

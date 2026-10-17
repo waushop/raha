@@ -60,7 +60,7 @@ export default function OfflineSync() {
   return (
     <div
       role="status"
-      className="fixed right-3 z-[60] inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-[#1a1a2e]/90 px-3 py-1 text-[11px] font-bold text-amber-300 shadow-lg backdrop-blur animate-fade-in pointer-events-none"
+      className="fixed right-3 z-[60] inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-[#111112]/90 px-3 py-1 text-[11px] font-bold text-amber-300 shadow-lg backdrop-blur animate-fade-in pointer-events-none"
       style={{ top: "calc(var(--sat, 0px) + 0.5rem)" }}
     >
       <WifiOff size={12} />

@@ -30,8 +30,8 @@ function Chart({ series }: { series: NetWorthPoint[] }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Net worth over the last 24 months">
       <defs>
         <linearGradient id="nw-net" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#a855f7" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#a855f7" stopOpacity="0" />
+          <stop offset="0%" stopColor="#a9a9b2" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="#a9a9b2" stopOpacity="0" />
         </linearGradient>
       </defs>
       <line x1={PAD} x2={W - PAD} y1={y(0)} y2={y(0)} stroke="rgba(255,255,255,0.15)" strokeDasharray="3 4" />
@@ -39,9 +39,9 @@ function Chart({ series }: { series: NetWorthPoint[] }) {
       <path d={debtsArea} fill="rgba(248,113,113,0.18)" />
       <path d={line((p) => -p.debts)} fill="none" stroke="#f87171" strokeWidth="1.5" strokeOpacity="0.7" strokeLinejoin="round" />
       <path d={assetsPath} fill="none" stroke="#2dd4bf" strokeWidth="1.5" strokeOpacity="0.8" strokeLinejoin="round" />
-      <path d={netPath} fill="none" stroke="#ec4899" strokeWidth="2.5" strokeLinejoin="round" />
-      <circle cx={x(series.length - 1)} cy={y(last.net)} r={4} fill="#ec4899" />
-      <text x={W - PAD} y={y(last.net) - 8} textAnchor="end" fontSize="10" fill="#ec4899" fontFamily="monospace" fontWeight="bold">{fmt0(last.net)} €</text>
+      <path d={netPath} fill="none" stroke="#e7e7ec" strokeWidth="2.5" strokeLinejoin="round" />
+      <circle cx={x(series.length - 1)} cy={y(last.net)} r={4} fill="#e7e7ec" />
+      <text x={W - PAD} y={y(last.net) - 8} textAnchor="end" fontSize="10" fill="#e7e7ec" fontFamily="monospace" fontWeight="bold">{fmt0(last.net)} €</text>
       {ticks.map((i) => (
         <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="9" fill="#5a6380" fontFamily="monospace">{short(series[i].month)}</text>
       ))}

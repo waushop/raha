@@ -24,20 +24,21 @@ export type GroupRef = { ID: string; NAME: string; COLOR: string };
 
 /** Hex equivalents of the Tailwind 500 shades used by GROUP_COLOR_CLASSES. */
 export const GROUP_HEX: Record<string, string> = {
-  blue: "#3b82f6",
-  purple: "#a855f7",
-  pink: "#ec4899",
-  red: "#ef4444",
-  orange: "#f97316",
-  amber: "#f59e0b",
-  yellow: "#eab308",
-  green: "#22c55e",
-  teal: "#14b8a6",
-  cyan: "#06b6d4",
+  // Muted to sit on dark leather (matches the @theme overrides in globals.css).
+  blue: "#7fa6cc",
+  purple: "#a8a2d4",
+  pink: "#d39aa8",
+  red: "#d98a8a",
+  orange: "#d39a6e",
+  amber: "#d4b06e",
+  yellow: "#cfc27a",
+  green: "#86bf92",
+  teal: "#7fc4a8",
+  cyan: "#7ebcc4",
 };
-export const UNGROUPED_HEX = "#5a6380";
-export const SAVED_HEX = "#14b8a6";
-export const DEFICIT_HEX = "#ef4444";
+export const UNGROUPED_HEX = "#6d6d75";
+export const SAVED_HEX = "#7fc4a8";
+export const DEFICIT_HEX = "#d98a8a";
 
 export function groupHex(color: string | null | undefined): string {
   return (color && GROUP_HEX[color]) || GROUP_HEX.blue;

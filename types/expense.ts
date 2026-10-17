@@ -53,8 +53,10 @@ export const GROUP_COLORS = [
 
 export const GROUP_COLOR_CLASSES: Record<string, { text: string; bg: string; border: string }> = {
   blue:   { text: "text-blue-400",   bg: "bg-blue-500",   border: "border-blue-500/20" },
-  purple: { text: "text-purple-400", bg: "bg-purple-500", border: "border-purple-500/20" },
-  pink:   { text: "text-pink-400",   bg: "bg-pink-500",   border: "border-pink-500/20" },
+  // pink/purple are silver in the leather + glass palette; groups keep a hue as
+  // dusty rose and soft lavender (the colour keys stay "pink"/"purple" in the DB).
+  purple: { text: "text-indigo-400", bg: "bg-indigo-500", border: "border-indigo-500/20" },
+  pink:   { text: "text-rose-400",   bg: "bg-rose-500",   border: "border-rose-500/20" },
   red:    { text: "text-red-400",    bg: "bg-red-500",    border: "border-red-500/20" },
   orange: { text: "text-orange-400", bg: "bg-orange-500", border: "border-orange-500/20" },
   amber:  { text: "text-amber-400",  bg: "bg-amber-500",  border: "border-amber-500/20" },

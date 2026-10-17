@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Caveat } from "next/font/google";
+import { Instrument_Serif, Inter_Tight } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
 import KeyboardHints from "@/components/KeyboardHints";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -12,17 +12,24 @@ import OfflineSync from "@/components/OfflineSync";
 import "./globals.css";
 
 // Self-hosted by next/font: no runtime request to Google, no layout shift.
-// Headings reference it through the --font-hand CSS variable.
-const caveat = Caveat({
+// Headlines use the serif through --font-hand (the variable name predates the
+// leather + glass makeover); body text uses Inter Tight through --font-ui.
+const headline = Instrument_Serif({
   subsets: ["latin"],
-  weight: ["600", "700"],
+  weight: "400",
   variable: "--font-hand",
+  display: "swap",
+});
+const ui = Inter_Tight({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-ui",
   display: "swap",
 });
 
 // Applies the saved theme before first paint so a light-mode user doesn't
 // see a dark flash. Mirrors ThemeToggle, which owns the toggle itself.
-const THEME_INIT = `try{if(localStorage.getItem("theme")==="light"){document.documentElement.setAttribute("data-theme","light");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#f5f5f9")}}catch(e){}`;
+const THEME_INIT = `try{if(localStorage.getItem("theme")==="light"){document.documentElement.setAttribute("data-theme","light");var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#e7e5e1")}}catch(e){}`;
 
 export const metadata: Metadata = {
   title: "Empty Wallet",
@@ -47,7 +54,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#1a1a2e",
+  themeColor: "#111112",
 };
 
 export default function RootLayout({
@@ -57,7 +64,7 @@ export default function RootLayout({
 }) {
   return (
     // suppressHydrationWarning: THEME_INIT may add data-theme before React hydrates.
-    <html lang="en" className={caveat.variable} suppressHydrationWarning>
+    <html lang="en" className={`${headline.variable} ${ui.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>

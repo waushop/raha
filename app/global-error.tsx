@@ -25,7 +25,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
 
   return (
     <html lang="en">
-      <body style={{ margin: 0, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#1a1a2e", color: "#fff", fontFamily: "system-ui, -apple-system, sans-serif", padding: 16 }}>
+      <body style={{ margin: 0, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#111112", color: "#f5f5f7", fontFamily: "system-ui, -apple-system, sans-serif", padding: 16 }}>
         <div style={{ maxWidth: 360, width: "100%", textAlign: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: 28 }}>
           <p style={{ fontSize: 18, fontWeight: 700, margin: "0 0 8px" }}>Something went wrong</p>
           <p style={{ fontSize: 13, color: "#9ca3c0", margin: "0 0 20px" }}>
@@ -34,7 +34,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           </p>
           <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
             <button onClick={() => reset()} style={{ padding: "10px 18px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#fff", fontWeight: 600 }}>Try again</button>
-            <button onClick={() => window.location.reload()} style={{ padding: "10px 18px", borderRadius: 12, border: 0, background: "linear-gradient(90deg,#ec4899,#a855f7)", color: "#fff", fontWeight: 700 }}>Reload</button>
+            <button onClick={() => window.location.reload()} style={{ padding: "10px 18px", borderRadius: 12, border: 0, background: "linear-gradient(180deg,#ffffff,#d9d9de)", color: "#0b0b0c", fontWeight: 700 }}>Reload</button>
           </div>
         </div>
       </body>

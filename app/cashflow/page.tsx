@@ -26,8 +26,8 @@ function Chart({ days, buffer }: { days: DayPoint[]; buffer: number }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Projected balance for the next 60 days">
       <defs>
         <linearGradient id="cf-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#a855f7" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#a855f7" stopOpacity="0" />
+          <stop offset="0%" stopColor="#a9a9b2" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="#a9a9b2" stopOpacity="0" />
         </linearGradient>
       </defs>
       {/* zero and buffer lines */}
@@ -35,10 +35,10 @@ function Chart({ days, buffer }: { days: DayPoint[]; buffer: number }) {
       <line x1={PAD} x2={W - PAD} y1={y(buffer)} y2={y(buffer)} stroke="rgba(251,191,36,0.4)" strokeDasharray="2 4" />
       <text x={W - PAD} y={y(buffer) - 4} textAnchor="end" fontSize="9" fill="#fbbf24" opacity="0.8">buffer {fmt0(buffer)}</text>
       <path d={area} fill="url(#cf-fill)" />
-      <path d={path} fill="none" stroke="#ec4899" strokeWidth="2" strokeLinejoin="round" />
+      <path d={path} fill="none" stroke="#e7e7ec" strokeWidth="2" strokeLinejoin="round" />
       {events.map(({ e, i, balance }, k) => (
         <g key={k}>
-          <circle cx={x(i)} cy={y(balance)} r={e.kind === "payday" ? 4 : 2.5} fill={e.kind === "payday" ? "#2dd4bf" : "#f472b6"} />
+          <circle cx={x(i)} cy={y(balance)} r={e.kind === "payday" ? 4 : 2.5} fill={e.kind === "payday" ? "#2dd4bf" : "#e7e7ec"} />
         </g>
       ))}
       {ticks.map((t) => (

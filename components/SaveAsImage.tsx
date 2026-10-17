@@ -37,7 +37,7 @@ function buildSvg(year: string, stats: ReviewStat[], footer: string | undefined)
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#14121f"/><stop offset="100%" stop-color="#0b0a12"/></linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ec4899"/><stop offset="50%" stop-color="#c084fc"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#e7e7ec"/><stop offset="50%" stop-color="#c9c9d1"/><stop offset="100%" stop-color="#a9a9b2"/></linearGradient>
   </defs>
   <rect width="${W}" height="${H}" rx="32" fill="url(#bg)"/>
   <rect x="${PAD}" y="${PAD - 4}" width="72" height="6" rx="3" fill="url(#accent)"/>

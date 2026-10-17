@@ -30,7 +30,7 @@ export default function RecurringSuggestions({ candidates }: { candidates: Recur
   return (
     <div className="card rounded-2xl p-5">
       <div className="flex items-center gap-2 mb-1">
-        <Repeat size={14} strokeWidth={2.5} className="text-[#a78bfa]" />
+        <Repeat size={14} strokeWidth={2.5} className="text-[#c9c9d1]" />
         <h2 className="text-sm font-bold text-white">Looks recurring</h2>
       </div>
       <p className="text-[10px] text-[#5a6380] mb-3">Seen in 3+ of the last 4 months but not marked recurring.</p>

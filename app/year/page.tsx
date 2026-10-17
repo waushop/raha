@@ -207,7 +207,7 @@ export default async function YearPage({
         {/* Monthly bar chart */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.08s" }}>
           <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <span className="w-7 h-7 rounded-lg gradient-blue flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <ChartNoAxesColumn size={12} strokeWidth={2.5} className="text-white" />
             </span>
             Months
@@ -261,7 +261,7 @@ export default async function YearPage({
         {categories.length > 0 && (
           <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.1s" }}>
             <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <span className="w-7 h-7 rounded-lg gradient-blue flex items-center justify-center shadow-lg shadow-blue-500/20">
                 <ChartPie size={12} strokeWidth={2.5} className="text-white" />
               </span>
               Categories ({year})

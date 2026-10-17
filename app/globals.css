@@ -8,21 +8,25 @@
   --sat: env(safe-area-inset-top);
   --sab: env(safe-area-inset-bottom);
 
-  /* Backgrounds */
-  --bg-primary: #1a1a2e;
-  --bg-card: #1f2940;
-  --bg-card-solid: #1c2237;
-  --bg-surface: rgba(255, 255, 255, 0.03);
-  --bg-surface-hover: rgba(255, 255, 255, 0.06);
+  /* Backgrounds — dark leather + smoke glass */
+  --bg-primary: #111112;
+  --bg-card: rgba(22, 22, 25, 0.72);
+  --bg-card-solid: rgba(20, 20, 22, 0.94);
+  --bg-surface: rgba(255, 255, 255, 0.035);
+  --bg-surface-hover: rgba(255, 255, 255, 0.065);
+  --leather: url("/textures/leather-dark.webp");
+  --glass-rim: rgba(255, 255, 255, 0.20);
+  --glass-edge: rgba(255, 255, 255, 0.07);
+  --glass-sheen: rgba(255, 255, 255, 0.06);
 
   /* Text */
-  --text-primary: #ffffff;
-  --text-secondary: #9ca3c0;
-  --text-muted: #5a6380;
+  --text-primary: #f5f5f7;
+  --text-secondary: #a3a3ab;
+  --text-muted: #6d6d75;
 
   /* Borders */
   --border-primary: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-subtle: rgba(255, 255, 255, 0.05);
 
   /* Accents */
   --accent-pink: #ec4899;
@@ -33,27 +37,33 @@
 
 /* Light theme overrides */
 [data-theme="light"] {
-  --bg-primary: #f5f5f9;
-  --bg-card: #ffffff;
-  --bg-card-solid: #ffffff;
+  --bg-primary: #e7e5e1;
+  --bg-card: rgba(255, 255, 255, 0.62);
+  --bg-card-solid: rgba(250, 249, 247, 0.96);
   --bg-surface: rgba(0, 0, 0, 0.03);
   --bg-surface-hover: rgba(0, 0, 0, 0.06);
-  --text-primary: #1a1a2e;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
+  --leather: url("/textures/leather-light.webp");
+  --glass-rim: rgba(255, 255, 255, 0.95);
+  --glass-edge: rgba(0, 0, 0, 0.06);
+  --glass-sheen: rgba(255, 255, 255, 0.45);
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #8a8a92;
   --border-primary: rgba(0, 0, 0, 0.08);
-  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  /* Accents flip to graphite on the light leather. */
+  --color-pink-300: #27272a; --color-pink-400: #27272a; --color-pink-500: #3f3f46; --color-pink-600: #18181b;
+  --color-purple-300: #3f3f46; --color-purple-400: #52525b; --color-purple-500: #71717a; --color-purple-600: #3f3f46;
+  --color-violet-400: #71717a; --color-violet-500: #52525b; --color-fuchsia-500: #3f3f46;
+  --color-teal-400: #2f8a68; --color-teal-500: #2f8a68; --color-red-400: #b4533f; --color-amber-400: #9a6b17;
 }
 
 [data-theme="light"] body {
-  color: #1a1a2e;
+  color: var(--text-primary);
 }
 
 [data-theme="light"] .card {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(0, 0, 0, 0.06);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 var(--glass-rim), 0 10px 30px -14px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 [data-theme="light"] .card-hover:hover {
@@ -63,12 +73,12 @@
 
 [data-theme="light"] body::before { display: none; }
 
-[data-theme="light"] .text-white { color: #1a1a2e !important; }
-[data-theme="light"] .text-white\/90 { color: rgba(26, 26, 46, 0.9) !important; }
-[data-theme="light"] .text-white\/80 { color: rgba(26, 26, 46, 0.8) !important; }
-[data-theme="light"] .text-white\/70 { color: rgba(26, 26, 46, 0.7) !important; }
-[data-theme="light"] .text-white\/60 { color: rgba(26, 26, 46, 0.6) !important; }
-[data-theme="light"] .text-white\/50 { color: rgba(26, 26, 46, 0.5) !important; }
+[data-theme="light"] .text-white { color: #18181b !important; }
+[data-theme="light"] .text-white\/90 { color: rgba(24, 24, 27, 0.9) !important; }
+[data-theme="light"] .text-white\/80 { color: rgba(24, 24, 27, 0.8) !important; }
+[data-theme="light"] .text-white\/70 { color: rgba(24, 24, 27, 0.7) !important; }
+[data-theme="light"] .text-white\/60 { color: rgba(24, 24, 27, 0.6) !important; }
+[data-theme="light"] .text-white\/50 { color: rgba(24, 24, 27, 0.5) !important; }
 
 [data-theme="light"] .bg-white\/5 { background: rgba(0, 0, 0, 0.04) !important; }
 [data-theme="light"] .bg-white\/10 { background: rgba(0, 0, 0, 0.06) !important; }
@@ -79,8 +89,10 @@
 [data-theme="light"] .border-white\/20 { border-color: rgba(0, 0, 0, 0.12) !important; }
 [data-theme="light"] .divide-white\/\[0\.04\] > :not(:first-child) { border-color: rgba(0, 0, 0, 0.04) !important; }
 
-[data-theme="light"] .text-\[\#5a6380\] { color: #94a3b8 !important; }
-[data-theme="light"] .text-\[\#9ca3c0\] { color: #64748b !important; }
+/* The old bluish greys are hard-coded across the app; route them to the
+   neutral text tokens so both themes follow the new palette. */
+.text-\[\#5a6380\] { color: var(--text-muted) !important; }
+.text-\[\#9ca3c0\] { color: var(--text-secondary) !important; }
 
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
@@ -90,8 +102,48 @@
 @theme inline {
   --color-background: var(--bg-primary);
   --color-foreground: var(--text-primary);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-ui), system-ui, -apple-system, sans-serif;
+  /* Amounts were set in a monospace face; the UI font with tabular digits keeps
+     columns aligned and reads more refined. */
+  --font-mono: var(--font-ui), system-ui, -apple-system, sans-serif;
+}
+
+/* Monochrome makeover: the old pink/purple/violet accents used all over the
+   app become silver and graphite, so every leftover accent turns into the
+   glass look. Data colours (income/expense/warnings) are kept but muted. */
+@theme {
+  --color-pink-300: #f5f5f7;
+  --color-pink-400: #ececf1;
+  --color-pink-500: #d9d9df;
+  --color-pink-600: #b9b9c1;
+  --color-purple-300: #e8e8ed;
+  --color-purple-400: #cdcdd4;
+  --color-purple-500: #a9a9b2;
+  --color-purple-600: #8b8b94;
+  --color-violet-400: #c0c0c8;
+  --color-violet-500: #9c9ca5;
+  --color-fuchsia-500: #c8c8d0;
+  --color-teal-400: #8fd3b6;
+  --color-teal-500: #6fbf9c;
+  --color-red-400: #e59a9a;
+  --color-red-500: #d97a7a;
+  --color-amber-400: #dcc08a;
+  --color-amber-500: #d4b06e;
+  /* Group colours, muted for the leather (types/expense.ts GROUP_COLOR_CLASSES). */
+  --color-blue-400: #9cbbd9;
+  --color-blue-500: #7fa6cc;
+  --color-indigo-400: #bdb8e0;
+  --color-indigo-500: #a8a2d4;
+  --color-rose-400: #e0b0bc;
+  --color-rose-500: #d39aa8;
+  --color-orange-400: #e0b08a;
+  --color-orange-500: #d39a6e;
+  --color-yellow-400: #dccf8f;
+  --color-yellow-500: #cfc27a;
+  --color-green-400: #9ccfa6;
+  --color-green-500: #86bf92;
+  --color-cyan-400: #93cad1;
+  --color-cyan-500: #7ebcc4;
 }
 
 /* ============================================
@@ -103,16 +155,20 @@
    background-color is the fallback beyond the gradient (overscroll). */
 html {
   background-color: var(--bg-primary);
+  /* Leather (baked from CC0 ambientCG Leather037) lit from above, darker edges. */
   background-image:
-    radial-gradient(ellipse at 15% 20%, rgba(139, 92, 246, 0.07) 0%, transparent 50%),
-    radial-gradient(ellipse at 85% 60%, rgba(236, 72, 153, 0.05) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 90%, rgba(45, 212, 191, 0.03) 0%, transparent 50%),
-    linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #1a1a2e 100%);
-  background-repeat: no-repeat;
+    radial-gradient(ellipse 120% 60% at 35% -10%, rgba(255, 255, 255, 0.09), transparent 62%),
+    radial-gradient(ellipse 100% 70% at 50% 115%, rgba(0, 0, 0, 0.55), transparent 70%),
+    var(--leather);
+  background-size: 100% 100vh, 100% 100vh, 640px 640px;
+  background-repeat: no-repeat, no-repeat, repeat;
   color-scheme: dark;
 }
 html[data-theme="light"] {
-  background-image: linear-gradient(180deg, #f5f5f9 0%, #eef0f6 50%, #f5f5f9 100%);
+  background-image:
+    radial-gradient(ellipse 120% 60% at 35% -10%, rgba(255, 255, 255, 0.55), transparent 62%),
+    radial-gradient(ellipse 100% 70% at 50% 115%, rgba(0, 0, 0, 0.10), transparent 70%),
+    var(--leather);
   color-scheme: light;
 }
 /* Pin the gradient to the viewport on mouse devices only. iOS Safari does not
@@ -127,23 +183,12 @@ html[data-theme="light"] {
 body {
   background: transparent;
   color: var(--text-primary);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-ui), system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.005em;
   min-height: 100vh;
   overflow-x: hidden;
 }
 
-/* Subtle grain */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0.02;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-}
 
 /* ============================================
    CARD SYSTEM
@@ -151,17 +196,21 @@ body::before {
 /* Opaque surface for overlays (sidebar, modals, toasts, popovers). Follows the
    theme via --bg-card-solid, unlike a hardcoded bg-[#1c2237]. */
 .panel {
-  background: var(--bg-card-solid);
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 30%), var(--bg-card-solid);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--glass-rim), 0 24px 60px -20px rgba(0, 0, 0, 0.8);
 }
 
-/* Mobile bottom bar: translucent, blurred, like the cards behind it. */
+/* Mobile bottom bar: frosted glass over the leather with a bright top rim. */
 .bottom-bar {
-  background: rgba(28, 34, 55, 0.96);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 60%), rgba(16, 16, 18, 0.72);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: inset 0 1px 0 var(--glass-rim);
 }
 [data-theme="light"] .bottom-bar {
-  background: rgba(255, 255, 255, 0.96);
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 60%), rgba(250, 249, 247, 0.78);
 }
 
 /* Row targeted by a /?month=…#e-<id> deep link: flash, then settle. */
@@ -169,7 +218,7 @@ body::before {
   animation: row-highlight 3s ease-out forwards;
 }
 @keyframes row-highlight {
-  0%, 40% { background: rgba(236, 72, 153, 0.18); }
+  0%, 40% { background: rgba(255, 255, 255, 0.14); }
   100% { background: transparent; }
 }
 
@@ -182,21 +231,26 @@ body::before {
   .group:focus-within .row-actions { opacity: 1; }
 }
 
+/* Smoke glass: tinted frosted panel, a bright 1px rim on the top edge and an
+   inner sheen, dropping a soft shadow into the leather. No pseudo-elements, so
+   cards can keep any position/overflow utilities. */
 .card {
-  background: linear-gradient(135deg, rgba(31, 41, 64, 0.85) 0%, rgba(31, 41, 64, 0.65) 100%);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border-primary);
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 38%), var(--bg-card);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--glass-edge);
+  border-top-color: var(--glass-rim);
+  border-radius: 20px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 40px -20px rgba(0, 0, 0, 0.85), 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 .card-hover {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .card-hover:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.14);
+  border-top-color: rgba(255, 255, 255, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 22px 48px -20px rgba(0, 0, 0, 0.9);
   transform: translateY(-1px);
 }
 
@@ -204,13 +258,16 @@ body::before {
 .surface {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
 /* ============================================
    GRADIENTS
    ============================================ */
-.gradient-pink { background: linear-gradient(135deg, #ec4899, #d946ef); }
+/* Primary action: a bright pearl pill with dark text. */
+.gradient-pink { background: linear-gradient(180deg, #ffffff, #d9d9de); color: #0b0b0c !important; box-shadow: inset 0 1px 0 #fff, 0 8px 22px -10px rgba(255, 255, 255, 0.35); }
+.btn-primary { background: linear-gradient(180deg, #ffffff, #d9d9de); color: #0b0b0c; box-shadow: inset 0 1px 0 #fff, 0 8px 22px -10px rgba(255, 255, 255, 0.35); }
+[data-theme="light"] .gradient-pink, [data-theme="light"] .btn-primary { background: linear-gradient(180deg, #3f3f46, #18181b); color: #fafafa !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 8px 22px -10px rgba(0,0,0,.45); }
 .gradient-purple { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
 .gradient-teal { background: linear-gradient(135deg, #2dd4bf, #14b8a6); }
 .gradient-blue { background: linear-gradient(135deg, #3b82f6, #6366f1); }
@@ -459,3 +516,24 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
   color: #0b0b0c;
   box-shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 8px 22px -10px rgba(255,255,255,.35);
 }
+
+
+/* ============================================
+   MAKEOVER SAFETY NETS
+   ============================================ */
+/* Buttons that used a pink→purple gradient with white text now sit on a light
+   silver gradient; give them dark text so they stay readable. */
+/* (~= matches whole class tokens, so translucent from-pink-500/20 tints are left alone.) */
+[class~="from-pink-500"][class~="text-white"],
+[class~="from-pink-500"][class~="to-purple-500"] { color: #0b0b0c !important; }
+[data-theme="light"] [class~="from-pink-500"][class~="text-white"],
+[data-theme="light"] [class~="from-pink-500"][class~="to-purple-500"] { color: #fafafa !important; }
+[data-theme="light"] [class~="from-pink-500"][class~="to-purple-500"] { background-image: linear-gradient(180deg, #3f3f46, #18181b); }
+/* Small coloured icon tiles (gradient-blue/purple/teal) become glass chips. */
+.gradient-blue, .gradient-purple, .gradient-teal { background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.05)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); color: var(--text-primary); }
+
+/* Headlines used the handwritten font at weight 700; the serif reads best at
+   its natural weight and slightly tighter. */
+[style*="font-hand"] { font-weight: 400 !important; letter-spacing: -0.01em; }
+
+.font-mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
