@@ -18,10 +18,11 @@ import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
 import CategoryIcon from "@/components/CategoryIcon";
 import Glyph from "@/components/Glyph";
-import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, ChartLine, Layers, ListChecks, Receipt, Repeat, TriangleAlert, TrendingDown, TrendingUp } from "lucide-react";
+import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, ChartLine, Landmark, Layers, ListChecks, Receipt, Repeat, TriangleAlert, TrendingDown, TrendingUp } from "lucide-react";
 import { listSubscriptions } from "@/lib/subscriptions-db";
 import { getPlan } from "@/lib/plan-db";
 import { getCashflow } from "@/lib/cashflow-db";
+import { getNetWorth } from "@/lib/networth-db";
 import { isoDate, upcoming } from "@/lib/subscriptions";
 import type { Insight } from "@/components/Insights";
 
@@ -225,6 +226,8 @@ export default async function DashboardPage() {
   const nextBill = dueSoon[0] ?? null;
   // Cash flow (only once a balance checkpoint exists)
   const cash = await getCashflow(ws, today);
+  // Net worth (only once an account exists)
+  const netWorth = await getNetWorth(ws, thisMonth);
   const cashInsights: Insight[] = cash.projection && cash.projection.lowPoint.balance < 0
     ? [{ icon: TrendingDown, text: `Balance dips to ${fmt(cash.projection.lowPoint.balance)} € on ${cash.projection.lowPoint.date.slice(5).replace("-", "/")}${cash.projection.nextPayday ? `, before the ${cash.projection.nextPayday.date.slice(5).replace("-", "/")} payday` : ""}`, type: "warning" as const }]
     : [];
@@ -518,6 +521,24 @@ export default async function DashboardPage() {
               </div>
               <p className={`text-2xl font-bold font-mono tabular-nums ${cash.projection.safeToSpend < 0 ? "text-red-400" : cash.projection.safeToSpend < cash.buffer ? "text-amber-400" : "text-teal-400"}`}>{fmt(cash.projection.safeToSpend)} €</p>
               <p className="text-[10px] text-[#5a6380] mt-1">balance {fmt(cash.balanceToday ?? 0)} € · low point {fmt(cash.projection.lowPoint.balance)} € on {cash.projection.lowPoint.date.slice(5).replace("-", "/")}</p>
+            </Link>
+          )}
+
+          {/* Net worth */}
+          {netWorth.accounts.length > 0 && (
+            <Link href="/networth" className="card card-hover rounded-2xl p-5 animate-fade-up block" style={{ animationDelay: "0.079s" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Landmark size={14} className="text-purple-400" />
+                <h2 className="text-sm font-bold text-white">Net worth</h2>
+                <span className="ml-auto text-[10px] text-[#5a6380]">{netWorth.accounts.length} account{netWorth.accounts.length === 1 ? "" : "s"}</span>
+              </div>
+              <p className={`text-2xl font-bold font-mono tabular-nums ${netWorth.current.net < 0 ? "text-red-400" : "text-white"}`}>{fmt(netWorth.current.net)} €</p>
+              <p className="text-[10px] text-[#5a6380] mt-1">
+                {netWorth.change ? (
+                  <span className={netWorth.change.amount > 0 ? "text-teal-400" : netWorth.change.amount < 0 ? "text-red-400" : ""}>{netWorth.change.amount > 0 ? "+" : ""}{fmt(netWorth.change.amount)} € vs last month</span>
+                ) : "first month tracked"}
+                {" · "}assets {fmt(netWorth.current.assets)} € · debts {fmt(netWorth.current.debts)} €
+              </p>
             </Link>
           )}
 

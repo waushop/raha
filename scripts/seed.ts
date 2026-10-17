@@ -190,7 +190,7 @@ const result = db.transaction((tx) => {
     throw new Error(`LEDGER already has ${existing} rows. Re-run with --force to wipe and reseed.`);
   }
   if (force) {
-    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL", "SUBSCRIPTION", "PLAN_LINE", "PAYDAY", "BALANCE_CHECKPOINT"]) tx.run(`DELETE FROM ${t}`);
+    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL", "SUBSCRIPTION", "PLAN_LINE", "PAYDAY", "BALANCE_CHECKPOINT", "ACCOUNT", "ACCOUNT_SNAPSHOT"]) tx.run(`DELETE FROM ${t}`);
   }
 
   tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Emergency fund', 'shield', 6000, ?, 1500, ?)", [GOAL_FUND, ws, addMonthsKey(months[months.length - 1], 8), `${months[0]}-01 09:00:00`]);
@@ -238,6 +238,25 @@ const result = db.transaction((tx) => {
   tx.run("INSERT INTO PAYDAY (ID, WORKSPACE_ID, LABEL, AMOUNT, CADENCE, DAY) VALUES (?, ?, 'Salary', 2850, 'monthly', 1)", [randomUUID(), ws]);
   tx.run("INSERT INTO BALANCE_CHECKPOINT (ID, WORKSPACE_ID, DATE, AMOUNT, NOTE) VALUES (?, ?, ?, 1850, 'Seeded')", [randomUUID(), ws, new Date().toISOString().slice(0, 10)]);
 
+  // Net worth: three accounts with a year of month-end balances trending up
+  // (debt trending down).
+  const accounts: Array<[string, string, number, number]> = [
+    // name, type, balance 12 months ago, change per month
+    ["Main account", "cash", 1200, 55],
+    ["Savings", "savings", 3800, 250],
+    ["Car loan", "debt", 9600, -310],
+  ];
+  const snapshotMonths = months.slice(-12);
+  accounts.forEach(([name, type, start, step], i) => {
+    const id = randomUUID();
+    tx.run("INSERT INTO ACCOUNT (ID, WORKSPACE_ID, NAME, TYPE, SORT_ORDER, CREATED_AT) VALUES (?, ?, ?, ?, ?, ?)", [id, ws, name, type, i, `${snapshotMonths[0]}-01 09:00:00`]);
+    snapshotMonths.forEach((month, m) => {
+      const wobble = type === "debt" ? 0 : between(-80, 120);
+      const balance = Math.round((start + step * m + wobble) * 100) / 100;
+      tx.run("INSERT INTO ACCOUNT_SNAPSHOT (ID, WORKSPACE_ID, ACCOUNT_ID, MONTH, BALANCE, CREATED_AT) VALUES (?, ?, ?, ?, ?, ?)", [randomUUID(), ws, id, month, balance, `${month}-28 09:00:00`]);
+    });
+  });
+
   // A zero-based plan for the current month: income, a line per group, a fund.
   const planMonth = months[months.length - 1];
   const planLines: Array<[string, string, Group | null, string, number]> = [
@@ -267,6 +286,7 @@ const result = db.transaction((tx) => {
     months: `${months[0]} … ${months[months.length - 1]}`,
     subscriptions,
     planLines: planLines.length,
+    accounts: accounts.length,
     ledger: rows.length,
     deleted: rows.filter((r) => r.deleted).length,
     income: rows.filter((r) => r.kind === "income").length,

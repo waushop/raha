@@ -6,6 +6,7 @@ import { iconFromLegacy, type IconName } from "./icon-names";
 import { MONTH_RE, daysInMonth } from "./months";
 import { CADENCES, STATUSES, type Cadence, type SubscriptionStatus } from "./subscriptions";
 import { PAYDAY_CADENCES, type PaydayCadence } from "./cashflow";
+import { ACCOUNT_TYPES, type AccountType } from "./networth";
 import { MAX_TAGS, MAX_TAG_LENGTH, formatTags, parseTags } from "./tags";
 
 export class ValidationError extends Error {
@@ -86,6 +87,12 @@ export function parsePaydayCadence(v: unknown): PaydayCadence {
   const s = text(v) || "monthly";
   if (!(PAYDAY_CADENCES as readonly string[]).includes(s)) throw new ValidationError("Unknown cadence");
   return s as PaydayCadence;
+}
+
+export function parseAccountType(v: unknown): AccountType {
+  const s = text(v) || "cash";
+  if (!(ACCOUNT_TYPES as readonly string[]).includes(s)) throw new ValidationError("Unknown account type");
+  return s as AccountType;
 }
 
 /** A signed amount (balances can be negative), at most 2 decimals. */

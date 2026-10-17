@@ -49,3 +49,43 @@ export async function recurringCandidates(ws: string, sinceMonth: string): Promi
   );
   return rows as RecurringCandidate[];
 }
+
+// --- /analytics reports (computations live in lib/reports.ts) -------------
+
+export type LedgerReportRow = {
+  KIND: Kind; CATEGORY: string; GROUP_ID: string | null; NAME: string;
+  AMOUNT: number; MONTH: string; DAY: number | null; GOAL_ID: string | null;
+};
+
+/** Every live row (both kinds) in an inclusive month range — one query feeds the Sankey, weekday split and savings chart. */
+export async function ledgerRowsBetween(ws: string, start: string, end: string): Promise<LedgerReportRow[]> {
+  const [rows] = await db.execute(
+    `SELECT KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?`,
+    [ws, start, end],
+  );
+  return rows as LedgerReportRow[];
+}
+
+export type GroupRefRow = { ID: string; NAME: string; COLOR: string };
+
+export async function groupRefs(ws: string): Promise<GroupRefRow[]> {
+  const [rows] = await db.execute(
+    "SELECT ID, NAME, COLOR FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY SORT_ORDER, NAME",
+    [ws],
+  );
+  return rows as GroupRefRow[];
+}
+
+export type MerchantMonthlyRow = { NAME: string; CATEGORY: string; MONTH: string; TOTAL: number; CNT: number };
+
+/** Expense spend and visit count per (name, category, month) in an inclusive month range. */
+export async function merchantMonthly(ws: string, start: string, end: string): Promise<MerchantMonthlyRow[]> {
+  const [rows] = await db.execute(
+    `SELECT NAME, CATEGORY, MONTH, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS CNT
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     GROUP BY NAME, CATEGORY, MONTH`,
+    [ws, start, end],
+  );
+  return rows as MerchantMonthlyRow[];
+}

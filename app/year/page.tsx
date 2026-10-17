@@ -5,7 +5,11 @@ import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
 import CategoryIcon from "@/components/CategoryIcon";
-import { ChartNoAxesColumn, ChartPie, ChevronLeft, ChevronRight } from "lucide-react";
+import SaveAsImage, { type ReviewStat } from "@/components/SaveAsImage";
+import { listGoals } from "@/lib/goals";
+import { currentMonth } from "@/lib/months";
+import { yearlyCost, type Cadence } from "@/lib/subscriptions";
+import { ChartNoAxesColumn, ChartPie, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -77,6 +81,47 @@ export default async function YearPage({
   const avgMonth = months.length > 0 ? yearTotal / months.length : 0;
   const maxMonth = Math.max(...months.map(m => m.TOTAL), 0);
 
+  // Year in review
+  const [merchantRows] = await db.execute(
+    `SELECT NAME, COUNT(*) AS N, CAST(SUM(AMOUNT) AS REAL) AS TOTAL FROM LEDGER
+     WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     GROUP BY NAME ORDER BY N DESC, TOTAL DESC LIMIT 1`,
+    [ws, `${year}-01`, `${year}-12`]
+  );
+  const topMerchant = (merchantRows as { NAME: string; N: number; TOTAL: number }[])[0] ?? null;
+  const [biggestRows] = await db.execute(
+    `SELECT NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH FROM LEDGER
+     WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?
+     ORDER BY AMOUNT DESC, CREATED_AT LIMIT 1`,
+    [ws, `${year}-01`, `${year}-12`]
+  );
+  const biggestExpense = (biggestRows as { NAME: string; AMOUNT: number; MONTH: string }[])[0] ?? null;
+  const [subRows] = await db.execute(
+    `SELECT CAST(AMOUNT AS REAL) AS AMOUNT, CADENCE, STATUS, substr(CREATED_AT, 1, 4) AS CREATED_YEAR, substr(STATUS_CHANGED_AT, 1, 4) AS CHANGED_YEAR
+     FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL`,
+    [ws]
+  );
+  const subs = subRows as { AMOUNT: number; CADENCE: Cadence; STATUS: string; CREATED_YEAR: string; CHANGED_YEAR: string | null }[];
+  const subsAdded = subs.filter((s) => s.CREATED_YEAR === year).length;
+  const subsCancelled = subs.filter((s) => s.STATUS === "cancelled" && s.CHANGED_YEAR === year);
+  const savedByCancelling = subsCancelled.reduce((s, r) => s + yearlyCost(r.AMOUNT, r.CADENCE), 0);
+  const goalsReached = (await listGoals(ws)).filter((g) => g.status === "done");
+  const sortedMonths = [...months].sort((a, b) => b.TOTAL - a.TOTAL);
+  const biggestMonth = sortedMonths[0] ?? null;
+  // The month still in progress is not "cheapest" just because it is unfinished.
+  const finished = sortedMonths.filter((m) => m.MONTH !== currentMonth());
+  const cheapestMonth = finished.length > 1 ? finished[finished.length - 1] : null;
+  const monthName = (m: string) => MONTH_NAMES[Number(m.slice(5, 7)) - 1];
+  const reviewStats: ReviewStat[] = [];
+  if (biggestMonth) reviewStats.push({ label: "Biggest month", value: monthName(biggestMonth.MONTH), sub: `${fmt(biggestMonth.TOTAL)} € spent` });
+  if (cheapestMonth) reviewStats.push({ label: "Cheapest month", value: monthName(cheapestMonth.MONTH), sub: `${fmt(cheapestMonth.TOTAL)} € spent` });
+  if (topMerchant) reviewStats.push({ label: "Most frequent", value: topMerchant.NAME, sub: `${topMerchant.N} times · ${fmt(topMerchant.TOTAL)} €` });
+  if (biggestExpense) reviewStats.push({ label: "Biggest expense", value: `${fmt(biggestExpense.AMOUNT)} €`, sub: `${biggestExpense.NAME} · ${monthName(biggestExpense.MONTH)}` });
+  if (subsAdded > 0 || subsCancelled.length > 0) reviewStats.push({ label: "Subscriptions", value: `+${subsAdded} / −${subsCancelled.length}`, sub: "added / cancelled" });
+  if (savedByCancelling > 0) reviewStats.push({ label: "Saved by cancelling", value: `${fmt(savedByCancelling)} €`, sub: "a year, from cancelled subscriptions" });
+  if (goalsReached.length > 0) reviewStats.push({ label: "Goals reached", value: String(goalsReached.length), sub: goalsReached.map((g) => g.NAME).join(", ") });
+  if (savingsRate !== null) reviewStats.push({ label: "Savings rate", value: `${savingsRate.toFixed(0)}%`, sub: `${yearNet >= 0 ? "+" : ""}${fmt(yearNet)} € of ${fmt(yearIncome)} € income` });
+
   const prevYear = String(Number(year) - 1);
   const nextYear = String(Number(year) + 1);
 
@@ -134,6 +179,30 @@ export default async function YearPage({
             </>
           )}
         </div>
+
+        {/* Year in review */}
+        {reviewStats.length > 0 && (
+          <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.07s" }}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center shadow-lg shadow-pink-500/20">
+                <Sparkles size={12} strokeWidth={2.5} className="text-white" />
+              </span>
+              <h2 className="text-sm font-bold text-white">Year in review</h2>
+              <div className="ml-auto">
+                <SaveAsImage year={year} stats={reviewStats} footer={`${fmt(yearTotal)} € spent across ${months.length} month${months.length === 1 ? "" : "s"}`} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {reviewStats.map((s) => (
+                <div key={s.label} className="surface rounded-xl p-3 min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380] mb-1">{s.label}</p>
+                  <p className="text-base sm:text-lg font-bold text-white font-mono tabular-nums truncate" title={s.value}>{s.value}</p>
+                  {s.sub && <p className="text-[10px] text-[#9ca3c0] truncate" title={s.sub}>{s.sub}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Monthly bar chart */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.08s" }}>

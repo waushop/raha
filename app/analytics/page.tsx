@@ -6,8 +6,16 @@ import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
 import Stats from "@/components/Stats";
 import { getBudgets, getBudgetHistory, resolveBudgetsFor } from "@/lib/budgets";
-import { monthlyTotals as monthlyTotalsQuery, type MonthTotal } from "@/lib/queries";
+import {
+  monthlyTotals as monthlyTotalsQuery, ledgerRowsBetween, groupRefs, merchantMonthly, type MonthTotal,
+} from "@/lib/queries";
+import { addMonths } from "@/lib/months";
+import { sankeyData, sankeyLayout, merchantLeaderboard, sparkline, weekdaySplit, savingsRateSeries } from "@/lib/reports";
 import CategoryIcon from "@/components/CategoryIcon";
+import SankeyChart from "@/components/SankeyChart";
+import SavingsRateChart from "@/components/SavingsRateChart";
+import MerchantLeaderboard from "@/components/MerchantLeaderboard";
+import WeekdaySplitCard from "@/components/WeekdaySplitCard";
 import { Download } from "lucide-react";
 
 const fmt = (n: number) =>
@@ -95,6 +103,34 @@ export default async function AnalyticsPage() {
     allMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
     d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   }
+
+  // "Where did the money go" reports: one row query for the 12-month window
+  // (Sankey, weekday split, savings rate) plus a grouped merchant query for
+  // the last 3 full months and the 3 before them.
+  const recentMonths = [3, 2, 1].map((k) => addMonths(endMonth, -k));
+  const beforeMonths = [6, 5, 4].map((k) => addMonths(endMonth, -k));
+  const [reportRows, groups, merchantRows] = await Promise.all([
+    ledgerRowsBetween(ws, startMonth, endMonth),
+    groupRefs(ws),
+    merchantMonthly(ws, beforeMonths[0], recentMonths[recentMonths.length - 1]),
+  ]);
+  const flow = sankeyData(reportRows, groups, (c) => CATEGORIES[c as CategoryKey]?.label ?? c);
+  // Tall enough that even the smallest category row stays legible.
+  const widestColumn = Math.max(...[0, 1, 2].map((col) => flow.nodes.filter((n) => n.column === col).length), 1);
+  const sankey = sankeyLayout(flow, { width: 640, height: Math.max(320, 22 * widestColumn) });
+  const leaderboard = merchantLeaderboard(merchantRows, recentMonths, beforeMonths);
+  const split = weekdaySplit(reportRows, allMonths);
+  const goalByMonth: Record<string, number> = {};
+  for (const r of reportRows) {
+    if (r.KIND === "expense" && r.GOAL_ID) goalByMonth[r.MONTH] = (goalByMonth[r.MONTH] ?? 0) + r.AMOUNT;
+  }
+  const savings = savingsRateSeries(
+    Object.fromEntries(monthlyIncome.map((m) => [m.MONTH, m.TOTAL])),
+    Object.fromEntries(monthlyTotals.map((m) => [m.MONTH, m.TOTAL])),
+    goalByMonth,
+    allMonths,
+  );
+  const goalTotal = Object.values(goalByMonth).reduce((s, v) => s + v, 0);
 
   // Budget vs actual per month, using the budget that was in force then.
   const [currentBudgets, budgetHistory] = await Promise.all([getBudgets(ws), getBudgetHistory(ws)]);
@@ -238,6 +274,43 @@ export default async function AnalyticsPage() {
           </div>
         </div>
 
+        {/* Savings rate */}
+        {incomeTotal > 0 && (
+          <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.085s" }}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-bold text-white">Savings rate</h2>
+              <span className="flex items-center gap-3 text-[9px] text-[#5a6380]">
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-1.5 rounded-full bg-teal-500/60" /> kept</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-1.5 rounded-full bg-teal-700" /> into goals</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-1.5 rounded-full bg-red-500/60" /> overspent</span>
+              </span>
+            </div>
+            <p className="text-[10px] text-[#5a6380] mb-3">
+              Share of each month&rsquo;s income not spent. Goal contributions ({fmt(goalTotal)} € over 12 months) count as saved and form the darker base of a bar.
+            </p>
+            <SavingsRateChart series={savings} />
+          </div>
+        )}
+
+        {/* Where did the money go: Sankey */}
+        {sankey.nodes.length > 0 && (
+          <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.088s" }}>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-bold text-white">Where the money went</h2>
+              <span className="text-[10px] text-[#5a6380] tabular-nums">
+                {sankey.total > 0 && incomeTotal > 0 ? `${fmt(sankey.total)} € in` : `${fmt(grandTotal)} € spent`}
+              </span>
+            </div>
+            <p className="text-[10px] text-[#5a6380] mb-3">
+              {incomeTotal > 0 ? "Income" : "Spending"} on the left flows through your category groups into categories on the right.
+              {incomeTotal > 0 && saved > 0 ? " What was not spent ends in Saved." : ""}
+              {incomeTotal > 0 && saved < 0 ? " Spending beat income, so a Deficit source makes up the difference." : ""}
+              {" "}Hover a ribbon for the amount and share.
+            </p>
+            <SankeyChart layout={sankey} />
+          </div>
+        )}
+
         {/* Budget vs actual */}
         {monthsWithData.length > 0 && (currentBudgets.total > 0 || budgetedCategories.length > 0) && (
           <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.09s" }}>
@@ -297,7 +370,7 @@ export default async function AnalyticsPage() {
                 const found = catMonthData.find(r => r.CATEGORY === CATEGORY && r.MONTH === m);
                 return found?.TOTAL ?? 0;
               });
-              const catMax = Math.max(...catData, 1);
+              const points = sparkline(catData, 80, 20);
 
               return (
                 <div key={CATEGORY}>
@@ -313,20 +386,40 @@ export default async function AnalyticsPage() {
                       <span className="text-[10px] text-[#5a6380] tabular-nums">{pct.toFixed(0)}%</span>
                     </div>
                   </div>
-                  {/* Mini sparkline */}
-                  <div className="flex items-end gap-px h-6">
-                    {catData.map((val, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 rounded-t-sm bg-gradient-to-t from-purple-500/40 to-pink-500/40 transition-all duration-300"
-                        style={{ height: `${catMax > 0 ? (val / catMax) * 100 : 0}%`, minHeight: val > 0 ? 2 : 0 }}
-                      />
-                    ))}
-                  </div>
+                  {/* 12-point sparkline */}
+                  <svg viewBox="0 0 80 20" className="w-full h-6" preserveAspectRatio="none" aria-hidden>
+                    <polyline
+                      points={points}
+                      fill="none"
+                      stroke="currentColor"
+                      className="text-pink-400/70"
+                      strokeWidth={1.5}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </svg>
                 </div>
               );
             })}
           </div>
+        </div>
+
+        {/* Weekday vs weekend + most expensive day */}
+        <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.11s" }}>
+          <h2 className="text-sm font-bold text-white mb-1">Weekdays vs weekends</h2>
+          <p className="text-[10px] text-[#5a6380] mb-4">Only expenses with a day of the month count; per-day averages divide by the calendar days in the last 12 months.</p>
+          <WeekdaySplitCard split={split} />
+        </div>
+
+        {/* Merchant leaderboard */}
+        <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.115s" }}>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-bold text-white">Top merchants</h2>
+            <span className="text-[10px] text-[#5a6380]">{shortMonth(recentMonths[0])}–{shortMonth(recentMonths[2])}</span>
+          </div>
+          <p className="text-[10px] text-[#5a6380] mb-4">Last three full months by name. The chip compares with the three months before that.</p>
+          <MerchantLeaderboard board={leaderboard} />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

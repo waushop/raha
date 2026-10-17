@@ -19,6 +19,8 @@
 - **LEDGER_AUDIT**: before/after JSON for every ledger write (`lib/ledger.ts` `audit` / `auditedUpdate`); `/activity` reads it, falling back to timestamps on pre-audit databases.
 - **CATEGORY_GROUP** table: `ID`, `NAME`, `ICON` (a `lib/icon-names.ts` name or NULL; the old `EMOJI` column is renamed and mapped by `migrateIcons`), `COLOR`, `SORT_ORDER` (reorderable from `/groups`)
 - **SAVINGS_GOAL**: targets with optional deadline and starting balance; contributions are LEDGER rows with `GOAL_ID`.
+- **ACCOUNT** (`NAME`, `TYPE` cash|savings|investment|property|debt) and **ACCOUNT_SNAPSHOT** (`ACCOUNT_ID`, `MONTH`, `BALANCE`, unique per account+month): manual net worth. `lib/networth.ts` carries the last known balance forward and subtracts debts; `lib/networth-db.ts` builds the 24-month series.
+- Reports: `lib/reports.ts` (pure, tested) computes the Sankey layout (income → groups → categories), merchant leaderboard with 3-month deltas, sparklines, weekday/weekend split and the savings-rate series used by `/analytics`; row queries in `lib/queries.ts` (`ledgerRowsBetween`, `merchantMonthly`).
 - **PAYDAY** (expected income: `LABEL`, `AMOUNT`, `CADENCE` monthly|biweekly|weekly|once, `DAY` or `START_DATE`) and **BALANCE_CHECKPOINT** (`DATE`, `AMOUNT`: "my account had X on this date"; newest wins and is rolled forward with ledger rows entered after it). `lib/cashflow.ts` projects 60 days (paydays in, subscription charges out, variable daily rate from `lib/forecast.ts` drained daily) and derives safe-to-spend = lowest balance before the next payday − buffer (100 €), the low point and per-paycheck shortfalls; `lib/cashflow-db.ts` assembles it.
 - **PLAN_LINE**: zero-based plan per month (`MONTH`, `KIND` income|expense|fund, `CATEGORY`, `GROUP_ID`, `LABEL`, `PLANNED`, `SORT_ORDER`, optional `SUBSCRIPTION_ID`). Ledger rows are matched to lines in `lib/plan.ts` (`matchRows`: subscription link → category+group → category-only line, generic lines before subscription lines); `summarise` gives planned/actual/remaining, "left to plan" (planned income − planned spending), unplanned groups and fund balances (`fund` lines carry planned − actual into later months, identity = category+group+label). `lib/plan-db.ts` builds a month from the previous plan, 3-month averages (rounded to 5 €) or active subscriptions.
 - **SUBSCRIPTION**: recurring commitments (`NAME`, `CATEGORY`, `GROUP_ID`, `AMOUNT`, `CADENCE` weekly|monthly|quarterly|yearly, `DAY`, `MONTH_OF_YEAR`, `STATUS` active|paused|cancelled, `TRIAL_ENDS`, `CANCEL_URL`, `NOTES`). Charges are LEDGER rows with `SUBSCRIPTION_ID`; `lib/ledger.ts` `insertRow`/`linkSubscription` keep the link in step with `IS_RECURRING` (find-or-create by name+category+group, latest price wins, cancelled ones revive). `backfillSubscriptions` runs at startup, after restore and in the seed. Pure logic (cadence detection, next due, upcoming charges, unused detection, yearly calendar) in `lib/subscriptions.ts`; the list view with price history in `lib/subscriptions-db.ts`.
@@ -33,20 +35,21 @@
 25 predefined categories with icons in `types/expense.ts` (housing, fuel, groceries, etc.)
 Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
-### Pages (17)
+### Pages (18)
 | Route | Purpose |
 |-------|---------|
 | `/dashboard` | Home — metrics, forecasting, insights, heatmap |
 | `/` | Monthly view — expenses grouped by custom groups |
 | `/search` | Global search across all months with URL filters (kind, category, group, tag, amount, month range) |
 | `/groups` | Group management (CRUD) |
+| `/networth` | Manual net worth: accounts, monthly balance snapshots, 24-month chart |
 | `/cashflow` | 60-day balance projection: safe to spend, low point, next payday, SVG chart, paycheck shortfalls, paydays and balance editors |
 | `/plan` | Zero-based plan for a month: income lines, lines per group with planned/spent/remaining, funds that roll over, unplanned spend; quick starts copy last plan / build from averages / add subscriptions |
 | `/subscriptions` | Subscription hub: monthly burn, upcoming bills with one-tap "Paid", price changes, unused/trial alerts, cadence editor (`/recurring` redirects here) |
 | `/activity` | Timeline of all changes |
 | `/compare` | Side-by-side month comparison |
-| `/analytics` | 12-month deep analytics |
-| `/year` | Yearly overview |
+| `/analytics` | 12-month deep analytics: savings rate bars, Sankey "where the money went", category sparklines, weekday vs weekend, top merchants |
+| `/year` | Yearly overview + year-in-review card (biggest/cheapest month, top merchant, subscriptions added/cancelled, goals reached) with PNG export |
 | `/goals` | Savings goals (SAVINGS_GOAL + LEDGER.GOAL_ID), progress/pace from `lib/goals.ts` |
 | `/review` | Monthly review narrative for a finished month (defaults to last month) |
 | `/settings` | DB stats, budgets, backup/restore |
@@ -54,7 +57,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
 ### APIs (3)
 - `GET /api/export?month=` or `?year=` — CSV download
-- `GET/POST /api/backup` — JSON backup/restore (v11: ledger incl. DAY, GOAL_ID, SUBSCRIPTION_ID and SPLIT_GROUP + subscriptions + plan_lines + paydays + balance_checkpoints + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
+- `GET/POST /api/backup` — JSON backup/restore (v12: ledger incl. DAY, GOAL_ID, SUBSCRIPTION_ID and SPLIT_GROUP + subscriptions + plan_lines + paydays + balance_checkpoints + accounts + account_snapshots + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
 ## Conventions

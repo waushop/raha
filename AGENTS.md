@@ -16,7 +16,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Database
 - Table/column names in UPPERCASE
-- Always filter `DELETED_AT IS NULL` in queries, and always scope by `WORKSPACE_ID = ?` (from `currentContext()` in pages / `requireAuth()` in actions) on LEDGER, CATEGORY_GROUP, BUDGET, BUDGET_HISTORY, IMPORT_PATTERN, SAVINGS_GOAL, SUBSCRIPTION, PLAN_LINE, PAYDAY and BALANCE_CHECKPOINT; mutations by id must include `AND WORKSPACE_ID = ?`
+- Always filter `DELETED_AT IS NULL` in queries, and always scope by `WORKSPACE_ID = ?` (from `currentContext()` in pages / `requireAuth()` in actions) on LEDGER, CATEGORY_GROUP, BUDGET, BUDGET_HISTORY, IMPORT_PATTERN, SAVINGS_GOAL, SUBSCRIPTION, PLAN_LINE, PAYDAY, BALANCE_CHECKPOINT, ACCOUNT and ACCOUNT_SNAPSHOT; mutations by id must include `AND WORKSPACE_ID = ?`
 - Spending aggregates must also filter `KIND = 'expense'`; income rows live in the same LEDGER table
 - Use `CAST(AMOUNT AS REAL)` when selecting amounts (SQLite has no DOUBLE)
 - Generate UUIDs with `crypto.randomUUID()`, not MySQL UUID()

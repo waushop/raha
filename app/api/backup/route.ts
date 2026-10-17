@@ -3,6 +3,7 @@ import { iconFromLegacy } from "@/lib/icon-names";
 import { CADENCES, STATUSES, backfillSubscriptions } from "@/lib/subscriptions";
 import { PLAN_KINDS } from "@/lib/plan";
 import { PAYDAY_CADENCES } from "@/lib/cashflow";
+import { ACCOUNT_TYPES } from "@/lib/networth";
 import { currentMonth } from "@/lib/months";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
@@ -28,7 +29,8 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //   v9  + plan_lines section (zero-based plan).
 //   v10 + paydays and balance_checkpoints sections (cash flow).
 //   v11 + SPLIT_GROUP per row; import_patterns carry the rule fields.
-const BACKUP_VERSION = 11;
+//   v12 + accounts and account_snapshots sections (net worth).
+const BACKUP_VERSION = 12;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,6 +64,11 @@ export async function GET() {
   const [planLines] = await db.execute(
     "SELECT ID, MONTH, KIND, CATEGORY, GROUP_ID, LABEL, CAST(PLANNED AS REAL) AS PLANNED, SORT_ORDER, SUBSCRIPTION_ID FROM PLAN_LINE WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, SORT_ORDER", [ws]
   );
+  const [accounts] = await db.execute("SELECT ID, NAME, TYPE, SORT_ORDER FROM ACCOUNT WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY SORT_ORDER, CREATED_AT", [ws]);
+  const [accountSnapshots] = await db.execute(
+    `SELECT s.ID, s.ACCOUNT_ID, s.MONTH, CAST(s.BALANCE AS REAL) AS BALANCE FROM ACCOUNT_SNAPSHOT s
+     JOIN ACCOUNT a ON a.ID = s.ACCOUNT_ID AND a.DELETED_AT IS NULL WHERE s.WORKSPACE_ID = ? ORDER BY s.ACCOUNT_ID, s.MONTH`, [ws]
+  );
   const [subscriptions] = await db.execute(
     `SELECT ID, NAME, CATEGORY, GROUP_ID, CAST(AMOUNT AS REAL) AS AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, STATUS_CHANGED_AT, NOTES, CANCEL_URL, TRIAL_ENDS
      FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`, [ws]
@@ -78,6 +85,8 @@ export async function GET() {
     plan_lines: planLines,
     paydays,
     balance_checkpoints: checkpoints,
+    accounts,
+    account_snapshots: accountSnapshots,
     import_patterns: patterns,
     expenses, // legacy field name kept so older importers still find the rows
   };
@@ -131,10 +140,12 @@ export async function POST(request: NextRequest) {
   const planLines = Array.isArray(body.plan_lines) ? body.plan_lines : [];
   const paydays = Array.isArray(body.paydays) ? body.paydays : [];
   const checkpoints = Array.isArray(body.balance_checkpoints) ? body.balance_checkpoints : [];
+  const accounts = Array.isArray(body.accounts) ? body.accounts : [];
+  const accountSnapshots = Array.isArray(body.account_snapshots) ? body.account_snapshots : [];
   const expenses = body.expenses;
 
   const result = db.transaction((tx) => {
-    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0, subscriptions: 0, plan_lines: 0, paydays: 0, balance_checkpoints: 0 };
+    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0, subscriptions: 0, plan_lines: 0, paydays: 0, balance_checkpoints: 0, accounts: 0, account_snapshots: 0 };
 
     for (const g of groups) {
       if (!isObj(g)) continue;
@@ -232,6 +243,41 @@ export async function POST(request: NextRequest) {
         [id, ws, date, amount, str(c.NOTE)],
       );
       stats.balance_checkpoints++;
+    }
+
+    for (const a of accounts) {
+      if (!isObj(a)) continue;
+      const id = str(a.ID);
+      const name = str(a.NAME);
+      const type = str(a.TYPE) ?? "cash";
+      if (!id || !UUID_RE.test(id) || !name || !(ACCOUNT_TYPES as readonly string[]).includes(type)) continue;
+      if (foreign(tx, ws, "ACCOUNT", id)) continue;
+      tx.run(
+        `INSERT INTO ACCOUNT (ID, WORKSPACE_ID, NAME, TYPE, SORT_ORDER) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET NAME = excluded.NAME, TYPE = excluded.TYPE, SORT_ORDER = excluded.SORT_ORDER, DELETED_AT = NULL`,
+        [id, ws, name, type, num(a.SORT_ORDER) ?? 0],
+      );
+      stats.accounts++;
+    }
+    const liveAccountIds = new Set(
+      tx.all<{ ID: string }>("SELECT ID FROM ACCOUNT WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]).map((r) => r.ID),
+    );
+    for (const sn of accountSnapshots) {
+      if (!isObj(sn)) continue;
+      const id = str(sn.ID);
+      const accountId = str(sn.ACCOUNT_ID);
+      const month = str(sn.MONTH);
+      const balance = num(sn.BALANCE);
+      if (!id || !UUID_RE.test(id) || !accountId || !liveAccountIds.has(accountId) || !month || !MONTH_RE.test(month) || balance === null) continue;
+      if (foreign(tx, ws, "ACCOUNT_SNAPSHOT", id)) continue;
+      // The (ACCOUNT_ID, MONTH) pair is the real key: a restored row wins over whatever is there.
+      tx.run("DELETE FROM ACCOUNT_SNAPSHOT WHERE ACCOUNT_ID = ? AND MONTH = ? AND ID != ?", [accountId, month, id]);
+      tx.run(
+        `INSERT INTO ACCOUNT_SNAPSHOT (ID, WORKSPACE_ID, ACCOUNT_ID, MONTH, BALANCE) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET ACCOUNT_ID = excluded.ACCOUNT_ID, MONTH = excluded.MONTH, BALANCE = excluded.BALANCE`,
+        [id, ws, accountId, month, balance],
+      );
+      stats.account_snapshots++;
     }
 
     for (const l of planLines) {
