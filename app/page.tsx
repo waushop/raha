@@ -76,7 +76,7 @@ export default async function Page({
         {/* Sticky, so it gets a solid background: the translucent card would show rows through it. */}
         <div className="card rounded-2xl px-4 py-3 sm:px-6 sm:py-5 flex items-center justify-between gap-2 animate-fade-up sticky top-3 z-30" style={{ background: "var(--bg-card-solid)" }}>
           <div className="min-w-0">
-            <h1 className="text-2xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight whitespace-nowrap" style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}>
+            <h1 className="text-3xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight whitespace-nowrap" style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}>
               Empty Wallet
             </h1>
             {spent.length > 0 && (

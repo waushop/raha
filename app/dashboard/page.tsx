@@ -283,7 +283,7 @@ export default async function DashboardPage() {
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-fade-up">
           <div className="flex items-start justify-between gap-3">
           <h1
-            className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
+            className="text-4xl sm:text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
             style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}
           >
             Empty Wallet

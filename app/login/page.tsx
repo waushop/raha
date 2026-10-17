@@ -22,7 +22,7 @@ export default async function LoginPage() {
             <Wallet size={36} strokeWidth={1.5} className="text-pink-400" />
           </div>
           <h1
-            className="text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
+            className="text-6xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
             style={{ fontFamily: "var(--font-brand), var(--font-hand), cursive" }}
           >
             Empty Wallet
