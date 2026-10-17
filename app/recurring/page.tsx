@@ -2,9 +2,10 @@ import { connection } from "next/server";
 import db from "@/lib/db";
 import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
-import { CATEGORIES, GROUP_COLOR_CLASSES } from "@/types/expense";
+import { GROUP_COLOR_CLASSES } from "@/types/expense";
 import Link from "next/link";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
+import CategoryIcon from "@/components/CategoryIcon";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -107,12 +108,11 @@ export default async function RecurringPage() {
             <div className="card rounded-2xl overflow-hidden">
               <div className="divide-y divide-white/[0.04]">
                 {subs.map((s) => {
-                  const cat = CATEGORIES[s.category] ?? CATEGORIES.other;
                   const groupColors = s.group ? (GROUP_COLOR_CLASSES[s.group.color] ?? GROUP_COLOR_CLASSES.blue) : null;
                   const delta = s.previousAmount !== null ? s.amount - s.previousAmount : 0;
                   return (
                     <div key={s.key} className={`px-4 py-3 flex items-center gap-3 row-hover ${s.active ? "" : "opacity-50"}`}>
-                      <span className="text-lg shrink-0">{cat.icon}</span>
+                      <CategoryIcon category={s.category} size={18} className="text-[#9ca3c0]" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm text-white/90 font-medium truncate">{s.name}</span>

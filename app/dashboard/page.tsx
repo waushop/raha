@@ -16,6 +16,8 @@ import { monthLabel } from "@/lib/months";
 import { monthlyTotals, monthlyVariableTotals, recurringCandidates } from "@/lib/queries";
 import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
+import CategoryIcon from "@/components/CategoryIcon";
+import { Layers, Repeat } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -371,9 +373,7 @@ export default async function DashboardPage() {
           <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.075s" }}>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                </svg>
+                <Layers size={14} className="text-amber-400" />
                 Budget
               </h2>
               <Link href="/settings" className="text-[10px] text-[#5a6380] hover:text-pink-400 transition-colors">Edit →</Link>
@@ -435,7 +435,7 @@ export default async function DashboardPage() {
                   return (
                     <div key={b.category}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs">{meta.icon}</span>
+                        <CategoryIcon category={b.category} size={14} className="text-[#9ca3c0]" />
                         <span className="text-xs font-semibold text-white/70 flex-1 truncate">{meta.label}</span>
                         <span className="text-[10px] font-mono tabular-nums">
                           <span className={
@@ -475,19 +475,15 @@ export default async function DashboardPage() {
           {missingRecurring.length > 0 && (
             <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.09s" }}>
               <div className="flex items-center gap-2 mb-4">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 014-4h14" />
-                  <path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 01-4 4H3" />
-                </svg>
+                <Repeat size={14} strokeWidth={2.5} className="text-teal-400" />
                 <h2 className="text-sm font-bold text-white">Missing recurring</h2>
                 <span className="text-[10px] bg-amber-500/20 text-amber-400 font-bold rounded-full px-2 py-0.5">{missingRecurring.length}</span>
               </div>
               <div className="space-y-2">
                 {missingRecurring.map((item, i) => {
-                  const meta = CATEGORIES[item.CATEGORY];
                   return (
                     <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs">{meta.icon}</span>
+                      <CategoryIcon category={item.CATEGORY} size={14} className="text-[#9ca3c0]" />
                       <span className="text-xs text-white/80 flex-1 truncate">{item.NAME}</span>
                       <span className="text-xs font-mono text-white/50 tabular-nums">{fmt(item.AMOUNT)} €</span>
                     </div>
@@ -523,7 +519,7 @@ export default async function DashboardPage() {
                   const diff = prevCat > 0 ? ((TOTAL - prevCat) / prevCat) * 100 : 0;
                   return (
                     <div key={CATEGORY} className="flex items-center gap-2">
-                      <span className="text-xs">{meta.icon}</span>
+                      <CategoryIcon category={CATEGORY} size={14} className="text-[#9ca3c0]" />
                       <span className={`text-xs font-semibold ${"text-white/70"} w-20 shrink-0`}>{meta.label}</span>
                       <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-white/5">
                         <div
@@ -549,10 +545,9 @@ export default async function DashboardPage() {
             <h2 className="text-sm font-bold text-white mb-4">Recently added</h2>
             <div className="space-y-2.5">
               {recentExpenses.map((item) => {
-                const meta = CATEGORIES[item.CATEGORY];
                 return (
                   <Link key={item.ID} href={`/?month=${item.MONTH}#e-${item.ID}`} className="flex items-center gap-2 rounded-lg -mx-1 px-1 hover:bg-white/5 transition-colors">
-                    <span className="text-xs">{meta.icon}</span>
+                    <CategoryIcon category={item.CATEGORY} size={14} className="text-[#9ca3c0]" />
                     <div className="flex-1 min-w-0">
                       <span className="text-xs text-white/80 truncate block">{item.NAME}</span>
                       <span className="text-[9px] text-[#5a6380]">{item.MONTH}</span>

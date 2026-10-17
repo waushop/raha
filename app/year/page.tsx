@@ -4,6 +4,8 @@ import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
+import CategoryIcon from "@/components/CategoryIcon";
+import { ChartNoAxesColumn, ChartPie, ChevronLeft, ChevronRight } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -96,18 +98,14 @@ export default async function YearPage({
               href={`/year?year=${prevYear}`}
               className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-pink-500/30 flex items-center justify-center text-[#9ca3c0] hover:text-pink-400 transition-all btn-press"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <ChevronLeft size={14} />
             </Link>
             <span className="font-bold text-lg text-white w-16 text-center tabular-nums">{year}</span>
             <Link
               href={`/year?year=${nextYear}`}
               className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-pink-500/30 flex items-center justify-center text-[#9ca3c0] hover:text-pink-400 transition-all btn-press"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <ChevronRight size={14} />
             </Link>
           </div>
         </div>
@@ -141,9 +139,7 @@ export default async function YearPage({
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.08s" }}>
           <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
             <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 20V10M12 20V4M6 20v-6" />
-              </svg>
+              <ChartNoAxesColumn size={12} strokeWidth={2.5} className="text-white" />
             </span>
             Months
           </h2>
@@ -197,10 +193,7 @@ export default async function YearPage({
           <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.1s" }}>
             <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
               <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.21 15.89A10 10 0 118 2.83" />
-                  <path d="M22 12A10 10 0 0012 2v10z" />
-                </svg>
+                <ChartPie size={12} strokeWidth={2.5} className="text-white" />
               </span>
               Categories ({year})
             </h2>
@@ -210,7 +203,7 @@ export default async function YearPage({
                 const pct = yearTotal > 0 ? (TOTAL / yearTotal) * 100 : 0;
                 return (
                   <div key={CATEGORY} className="flex items-center gap-3">
-                    <span className="text-sm shrink-0">{meta.icon}</span>
+                    <CategoryIcon category={CATEGORY} size={16} className="text-[#9ca3c0]" />
                     <span className={`text-xs font-semibold ${"text-white/70"} w-24 shrink-0`}>{meta.label}</span>
                     <div className="flex-1 h-2 rounded-full overflow-hidden bg-white/5">
                       <div

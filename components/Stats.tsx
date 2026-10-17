@@ -1,3 +1,5 @@
+import { Star } from "lucide-react";
+
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -19,9 +21,7 @@ export default function Stats({ totalExpenses, totalMonths, totalAmount, avgPerE
   return (
     <div className="card rounded-2xl p-5">
       <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-        </svg>
+        <Star size={14} className="text-amber-400" />
         All-time stats
       </h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

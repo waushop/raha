@@ -17,6 +17,8 @@ import ChangePin from "@/components/ChangePin";
 import BackfillMonth from "@/components/BackfillMonth";
 import BudgetEditor from "@/components/BudgetEditor";
 import { listMonths } from "@/app/actions";
+import CategoryIcon from "@/components/CategoryIcon";
+import { Database, Layers, Lock, Mail, Maximize2, Upload, Users } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -70,9 +72,7 @@ export default async function SettingsPage() {
         {/* Database stats */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.05s" }}>
           <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-              <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-            </svg>
+            <Database size={14} className="text-purple-400" />
             Database
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -106,9 +106,7 @@ export default async function SettingsPage() {
         {/* Budget targets */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.08s" }}>
           <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-            </svg>
+            <Layers size={14} className="text-amber-400" />
             Budget targets
           </h2>
           <BudgetEditor
@@ -123,9 +121,7 @@ export default async function SettingsPage() {
         {ctx.isAdmin ? (
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.085s" }}>
           <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-teal-400">
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
-            </svg>
+            <Users size={14} className="text-teal-400" />
             Users
           </h2>
           <p className="text-xs text-[#5a6380] mb-4">Each user has a private ledger and their own PIN. Signed in as <span className="text-white/80">{ctx.name}</span>.</p>
@@ -149,9 +145,7 @@ export default async function SettingsPage() {
         {/* Email check on new devices */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.088s" }}>
           <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" />
-            </svg>
+            <Mail size={14} className="text-purple-400" />
             Email check
           </h2>
           <p className="text-xs text-[#5a6380] mb-4">After your PIN, a new browser gets a six-digit code by email. Remembered devices skip it for 30 days.</p>
@@ -161,10 +155,7 @@ export default async function SettingsPage() {
         {/* Security */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.09s" }}>
           <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-pink-400">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0110 0v4" />
-            </svg>
+            <Lock size={14} className="text-pink-400" />
             Change PIN
           </h2>
           <ChangePin />
@@ -173,9 +164,7 @@ export default async function SettingsPage() {
         {/* Backfill */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.095s" }}>
           <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400">
-              <path d="M16 3h5v5" /><path d="M21 3l-7 7" /><path d="M8 21H3v-5" /><path d="M3 21l7-7" />
-            </svg>
+            <Maximize2 size={14} className="text-purple-400" />
             Copy month
           </h2>
           <p className="text-xs text-[#5a6380] mb-4">
@@ -187,9 +176,7 @@ export default async function SettingsPage() {
         {/* Backup & Restore */}
         <div className="card rounded-2xl p-5 animate-fade-up" style={{ animationDelay: "0.1s" }}>
           <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
+            <Upload size={14} className="text-blue-400" />
             Backup
           </h2>
           <BackupRestore />
@@ -203,7 +190,7 @@ export default async function SettingsPage() {
               const meta = CATEGORIES[cat];
               return (
                 <div key={cat} className="bg-white/[0.03] rounded-xl p-3 text-center">
-                  <span className="text-xl block mb-1">{meta.icon}</span>
+                  <CategoryIcon category={cat} size={22} className="block mx-auto mb-1 text-[#9ca3c0]" />
                   <span className={`text-xs font-semibold ${"text-white/70"}`}>{meta.label}</span>
                 </div>
               );

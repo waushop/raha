@@ -7,6 +7,8 @@ import Link from "next/link";
 import Stats from "@/components/Stats";
 import { getBudgets, getBudgetHistory, resolveBudgetsFor } from "@/lib/budgets";
 import { monthlyTotals as monthlyTotalsQuery, type MonthTotal } from "@/lib/queries";
+import CategoryIcon from "@/components/CategoryIcon";
+import { Download } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -146,9 +148,7 @@ export default async function AnalyticsPage() {
               href={`/api/export?year=${now.getFullYear()}`}
               className="px-4 py-2 rounded-xl border border-white/10 text-[#9ca3c0] text-xs font-medium hover:bg-white/5 hover:text-white transition-all btn-press inline-flex items-center gap-1.5"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
+              <Download size={12} />
               Export CSV
             </a>
           </div>
@@ -260,7 +260,7 @@ export default async function AnalyticsPage() {
                 const meta = CATEGORIES[cat];
                 return (
                   <div key={cat} className="flex items-center gap-2">
-                    <span className="text-xs text-white/70 w-28 shrink-0 truncate inline-flex items-center gap-1.5"><span>{meta.icon}</span>{meta.label}</span>
+                    <span className="text-xs text-white/70 w-28 shrink-0 truncate inline-flex items-center gap-1.5"><CategoryIcon category={cat} size={14} />{meta.label}</span>
                     <div className="flex-1 grid grid-cols-12 gap-1">
                       {allMonths.map((m) => {
                         const budget = budgetByMonth.get(m)!.categories[cat] ?? 0;
@@ -303,7 +303,7 @@ export default async function AnalyticsPage() {
                 <div key={CATEGORY}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="inline-flex items-center gap-2">
-                      <span className="text-sm">{meta.icon}</span>
+                      <CategoryIcon category={CATEGORY} size={16} className="text-[#9ca3c0]" />
                       <span className={`text-xs font-bold ${"text-white/70"}`}>{meta.label}</span>
                       <span className="hidden sm:inline text-[9px] text-[#5a6380]">{CNT} expenses</span>
                     </span>
@@ -335,11 +335,10 @@ export default async function AnalyticsPage() {
             <h2 className="text-sm font-bold text-white mb-4">Top 10 largest</h2>
             <div className="space-y-2">
               {topExpenses.map((item, i) => {
-                const meta = CATEGORIES[item.CATEGORY];
                 return (
                   <Link key={item.ID} href={`/?month=${item.MONTH}#e-${item.ID}`} className="flex items-center gap-2 rounded-lg -mx-1 px-1 hover:bg-white/5 transition-colors">
                     <span className="text-[10px] font-bold text-[#5a6380] w-4 text-right">{i + 1}</span>
-                    <span className="text-xs">{meta.icon}</span>
+                    <CategoryIcon category={item.CATEGORY} size={14} className="text-[#9ca3c0]" />
                     <span className="text-xs text-white/80 truncate flex-1">{item.NAME}</span>
                     <span className="text-[9px] text-[#5a6380] shrink-0">{item.MONTH}</span>
                     <span className="text-xs font-mono text-white/60 tabular-nums shrink-0">{fmt(item.AMOUNT)} €</span>
@@ -357,10 +356,9 @@ export default async function AnalyticsPage() {
             ) : (
               <div className="space-y-2">
                 {recurringExpenses.map((item, i) => {
-                  const meta = CATEGORIES[item.CATEGORY];
                   return (
                     <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs">{meta.icon}</span>
+                      <CategoryIcon category={item.CATEGORY} size={14} className="text-[#9ca3c0]" />
                       <span className="text-xs text-white/80 truncate flex-1">{item.NAME}</span>
                       <span className="text-[10px] text-[#5a6380] tabular-nums shrink-0">{item.MONTHS}x</span>
                       <span className="text-xs font-mono text-teal-400/70 tabular-nums shrink-0">~{fmt(item.AVG_AMOUNT)} €</span>

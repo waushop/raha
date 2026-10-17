@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { Search } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "This month", path: "/", icon: "🗓️" },
@@ -70,9 +71,7 @@ export default function CommandPalette() {
         <div className="rounded-2xl panel border border-white/[0.08] shadow-[0_24px_80px_rgba(0,0,0,0.6)] overflow-hidden animate-fade-up">
           {/* Search input */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.06]">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5a6380" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-            </svg>
+            <Search size={16} className="text-[#5a6380]" />
             <input
               ref={inputRef}
               value={query}

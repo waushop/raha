@@ -2,10 +2,11 @@ import { connection } from "next/server";
 import db from "@/lib/db";
 import { currentContext } from "@/lib/auth";
 import type { Expense } from "@/types/expense";
-import { CATEGORIES, CATEGORY_KEYS, GROUP_COLOR_CLASSES } from "@/types/expense";
+import { CATEGORY_KEYS, GROUP_COLOR_CLASSES } from "@/types/expense";
 import Link from "next/link";
 import SearchInput from "@/components/SearchInput";
 import SearchFilters from "@/components/SearchFilters";
+import CategoryIcon from "@/components/CategoryIcon";
 import { getGroups, getTags } from "@/app/actions";
 import { isValidMonth, monthLabel } from "@/lib/months";
 
@@ -117,11 +118,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             </div>
             <div className="divide-y divide-white/[0.04]">
               {items.map((e) => {
-                const cat = CATEGORIES[e.CATEGORY] ?? CATEGORIES.other;
                 const groupText = e.GROUP_COLOR ? (GROUP_COLOR_CLASSES[e.GROUP_COLOR] ?? GROUP_COLOR_CLASSES.blue).text : "";
                 return (
                   <Link key={e.ID} href={`/?month=${e.MONTH}#e-${e.ID}`} className="px-4 py-2.5 flex items-center gap-2.5 row-hover">
-                    <span className="text-base shrink-0">{cat.icon}</span>
+                    <CategoryIcon category={e.CATEGORY} size={16} className="text-[#9ca3c0]" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-white/90 truncate">{e.NAME}</span>

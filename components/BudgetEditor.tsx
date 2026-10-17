@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { setBudget, resetAllBudgets } from "@/app/actions";
 import { CATEGORIES, CATEGORY_KEYS, type CategoryKey } from "@/types/expense";
 import { useToast } from "./Toast";
+import CategoryIcon from "./CategoryIcon";
 
 const TOTAL_KEY = "_total";
 
@@ -94,7 +95,7 @@ export default function BudgetEditor({
             value !== "" && Number(value) === (defaultCategories[cat] ?? -1);
           return (
             <div key={cat} className="flex items-center gap-2 py-1">
-              <span className="text-xs">{meta.icon}</span>
+              <CategoryIcon category={cat} size={14} className="text-[#9ca3c0]" />
               <span className="text-xs font-semibold text-white/70 flex-1 truncate">
                 {meta.label}
               </span>

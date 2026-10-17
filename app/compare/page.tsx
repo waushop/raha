@@ -5,6 +5,7 @@ import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
 import MonthSelector from "@/components/MonthSelector";
+import CategoryIcon from "@/components/CategoryIcon";
 import { addMonths, currentMonth, isValidMonth, monthLabel as fullMonthLabel } from "@/lib/months";
 
 const fmt = (n: number) =>
@@ -130,7 +131,7 @@ export default async function ComparePage({
                 <div key={key}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="text-sm">{cat.icon}</span>
+                      <CategoryIcon category={key} size={16} className="text-[#9ca3c0]" />
                       <span className="text-xs font-semibold text-white/70">{cat.label}</span>
                     </span>
                     <div className="flex items-center gap-3 text-[10px] font-mono tabular-nums">

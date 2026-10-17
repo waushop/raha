@@ -4,8 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { markRecurringByName } from "@/app/actions";
 import { useToast } from "./Toast";
-import { CATEGORIES, type CategoryKey } from "@/types/expense";
 import type { RecurringCandidate } from "@/lib/queries";
+import { Repeat } from "lucide-react";
+import CategoryIcon from "./CategoryIcon";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -29,18 +30,15 @@ export default function RecurringSuggestions({ candidates }: { candidates: Recur
   return (
     <div className="card rounded-2xl p-5">
       <div className="flex items-center gap-2 mb-1">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 014-4h14" /><path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 01-4 4H3" />
-        </svg>
+        <Repeat size={14} strokeWidth={2.5} className="text-[#a78bfa]" />
         <h2 className="text-sm font-bold text-white">Looks recurring</h2>
       </div>
       <p className="text-[10px] text-[#5a6380] mb-3">Seen in 3+ of the last 4 months but not marked recurring.</p>
       <div className="space-y-2">
         {visible.map((c) => {
-          const meta = CATEGORIES[c.CATEGORY as CategoryKey] ?? CATEGORIES.other;
           return (
             <div key={c.NAME} className="flex items-center gap-2">
-              <span className="text-xs">{meta.icon}</span>
+              <CategoryIcon category={c.CATEGORY} size={14} className="text-[#9ca3c0]" />
               <span className="text-xs text-white/80 flex-1 truncate">{c.NAME}</span>
               <span className="text-[10px] text-[#5a6380] tabular-nums shrink-0">{c.MONTHS}× · ~{fmt(c.AVG_AMOUNT)} €</span>
               <button onClick={() => mark(c.NAME)} disabled={isPending}

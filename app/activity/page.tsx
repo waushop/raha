@@ -5,6 +5,7 @@ import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import Link from "next/link";
 import RestoreButton from "@/components/RestoreButton";
+import CategoryIcon from "@/components/CategoryIcon";
 import type { AuditAction, AuditSnapshot } from "@/lib/ledger";
 
 const fmt = (n: number) =>
@@ -138,14 +139,13 @@ export default async function ActivityPage() {
           ) : (
             <div className="divide-y divide-white/[0.04]">
               {events.map((a) => {
-                const cat = CATEGORIES[a.category] ?? CATEGORIES.other;
                 const cfg = typeConfig[a.action];
                 return (
                   <div key={a.key} className="px-4 py-3 flex items-center gap-3 row-hover">
                     <div className={`w-7 h-7 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
                       <span className={`text-xs font-bold ${cfg.color}`}>{cfg.icon}</span>
                     </div>
-                    <span className="text-base shrink-0">{cat.icon}</span>
+                    <CategoryIcon category={a.category} size={16} className="text-[#9ca3c0]" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         {a.isDeleted ? (

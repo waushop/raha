@@ -6,6 +6,8 @@ import type { CategoryKey } from "@/types/expense";
 import { CATEGORIES } from "@/types/expense";
 import { addMonths, currentMonth, isValidMonth, monthLabel, daysInMonth } from "@/lib/months";
 import { getBudgets, getBudgetHistory, resolveBudgetsFor } from "@/lib/budgets";
+import CategoryIcon from "@/components/CategoryIcon";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (a: number, b: number) => (b > 0 ? ((a - b) / b) * 100 : null);
@@ -106,10 +108,10 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
           </div>
           <div className="flex items-center gap-2">
             <Link href={`/review?month=${prev}`} aria-label="Previous month" className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center text-[#9ca3c0] hover:text-pink-400 transition-all btn-press">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <ChevronLeft size={14} />
             </Link>
             <Link href={`/review?month=${addMonths(month, 1)}`} aria-label="Next month" className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center text-[#9ca3c0] hover:text-pink-400 transition-all btn-press">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <ChevronRight size={14} />
             </Link>
           </div>
         </div>
@@ -150,7 +152,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                     const meta = CATEGORIES[c.CATEGORY];
                     return (
                       <div key={c.CATEGORY} className="flex items-center gap-2 text-xs">
-                        <span>{meta.icon}</span><span className="text-white/80 flex-1">{meta.label}</span>
+                        <CategoryIcon category={c.CATEGORY} size={14} className="text-[#9ca3c0]" /><span className="text-white/80 flex-1">{meta.label}</span>
                         <span className="font-mono tabular-nums text-red-400">{fmt(c.TOTAL)}</span>
                         <span className="font-mono tabular-nums text-[#5a6380]">/ {fmt(c.budget)} € · {((c.TOTAL / c.budget) * 100).toFixed(0)}%</span>
                       </div>
@@ -169,7 +171,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                     const d = pct(c.TOTAL, prevCatMap.get(c.CATEGORY) ?? 0);
                     return (
                       <div key={c.CATEGORY} className="flex items-center gap-2 text-xs">
-                        <span>{meta.icon}</span><span className="text-white/80 flex-1 truncate">{meta.label}</span>
+                        <CategoryIcon category={c.CATEGORY} size={14} className="text-[#9ca3c0]" /><span className="text-white/80 flex-1 truncate">{meta.label}</span>
                         <span className="text-[10px]"><Delta value={d} invert /></span>
                         <span className="font-mono tabular-nums text-white/60 w-20 text-right">{fmt(c.TOTAL)} €</span>
                       </div>
@@ -183,7 +185,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                 <div className="space-y-2">
                   {biggest.map((b) => (
                     <Link key={b.ID} href={`/?month=${month}#e-${b.ID}`} className="flex items-center gap-2 text-xs rounded-lg -mx-1 px-1 hover:bg-white/5 transition-colors">
-                      <span>{CATEGORIES[b.CATEGORY]?.icon}</span><span className="text-white/80 flex-1 truncate">{b.NAME}</span>
+                      <CategoryIcon category={b.CATEGORY} size={14} className="text-[#9ca3c0]" /><span className="text-white/80 flex-1 truncate">{b.NAME}</span>
                       <span className="font-mono tabular-nums text-white/60">{fmt(b.AMOUNT)} €</span>
                     </Link>
                   ))}
@@ -217,7 +219,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                   <div className="space-y-2">
                     {newNames.map((n) => (
                       <div key={n.NAME} className="flex items-center gap-2 text-xs">
-                        <span>{CATEGORIES[n.CATEGORY]?.icon}</span><span className="text-white/80 flex-1 truncate">{n.NAME}</span>
+                        <CategoryIcon category={n.CATEGORY} size={14} className="text-[#9ca3c0]" /><span className="text-white/80 flex-1 truncate">{n.NAME}</span>
                         <span className="font-mono tabular-nums text-white/60">{fmt(n.AMOUNT)} €</span>
                       </div>
                     ))}

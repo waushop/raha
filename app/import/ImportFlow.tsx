@@ -10,6 +10,8 @@ import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
 import type { CategoryKey } from "@/types/expense";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
+import CategoryIcon from "@/components/CategoryIcon";
+import { Check, Upload } from "lucide-react";
 
 type Props = {
   patterns: ImportPatternRow[];
@@ -143,9 +145,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
         <input id="csv-file" type="file" accept=".csv" onChange={handleFileInput} className="hidden" />
         <div className="space-y-3">
           <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto group-hover:bg-pink-500/10 transition-colors">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#5a6380] group-hover:text-pink-400 transition-colors">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
+            <Upload size={28} strokeWidth={1.5} className="text-[#5a6380] group-hover:text-pink-400 transition-colors" />
           </div>
           <div>
             <p className="text-sm font-semibold text-white">Drop CSV file here</p>
@@ -161,9 +161,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
     return (
       <div className="card rounded-2xl p-10 text-center space-y-4">
         <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center mx-auto">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-400">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
+          <Check size={28} className="text-green-400" />
         </div>
         <div>
           <p className="text-lg font-bold text-white">{importedCount} transactions imported</p>
@@ -234,7 +232,6 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
             <div className="divide-y divide-white/[0.04]">
               {indices.map(i => {
                 const tx = transactions[i];
-                const cat = CATEGORIES[tx.category];
                 const isSelected = selected.has(i);
 
                 return (
@@ -245,9 +242,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
                         isSelected ? "bg-pink-500 border-pink-500" : "border-white/20 hover:border-white/40"
                       }`}>
                         {isSelected && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
+                          <Check size={12} strokeWidth={3} className="text-white" />
                         )}
                       </div>
                     </button>
@@ -256,7 +251,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
                     <div className="relative shrink-0">
                       <button type="button" onClick={() => setOpenPicker(openPicker === i ? null : i)} aria-label="Change category" aria-expanded={openPicker === i}
                         className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center text-base hover:bg-white/10 transition-colors">
-                        {cat.icon}
+                        <CategoryIcon category={tx.category} size={16} className="text-[#9ca3c0]" />
                       </button>
                       <div className={`absolute left-0 top-full mt-1 z-50 ${openPicker === i ? "flex" : "hidden"} flex-wrap gap-1 p-2 rounded-xl panel border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5)] w-64`}>
                         {CATEGORY_KEYS.map(key => (
@@ -265,7 +260,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
                               tx.category === key ? "bg-purple-500/20 border border-purple-500/40" : "bg-white/5 hover:bg-white/10"
                             }`}
                             title={CATEGORIES[key].label}>
-                            {CATEGORIES[key].icon}
+                            <CategoryIcon category={key} size={16} className="text-[#9ca3c0]" />
                           </button>
                         ))}
                       </div>
@@ -318,7 +313,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
           <div className="flex flex-wrap gap-1.5">
             {patterns.map(p => (
               <span key={p.ID} className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-white/5 text-[#9ca3c0] border border-white/[0.06]">
-                <span>{CATEGORIES[p.CATEGORY as CategoryKey]?.icon}</span>
+                <CategoryIcon category={p.CATEGORY} size={14} />
                 <span>{p.PATTERN}</span>
                 <button onClick={() => {
                   startTransition(async () => {

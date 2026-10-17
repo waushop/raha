@@ -60,6 +60,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 - Text colors: `#5a6380` (muted), `#9ca3c0` (secondary)
 - Cards use `.card` CSS class, inner surfaces use `.surface`
 - SQLite specifics: `CAST(... AS REAL)` (no `DOUBLE`), `ON CONFLICT(...) DO ...` (no `ON DUPLICATE KEY`), `UPDATED_AT` maintained by triggers in `lib/schema.ts`.
+- Icons come from `lucide-react` (`import { Pencil } from "lucide-react"`, `size={14}`); no hand-written `<svg>` glyphs. Standard categories render through `components/CategoryIcon.tsx` (`<CategoryIcon category={key} size={16} />`, colour via `currentColor`); the emoji in `CATEGORIES[k].icon` is only for native `<option>` text and plain strings. Group emoji (`CATEGORY_GROUP.EMOJI`) is user-chosen data and stays emoji.
 - Headline font (Caveat) is self-hosted via `next/font` and exposed as `var(--font-hand)`; don't add `<link>` tags to Google Fonts.
 
 ## Environment Variables

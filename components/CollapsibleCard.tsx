@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { ChevronDown } from "lucide-react";
 
 type Props = {
   header: React.ReactNode;
@@ -28,19 +29,7 @@ export default function CollapsibleCard({ header, children, defaultOpen = true, 
         className="w-full px-4 py-3 border-b border-white/[0.06] flex items-center justify-between cursor-pointer select-none"
       >
         {header}
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`text-[#5a6380] transition-transform duration-300 ml-2 shrink-0 ${open ? "rotate-180" : ""}`}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <ChevronDown size={12} strokeWidth={2.5} className={`text-[#5a6380] transition-transform duration-300 ml-2 shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
       <div
         ref={contentRef}

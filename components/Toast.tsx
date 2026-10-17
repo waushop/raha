@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, createContext, useContext } from "react";
+import { Check, CircleAlert, X } from "lucide-react";
 
 type ToastData = {
   id: number;
@@ -63,13 +64,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             }`}
           >
             {toast.variant === "error" ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" />
-              </svg>
+              <CircleAlert size={16} color="#f87171" strokeWidth={2.5} className="shrink-0" />
             ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
+              <Check size={16} color="#2dd4bf" strokeWidth={2.5} className="shrink-0" />
             )}
             <span className="text-sm text-white/90 font-medium">{toast.message}</span>
             {toast.action && (
@@ -87,9 +84,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               onClick={() => dismiss(toast.id)}
               className="text-white/30 hover:text-white/60 transition-colors ml-1 shrink-0"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
+              <X size={14} />
             </button>
           </div>
         ))}

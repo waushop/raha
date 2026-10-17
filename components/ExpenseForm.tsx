@@ -7,6 +7,8 @@ import { formatTags, parseTags } from "@/lib/tags";
 import type { Expense, CategoryKey, ExpenseGroup, Kind } from "@/types/expense";
 import { CATEGORIES, CATEGORY_KEYS, GROUP_COLORS, GROUP_COLOR_CLASSES } from "@/types/expense";
 import { useToast } from "./Toast";
+import CategoryIcon from "./CategoryIcon";
+import { CirclePlus, Repeat } from "lucide-react";
 
 type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; onDone: () => void };
 
@@ -177,7 +179,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
                 className={`shrink-0 flex flex-col items-center gap-0.5 w-14 py-2 rounded-xl border text-center transition-all ${
                   category === key ? "border-purple-500/40 bg-purple-500/10 text-white" : "border-white/[0.06] text-[#5a6380] hover:border-white/15 hover:text-[#9ca3c0]"
                 }`}>
-                <span className="text-lg leading-none">{cat.icon}</span>
+                <CategoryIcon category={key} size={18} />
                 <span className="text-[8px] font-semibold leading-tight truncate w-full px-0.5">{cat.label}</span>
               </button>
             );
@@ -272,18 +274,14 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
           className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all ${
             isRecurring ? "border-teal-500/30 bg-teal-500/10 text-teal-400" : "border-white/[0.06] text-[#5a6380] hover:text-[#9ca3c0]"
           }`}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 014-4h14" /><path d="M7 23l-4-4 4-4" /><path d="M21 13v2a4 4 0 01-4 4H3" />
-          </svg>
+          <Repeat size={11} strokeWidth={2.5} />
           Recurring
         </button>
         <button type="button" onClick={() => setShowExtra(!showExtra)}
           className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all ${
             showExtra ? "border-purple-500/30 bg-purple-500/10 text-purple-400" : "border-white/[0.06] text-[#5a6380] hover:text-[#9ca3c0]"
           }`}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" />
-          </svg>
+          <CirclePlus size={11} />
           More
         </button>
       </div>
