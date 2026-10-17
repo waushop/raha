@@ -1,5 +1,5 @@
-const CACHE_NAME = "empty-wallet-v3";
-const STATIC_CACHE = "empty-wallet-static-v3";
+const CACHE_NAME = "empty-wallet-v4";
+const STATIC_CACHE = "empty-wallet-static-v4";
 const SHELL = ["/", "/dashboard", "/login", "/manifest.json", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 
 // A page that ended up on /login (signed out) or came through a redirect is
@@ -64,22 +64,41 @@ async function trim(cache) {
   for (const k of extra.slice(0, Math.max(0, keys.length - MAX_PAGES))) await cache.delete(k);
 }
 
+// While the server restarts during a deploy the ingress answers with a bare
+// 502/503/504 or a plain-text 404; show a small page that retries instead.
+function transient(response) {
+  if ([502, 503, 504].includes(response.status)) return true;
+  return response.status === 404 && (response.headers.get("content-type") || "").startsWith("text/plain");
+}
+
+function retryPage() {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#1a1a2e"><title>Empty Wallet</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:#fff;font-family:system-ui,-apple-system,sans-serif}p{margin:6px 0;text-align:center}small{color:#9ca3c0}</style></head>
+<body><div><p><b>Empty Wallet is updating</b></p><p><small>Trying again in a few seconds…</small></p></div>
+<script>setTimeout(function(){location.reload()},3000)</script></body></html>`;
+  return new Response(html, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+}
+
 // Navigations: network first; offline, the cached copy of that URL, then the
-// cached "/" (month view), then the login page.
+// cached "/" (month view), then the login page, then a retrying page — never
+// the browser's own "couldn't load" error.
 async function navigate(request) {
   const cache = await caches.open(CACHE_NAME);
+  const fallback = async () =>
+    (await cache.match(request.url, { ignoreVary: true }))
+    || (await cache.match(request.url, { ignoreSearch: true, ignoreVary: true }))
+    || null;
   try {
     const response = await fetch(request);
+    if (transient(response)) return (await fallback()) || retryPage();
     const copy = await storable(response, request.url);
     if (copy) cache.put(request.url, copy).then(() => trim(cache)).catch(() => {});
     return response;
-  } catch (err) {
-    const hit = (await cache.match(request.url, { ignoreVary: true }))
-      || (await cache.match(request.url, { ignoreSearch: true, ignoreVary: true }))
+  } catch {
+    return (await fallback())
       || (await cache.match("/", { ignoreVary: true }))
-      || (await cache.match("/login", { ignoreVary: true }));
-    if (hit) return hit;
-    throw err;
+      || (await cache.match("/login", { ignoreVary: true }))
+      || retryPage();
   }
 }
 
