@@ -189,3 +189,10 @@ export function parsePattern(v: unknown): string {
   }
   return s;
 }
+
+/** ISO 3166 alpha-2 country code ("EE"). */
+export function parseCountryCode(v: unknown): string {
+  const s = text(v).toUpperCase();
+  if (!/^[A-Z]{2}$/.test(s)) throw new ValidationError("Country must be a two-letter code");
+  return s;
+}

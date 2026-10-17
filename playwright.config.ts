@@ -30,6 +30,6 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 300_000,
     stdout: "pipe",
-    env: { DB_PATH: E2E_DB_PATH, NUDGES: "off", NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1" },
+    env: { DB_PATH: E2E_DB_PATH, NUDGES: "off", BANK_SYNC: "off", ENABLE_BANKING_MOCK: "1", NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1", AI_MOCK: "1" },
   },
 });

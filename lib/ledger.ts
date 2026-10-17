@@ -23,12 +23,14 @@ export type LedgerSource = {
   GOAL_ID?: string | null;
   SPLIT_GROUP?: string | null;
   PAID_BY?: string | null;
+  /** The bank's transaction id (bank sync); never copied by SOURCE_COLUMNS. */
+  EXTERNAL_ID?: string | null;
 };
 
 export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY";
 
-const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY, EXTERNAL_ID)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** A copied row keeps its day where the target month has it (31st → 30th otherwise). */
 export function clampDay(day: number | null, month: string): number | null {
@@ -102,7 +104,7 @@ export function assertGroupExists(tx: Tx, ws: string, id: string | null): void {
 export function insertRow(tx: Tx, ws: string, row: LedgerSource, month: string): string {
   const id = randomUUID();
   const day = clampDay(row.DAY, month);
-  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null, row.SPLIT_GROUP ?? null, row.PAID_BY ?? null]);
+  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null, row.SPLIT_GROUP ?? null, row.PAID_BY ?? null, row.EXTERNAL_ID ?? null]);
   if (row.TAGS) syncTags(tx, id, row.TAGS);
   audit(tx, id, "create", null, { ID: id, ...row, MONTH: month, DAY: day });
   if (row.IS_RECURRING && row.KIND === "expense") linkSubscription(tx, ws, id);

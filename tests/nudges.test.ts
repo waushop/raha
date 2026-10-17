@@ -47,4 +47,20 @@ describe("nudges", () => {
     assert.deepEqual(first.map((x) => x.kind), ["monthly_review"]);
     assert.equal(evaluateNudges({ ...base, today: "2026-10-19", week: { spent: 1, income: 0, count: 1, topCategory: null, topAmount: 0 } }).length, 0);
   });
+  test("bank: access ending within 7 days, expired, and failing sync", () => {
+    const b = (o: Partial<NonNullable<NudgeInput["bank"]>[number]> & { id: string }) => ({ name: "LHV", status: "active", validUntil: null, lastError: null, lastSyncAt: "2026-10-16 08:00:00", ...o });
+    const n = evaluateNudges({
+      ...base,
+      bank: [
+        b({ id: "soon", validUntil: "2026-10-24T10:00:00Z" }),
+        b({ id: "later", validUntil: "2026-10-25T10:00:00Z" }),
+        b({ id: "gone", status: "expired", validUntil: "2026-10-01T00:00:00Z" }),
+        b({ id: "err", status: "error", lastError: "Bank is down" }),
+        b({ id: "revoked", status: "revoked", validUntil: "2026-10-20T00:00:00Z" }),
+      ],
+    });
+    assert.deepEqual(n.map((x) => x.dedupKey), ["bank-expiry:soon:2026-10-24", "bank-expired:gone:2026-10-01", "bank-error:err:2026-10-16 08:00:00"]);
+    assert.deepEqual([...new Set(n.map((x) => x.url))], ["/bank"]);
+    assert.match(n[0].title, /LHV access ends Oct 24/);
+  });
 });

@@ -16,7 +16,8 @@ import Glyph from "./Glyph";
 import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
 import { literalPattern } from "@/lib/rules";
 import type { AddPrefill } from "@/lib/add-link";
-import { Banknote, CalendarArrowDown, Check, Copy, ListChecks, Plus, Repeat, Split, SquarePen, Tag, Target, Trash2, Wallet, Wand2, X } from "lucide-react";
+import { RECEIPT_SCANNED_EVENT, type ReceiptScannedDetail } from "./ReceiptScanButton";
+import { Banknote, CalendarArrowDown, Check, Copy, Landmark, ListChecks, Plus, Repeat, Split, SquarePen, Tag, Target, Trash2, Wallet, Wand2, X } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -31,6 +32,8 @@ type Props = {
   members?: Array<{ ID: string; NAME: string }>;
   /** From the /add deep link: open the add form straight away with these values. */
   addPrefill?: AddPrefill;
+  /** Receipt scanning is available (the add form shows a camera button). */
+  scanEnabled?: boolean;
 };
 
 type BulkPatch = Parameters<typeof bulkUpdateExpenses>[1];
@@ -52,11 +55,14 @@ function readHashId(): string | null {
 const barSelectCls = "h-11 min-w-0 border border-white/[0.08] rounded-xl px-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all disabled:opacity-40";
 const barBtnCls = "h-11 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all btn-press disabled:opacity-40";
 
-export default function ExpenseTable({ expenses, month, groups, plan = {}, members = [], addPrefill }: Props) {
+export default function ExpenseTable({ expenses, month, groups, plan = {}, members = [], addPrefill, scanEnabled = false }: Props) {
   const [showForm, setShowForm] = useState(!!addPrefill);
   // The deep-link values apply to the first form only; "n" or the + button later opens a blank one.
   const [prefill, setPrefill] = useState<AddPrefill | undefined>(addPrefill);
   const [editing, setEditing] = useState<Expense | undefined>();
+  // A receipt scanned from the quick-add camera; `scanKey` remounts the form for each new scan.
+  const [scanned, setScanned] = useState<ReceiptScannedDetail | undefined>();
+  const [scanKey, setScanKey] = useState(0);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
   const [isCopying, startCopyTransition] = useTransition();
@@ -90,6 +96,19 @@ export default function ExpenseTable({ expenses, month, groups, plan = {}, membe
   }, []);
 
   useEffect(() => {
+    function onScanned(e: Event) {
+      const detail = (e as CustomEvent<ReceiptScannedDetail>).detail;
+      if (!detail?.scan) return;
+      setEditing(undefined);
+      setScanned(detail);
+      setScanKey((k) => k + 1);
+      setShowForm(true);
+    }
+    window.addEventListener(RECEIPT_SCANNED_EVENT, onScanned);
+    return () => window.removeEventListener(RECEIPT_SCANNED_EVENT, onScanned);
+  }, []);
+
+  useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
       if (e.key === "n" && !e.metaKey && !e.ctrlKey && !isInput) { e.preventDefault(); setEditing(undefined); setShowForm(true); }
@@ -102,7 +121,7 @@ export default function ExpenseTable({ expenses, month, groups, plan = {}, membe
 
   function openAdd() { setEditing(undefined); setShowForm(true); }
   function openEdit(e: Expense) { setEditing(e); setShowForm(true); }
-  function closeForm() { setShowForm(false); setEditing(undefined); setPrefill(undefined); }
+  function closeForm() { setShowForm(false); setEditing(undefined); setPrefill(undefined); setScanned(undefined); }
 
   const handleDelete = useCallback((id: string, name: string) => {
     setDeletedIds(prev => new Set(prev).add(id));
@@ -428,7 +447,8 @@ export default function ExpenseTable({ expenses, month, groups, plan = {}, membe
                   <X size={16} />
                 </button>
               </div>
-              <ExpenseForm month={month} editing={editing} prefill={editing ? undefined : prefill} groups={groups} members={members} onDone={closeForm} />
+              <ExpenseForm key={editing ? `edit-${editing.ID}` : `add-${scanKey}`} month={month} editing={editing} prefill={editing ? undefined : prefill} groups={groups} members={members} onDone={closeForm}
+                scanEnabled={scanEnabled} initialScan={editing ? undefined : scanned} />
             </div>
           </div>
         </>,
@@ -553,6 +573,7 @@ function ExpenseRow({ expense: e, payerName, highlighted, onEdit, onDelete, onDu
             {payerName(e.PAID_BY) && <span className="text-[9px] font-bold shrink-0 w-4 h-4 rounded-full bg-pink-500/15 text-pink-300 inline-flex items-center justify-center" title={`Paid by ${payerName(e.PAID_BY)}`}>{payerName(e.PAID_BY)!.slice(0, 1).toUpperCase()}</span>}
             {e.GOAL_ID && <span className="text-[10px] shrink-0 inline-flex" title="Counts towards a goal"><Target size={10} className="text-purple-400 shrink-0" aria-hidden /></span>}
             {e.SPLIT_GROUP && <span className="text-[10px] shrink-0 inline-flex" title="Part of a split"><Split size={10} className="text-amber-400 shrink-0" aria-hidden /></span>}
+            {e.EXTERNAL_ID && <span className="shrink-0 inline-flex items-center" title="From bank" aria-label="From bank"><Landmark size={10} className="text-sky-400/80 shrink-0" aria-hidden /></span>}
             {e.IS_RECURRING === 1 && (
               <Repeat size={10} strokeWidth={2.5} className="text-teal-400/50 shrink-0" />
             )}

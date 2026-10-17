@@ -13,6 +13,7 @@ import { mailConfigured, sendMail } from "./mailer";
 import { evaluateNudges, type Nudge } from "./nudges";
 import { CATEGORIES, type CategoryKey } from "@/types/expense";
 import { addDays } from "./cashflow";
+import { bankNudgeInputs } from "./banksync-db";
 
 export type InboxItem = { ID: string; CREATED_AT: string; KIND: Nudge["kind"]; TITLE: string; BODY: string | null; URL: string | null; READ_AT: string | null };
 
@@ -73,7 +74,8 @@ export async function runNudges(ws: string, today = isoDate(new Date())): Promis
   const ownerId = (ownerRows as { USER_ID: string }[])[0]?.USER_ID;
   const [plan, cash] = await Promise.all([getPlan(ws, month), ownerId ? getCashflow(ws, today, { userId: ownerId }) : getCashflow(ws, today)]);
   const week = await weekSummary(ws, today);
-  const nudges = evaluateNudges({ today, subscriptions: subs, upcoming: due, plan: plan.lines.length ? plan : null, projection: cash.projection, buffer: cash.buffer, week });
+  const bank = await bankNudgeInputs(ws);
+  const nudges = evaluateNudges({ today, subscriptions: subs, upcoming: due, plan: plan.lines.length ? plan : null, projection: cash.projection, buffer: cash.buffer, week, bank });
   const fresh: Nudge[] = [];
   db.transaction((tx) => {
     for (const n of nudges) {

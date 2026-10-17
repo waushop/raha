@@ -88,6 +88,8 @@ export type Expense = {
   /** Rows created by splitting one transaction share this id (the original row's). */
   SPLIT_GROUP?: string | null;
   PAID_BY?: string | null;
+  /** Set when the row came from (or was matched to) a bank transaction. */
+  EXTERNAL_ID?: string | null;
   // Joined fields
   GROUP_NAME?: string;
   GROUP_ICON?: string;

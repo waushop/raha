@@ -14,10 +14,11 @@ describe("schema", () => {
   test("fresh database gets every table, index and trigger", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
-    assert.deepEqual(tableNames(db), ["ACCOUNT", "ACCOUNT_SNAPSHOT", "APP_SETTING", "BALANCE_CHECKPOINT", "BUDGET", "BUDGET_HISTORY", "CATEGORY_GROUP", "IMPORT_PATTERN", "LEDGER", "LEDGER_AUDIT", "LEDGER_TAG", "LOGIN_CHALLENGE", "NOTIFICATION", "PAYDAY", "PLAN_LINE", "PUSH_SUBSCRIPTION", "SAVINGS_GOAL", "SUBSCRIPTION", "TRUSTED_DEVICE", "USER", "WORKSPACE", "WORKSPACE_MEMBER"]);
+    assert.deepEqual(tableNames(db), ["ACCOUNT", "ACCOUNT_SNAPSHOT", "APP_SETTING", "BALANCE_CHECKPOINT", "BANK_ACCOUNT", "BANK_CONNECTION", "BUDGET", "BUDGET_HISTORY", "CATEGORY_GROUP", "IMPORT_PATTERN", "LEDGER", "LEDGER_AUDIT", "LEDGER_TAG", "LOGIN_CHALLENGE", "NOTIFICATION", "PAYDAY", "PLAN_LINE", "PUSH_SUBSCRIPTION", "SAVINGS_GOAL", "SUBSCRIPTION", "TRUSTED_DEVICE", "USER", "WORKSPACE", "WORKSPACE_MEMBER"]);
     assert.ok(columns(db, "LEDGER").includes("KIND"));
     assert.ok(columns(db, "LEDGER").includes("DAY"));
     assert.ok(columns(db, "LEDGER").includes("GOAL_ID"));
+    assert.ok(columns(db, "LEDGER").includes("EXTERNAL_ID"));
     const triggers = (db.prepare("SELECT name FROM sqlite_master WHERE type='trigger'").all() as Array<{ name: string }>).map((r) => r.name);
     assert.ok(triggers.includes("TRG_LEDGER_UPDATED_AT"));
     assert.ok(triggers.includes("TRG_CATEGORY_GROUP_UPDATED_AT"));
@@ -27,7 +28,7 @@ describe("schema", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
     initSchema(db);
-    assert.equal(tableNames(db).length, 22);
+    assert.equal(tableNames(db).length, 24);
   });
 
   test("migrates a pre-income database: renames tables and adds KIND", () => {
@@ -115,5 +116,21 @@ describe("schema", () => {
     const row = db.prepare("SELECT UPDATED_AT, CREATED_AT FROM LEDGER WHERE ID = 'x'").get() as { UPDATED_AT: string; CREATED_AT: string };
     assert.equal(row.CREATED_AT, "2020-01-01 00:00:00");
     assert.notEqual(row.UPDATED_AT, "2020-01-01 00:00:00");
+  });
+  test("adds LEDGER.EXTERNAL_ID to an older ledger; the bank id is unique per workspace", () => {
+    const db = new DatabaseSync(":memory:");
+    initSchema(db);
+    db.exec("DROP INDEX IDX_LEDGER_EXTERNAL");
+    db.exec("DROP TRIGGER TRG_LEDGER_UPDATED_AT");
+    db.exec("ALTER TABLE LEDGER DROP COLUMN EXTERNAL_ID");
+    db.exec(`INSERT INTO LEDGER (ID, WORKSPACE_ID, NAME, AMOUNT, MONTH) VALUES ('a', 'w1', 'Rimi', 10, '2026-10')`);
+    initSchema(db);
+    assert.ok(columns(db, "LEDGER").includes("EXTERNAL_ID"));
+    db.exec("UPDATE LEDGER SET UPDATED_AT = '2020-01-01 00:00:00' WHERE ID = 'a'");
+    db.exec("UPDATE LEDGER SET EXTERNAL_ID = 'bank-1' WHERE ID = 'a'");
+    assert.notEqual((db.prepare("SELECT UPDATED_AT FROM LEDGER WHERE ID = 'a'").get() as { UPDATED_AT: string }).UPDATED_AT, "2020-01-01 00:00:00", "trigger covers EXTERNAL_ID");
+    assert.throws(() => db.exec(`INSERT INTO LEDGER (ID, WORKSPACE_ID, NAME, AMOUNT, MONTH, EXTERNAL_ID) VALUES ('b', 'w1', 'Rimi', 10, '2026-10', 'bank-1')`), /UNIQUE/);
+    db.exec(`INSERT INTO LEDGER (ID, WORKSPACE_ID, NAME, AMOUNT, MONTH, EXTERNAL_ID) VALUES ('c', 'w2', 'Rimi', 10, '2026-10', 'bank-1')`);
+    db.exec(`INSERT INTO LEDGER (ID, WORKSPACE_ID, NAME, AMOUNT, MONTH) VALUES ('d', 'w1', 'Rimi', 10, '2026-10'), ('e', 'w1', 'Rimi', 10, '2026-10')`);
   });
 });

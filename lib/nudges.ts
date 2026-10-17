@@ -7,7 +7,7 @@ import type { Projection } from "./cashflow";
 import { addDays } from "./cashflow";
 
 export type Nudge = {
-  kind: "bill_due" | "trial_ending" | "price_up" | "unused" | "plan_line" | "safe_to_spend" | "weekly_digest" | "monthly_review";
+  kind: "bill_due" | "trial_ending" | "price_up" | "unused" | "plan_line" | "safe_to_spend" | "weekly_digest" | "monthly_review" | "bank_expiring" | "bank_failing";
   dedupKey: string;
   title: string;
   body: string;
@@ -26,6 +26,8 @@ export type NudgeInput = {
   buffer: number;
   /** Totals for the digest. */
   week: { spent: number; income: number; count: number; topCategory: string | null; topAmount: number } | null;
+  /** Bank connections (lib/banksync-db.ts bankNudgeInputs); omitted = none. */
+  bank?: Array<{ id: string; name: string; status: string; validUntil: string | null; lastError: string | null; lastSyncAt: string | null }>;
 };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -82,6 +84,18 @@ export function evaluateNudges(i: NudgeInput): Nudge[] {
 
   if (i.projection && i.projection.safeToSpend < 0) {
     out.push({ kind: "safe_to_spend", dedupKey: `safe:${i.today}`, title: "Heads up: tight until payday", body: `Projected low point ${fmt(i.projection.lowPoint.balance)} € on ${short(i.projection.lowPoint.date)}${i.projection.nextPayday ? `, payday ${short(i.projection.nextPayday.date)}` : ""}.`, url: "/cashflow" });
+  }
+
+  for (const b of i.bank ?? []) {
+    const until = b.validUntil?.slice(0, 10) ?? null;
+    if (until && (b.status === "active" || b.status === "error") && until >= i.today && until <= addDays(i.today, 7)) {
+      out.push({ kind: "bank_expiring", dedupKey: `bank-expiry:${b.id}:${until}`, title: `${b.name} access ends ${short(until)}`, body: "Banks only allow access for a limited time. Reconnect to keep transactions syncing.", url: "/bank" });
+    } else if (b.status === "expired") {
+      out.push({ kind: "bank_expiring", dedupKey: `bank-expired:${b.id}:${until ?? "unknown"}`, title: `${b.name} access has ended`, body: "Transactions are no longer syncing. Reconnect the bank to resume.", url: "/bank" });
+    }
+    if (b.status === "error" && b.lastError) {
+      out.push({ kind: "bank_failing", dedupKey: `bank-error:${b.id}:${b.lastSyncAt ?? "never"}`, title: `${b.name} sync is failing`, body: b.lastError.slice(0, 160), url: "/bank" });
+    }
   }
 
   const dow = new Date(i.today + "T00:00:00Z").getUTCDay();

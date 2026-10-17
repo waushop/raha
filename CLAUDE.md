@@ -21,6 +21,8 @@
 - **SAVINGS_GOAL**: targets with optional deadline and starting balance; contributions are LEDGER rows with `GOAL_ID`.
 - **NOTIFICATION** (in-app inbox: `KIND`, `DEDUP_KEY` unique per workspace, `TITLE`, `BODY`, `URL`, `READ_AT`) and **PUSH_SUBSCRIPTION** (web-push endpoints per user/device). `lib/nudges.ts` `evaluateNudges` (pure, tested) decides what deserves a nudge today: bill due tomorrow, trial ending, stable price increase, unused subscription, plan line at 80 %/100 %, safe-to-spend below zero, Sunday digest, monthly review on the 1st. `lib/nudges-db.ts` `runNudges` stores new rows (dedup), pushes via `web-push` (VAPID) and emails digest-type nudges to verified addresses. Runs hourly in-process from `instrumentation.ts` (`NUDGES=off` disables, `NUDGE_INTERVAL_MIN`) and on demand via `GET/POST /api/cron` with `CRON_SECRET`.
 - **ACCOUNT** (`NAME`, `TYPE` cash|savings|investment|property|debt) and **ACCOUNT_SNAPSHOT** (`ACCOUNT_ID`, `MONTH`, `BALANCE`, unique per account+month): manual net worth. `lib/networth.ts` carries the last known balance forward and subtracts debts; `lib/networth-db.ts` builds the 24-month series.
+- **Bank sync** (Enable Banking, PSD2 read-only): **BANK_CONNECTION** (one consent: `ASPSP_NAME`, `COUNTRY`, `SESSION_ID`, `VALID_UNTIL`, `STATUS` pending|active|expired|error|revoked, `LAST_SYNC_AT`, `LAST_ERROR`, `STATE` = nonce of an auth round-trip in flight) and **BANK_ACCOUNT** (`UID` per session, `IBAN`, `ENABLED`, `SYNC_FROM`, `LAST_BOOKING_DATE`, `NETWORTH_ACCOUNT_ID`). `LEDGER.EXTERNAL_ID` = the bank's transaction id, unique per workspace (deleted rows keep it so a re-sync never revives them; never copied by `SOURCE_COLUMNS`). Flow: `/bank` → `beginAuth` (`lib/bank-connect.ts`, reuses the connection for the same bank = reconnect) → POST /auth → bank → `/bank/callback?code&state` (STATE must belong to a workspace the user is in, < 1 h) → POST /sessions → accounts stored → first sync. `lib/banksync-db.ts` `syncConnection`: per enabled account, transactions from max(SYNC_FROM, LAST_BOOKING_DATE − 5 d) following `continuation_key`, `lib/banksync.ts` `reconcile` (known id → skip; hand-entered row same month/kind/amount ±0.005, day ±3 or none → link; else insert via `insertRow` with NOTES "Bank: …", category by rules → classifier → keyword guess; pending never written), then balances → today's BALANCE_CHECKPOINT for the main (oldest) account and ACCOUNT_SNAPSHOT when linked. Errors land in `LAST_ERROR` (consent gone → `expired`). `syncAll` runs every 6 h from `instrumentation.ts`. `lib/enablebanking.ts` holds the client (RS256 JWT via node:crypto) and the deterministic mock (two fake EE banks). Bank nudges: access ending ≤ 7 days / expired / failing.
+- **AI (Claude API, `@anthropic-ai/sdk`)**: `lib/claude.ts` holds the mode (`live` with `ANTHROPIC_API_KEY`, `mock` with `AI_MOCK=1`, else `off` → features hidden), `createMessage` (beta Messages API with `fallbacks: "default"`, 30 s abort, friendly `AiError`s, refusal handling) and the in-memory hourly quota (`takeQuota`: 30 questions and 30 scans per user per hour). **Receipt scan**: camera button in the add form and quick-add bar (`components/ReceiptScanButton.tsx`) downscales to 1600 px JPEG in the browser → `scanReceipt` (`app/assistant/actions.ts`; ≤ 5 MB, magic-byte check, `next.config.ts` raises the action body limit to 6 MB) → structured output per `RECEIPT_SCHEMA` → `lib/receipt.ts` `validateReceipt` (finite amounts, ≤ 30 items, `check` when total and item sum differ by > 1 % or confidence < 0.6) → `cleanMerchant` + workspace rules for name/category/group/tags; the form is prefilled and can "Split by category" (`splitParts` → `splitExpense` after saving). **Ask your money** (`/assistant`): `lib/assistant.ts` runs a manual tool loop (≤ 6 tool rounds, then `tool_choice: none`) over the read-only tools in `lib/assistant-tools.ts` (fixed parameterised SQL, validated filters, workspace from `requireAuth()` only); answers render via `lib/assistant-text.ts` (relative markdown links → `<Link>`, all else plain text). Mock mode answers from one real tool by keywords. Privacy: photos are never stored, the chat lives in component state only, nothing logs prompts or ledger content.
 - Reports: `lib/reports.ts` (pure, tested) computes the Sankey layout (income → groups → categories), merchant leaderboard with 3-month deltas, sparklines, weekday/weekend split and the savings-rate series used by `/analytics`; row queries in `lib/queries.ts` (`ledgerRowsBetween`, `merchantMonthly`).
 - **PAYDAY** (expected income: `LABEL`, `AMOUNT`, `CADENCE` monthly|biweekly|weekly|once, `DAY` or `START_DATE`) and **BALANCE_CHECKPOINT** (`DATE`, `AMOUNT`: "my account had X on this date"; newest wins and is rolled forward with ledger rows entered after it). `lib/cashflow.ts` projects 60 days (paydays in, subscription charges out, variable daily rate from `lib/forecast.ts` drained daily) and derives safe-to-spend = lowest balance before the next payday − buffer (100 €), the low point and per-paycheck shortfalls; `lib/cashflow-db.ts` assembles it.
 - **PLAN_LINE**: zero-based plan per month (`MONTH`, `KIND` income|expense|fund, `CATEGORY`, `GROUP_ID`, `LABEL`, `PLANNED`, `SORT_ORDER`, optional `SUBSCRIPTION_ID`). Ledger rows are matched to lines in `lib/plan.ts` (`matchRows`: subscription link → category+group → category-only line, generic lines before subscription lines); `summarise` gives planned/actual/remaining, "left to plan" (planned income − planned spending), unplanned groups and fund balances (`fund` lines carry planned − actual into later months, identity = category+group+label). `lib/plan-db.ts` builds a month from the previous plan, 3-month averages (rounded to 5 €) or active subscriptions.
@@ -36,7 +38,7 @@
 25 predefined categories with icons in `types/expense.ts` (housing, fuel, groceries, etc.)
 Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
-### Pages (19)
+### Pages (21)
 | Route | Purpose |
 |-------|---------|
 | `/dashboard` | Home — metrics, forecasting, insights, heatmap |
@@ -45,6 +47,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 | `/groups` | Group management (CRUD) |
 | `/inbox` | Nudge inbox: mark read, clear, "check now" |
 | `/networth` | Manual net worth: accounts, monthly balance snapshots, 24-month chart |
+| `/bank` | Bank sync: connect (Enable Banking), connections, accounts, sync now / reconnect / disconnect; `/bank/callback` is the auth redirect route |
 | `/cashflow` | 60-day balance projection: safe to spend, low point, next payday, SVG chart, paycheck shortfalls, paydays and balance editors |
 | `/plan` | Zero-based plan for a month: income lines, lines per group with planned/spent/remaining, funds that roll over, unplanned spend; quick starts copy last plan / build from averages / add subscriptions |
 | `/subscriptions` | Subscription hub: monthly burn, upcoming bills with one-tap "Paid", price changes, unused/trial alerts, cadence editor (`/recurring` redirects here) |
@@ -53,13 +56,14 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 | `/analytics` | 12-month deep analytics: savings rate bars, Sankey "where the money went", category sparklines, weekday vs weekend, top merchants |
 | `/year` | Yearly overview + year-in-review card (biggest/cheapest month, top merchant, subscriptions added/cancelled, goals reached) with PNG export |
 | `/goals` | Savings goals (SAVINGS_GOAL + LEDGER.GOAL_ID), progress/pace from `lib/goals.ts` |
+| `/assistant` | "Ask your money" chat (Claude tool use over read-only ledger tools), suggestion chips; hidden pill on the dashboard when AI is off |
 | `/review` | Monthly review narrative for a finished month (defaults to last month) |
 | `/settings` | DB stats, budgets, backup/restore |
 | `/login` | PIN authentication |
 
 ### APIs (4)
 - `GET /api/export?month=` or `?year=` — CSV download
-- `GET/POST /api/backup` — JSON backup/restore (v13, + PAID_BY; ledger incl. DAY, GOAL_ID, SUBSCRIPTION_ID and SPLIT_GROUP + subscriptions + plan_lines + paydays + balance_checkpoints + accounts + account_snapshots + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
+- `GET/POST /api/backup` — JSON backup/restore (v14, + EXTERNAL_ID, bank connections deliberately not backed up; v13 + PAID_BY; ledger incl. DAY, GOAL_ID, SUBSCRIPTION_ID and SPLIT_GROUP + subscriptions + plan_lines + paydays + balance_checkpoints + accounts + account_snapshots + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
 - `GET|POST /api/cron` — runs the nudges for every workspace; `Authorization: Bearer $CRON_SECRET` (header only, constant-time compare)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
@@ -95,6 +99,17 @@ CRON_SECRET     # OPTIONAL: enables GET/POST /api/cron for an external scheduler
 NUDGES=off, NUDGE_INTERVAL_MIN (60)
                 # OPTIONAL: in-process hourly nudge scheduler (instrumentation.ts).
 APP_URL         # OPTIONAL: absolute base for links in nudge emails (e.g. https://raha.waushop.ee).
+ENABLE_BANKING_APP_ID, ENABLE_BANKING_PRIVATE_KEY (PEM, "\n"-escaped ok)
+                # OPTIONAL: bank sync. Redirect URL registered at Enable Banking: https://raha.waushop.ee/bank/callback
+ENABLE_BANKING_API (https://api.enablebanking.com), ENABLE_BANKING_REDIRECT_URL (${APP_URL}/bank/callback, else the request origin)
+ENABLE_BANKING_MOCK=1
+                # fake banks (also the default in development without an app id); e2e uses it.
+BANK_SYNC=off, BANK_SYNC_INTERVAL_MIN (360)
+                # in-process bank sync scheduler; skipped when neither configured nor mocked.
+ANTHROPIC_API_KEY
+                # OPTIONAL: enables receipt scanning and /assistant (Claude API). Unset → both hidden.
+ANTHROPIC_MODEL (claude-sonnet-5-5), AI_MOCK=1
+                # model override; deterministic offline mock for dev without a key and e2e.
 AUTH_PIN_HASH   # OPTIONAL: SHA-256 of a bootstrap PIN (upgraded to scrypt in the DB on first login). Used only until the
                 # first successful login persists it to APP_SETTING; after
                 # that the env var can be removed and the DB is authoritative.

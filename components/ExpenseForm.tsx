@@ -12,9 +12,17 @@ import { useToast } from "./Toast";
 import CategoryIcon from "./CategoryIcon";
 import Glyph from "./Glyph";
 import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
-import { CirclePlus, Plus, Repeat, Split, X } from "lucide-react";
+import { CirclePlus, Plus, Repeat, ScanLine, Split, X } from "lucide-react";
+import ReceiptScanButton, { type ReceiptScannedDetail } from "./ReceiptScanButton";
+import { canSplit, splitParts, type ReceiptScan } from "@/lib/receipt";
 
-type Props = { month: string; editing?: Expense; prefill?: AddPrefill; groups: ExpenseGroup[]; members?: Array<{ ID: string; NAME: string }>; onDone: () => void };
+type Props = {
+  month: string; editing?: Expense; prefill?: AddPrefill; groups: ExpenseGroup[]; members?: Array<{ ID: string; NAME: string }>; onDone: () => void;
+  /** Show the "Scan receipt" button (the server has the assistant set up). */
+  scanEnabled?: boolean;
+  /** A receipt scanned before the form opened (quick-add camera). */
+  initialScan?: ReceiptScannedDetail;
+};
 
 type Part = { category: CategoryKey; groupId: string; name: string; amount: string };
 
@@ -23,17 +31,24 @@ const partAmount = (p: Part) => { const n = parseFloat(p.amount.replace(",", "."
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const selectCls = "min-w-0 w-full border border-white/[0.08] rounded-xl px-2.5 py-2 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all";
 
-export default function ExpenseForm({ month, editing, prefill, groups, members = [], onDone }: Props) {
+export default function ExpenseForm({ month, editing, prefill, groups, members = [], onDone, scanEnabled = false, initialScan }: Props) {
   const [paidBy, setPaidBy] = useState<string>(editing?.PAID_BY ?? "");
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
-  const [kind, setKind] = useState<Kind>(editing?.KIND ?? prefill?.kind ?? "expense");
-  const [category, setCategory] = useState<CategoryKey>(editing?.CATEGORY ?? prefill?.category ?? "other");
-  const [groupId, setGroupId] = useState<string>(editing?.GROUP_ID ?? "");
+  const dateRef = useRef<HTMLInputElement>(null);
+  const first = editing ? undefined : initialScan?.scan;
+  // Receipt scan (add mode): values go into the form; the photo is only shown locally.
+  const [scan, setScan] = useState<ReceiptScan | null>(first ?? null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(editing ? null : initialScan?.previewUrl ?? null);
+  const [splitByCategory, setSplitByCategory] = useState(false);
+  const [kind, setKind] = useState<Kind>(editing?.KIND ?? (first ? "expense" : prefill?.kind) ?? "expense");
+  const [category, setCategory] = useState<CategoryKey>(editing?.CATEGORY ?? first?.category ?? prefill?.category ?? "other");
+  const [groupId, setGroupId] = useState<string>(editing?.GROUP_ID ?? first?.groupId ?? "");
   const [isRecurring, setIsRecurring] = useState(editing?.IS_RECURRING === 1);
-  const [showExtra, setShowExtra] = useState(!!editing?.NOTES || !!editing?.TAGS || !!prefill?.tags);
-  const [tags, setTags] = useState(editing?.TAGS ?? prefill?.tags ?? "");
+  const [notes, setNotes] = useState(editing?.NOTES ?? first?.notes ?? "");
+  const [showExtra, setShowExtra] = useState(!!editing?.NOTES || !!editing?.TAGS || !!prefill?.tags || !!first?.notes || !!first?.tags);
+  const [tags, setTags] = useState(editing?.TAGS ?? first?.tags ?? prefill?.tags ?? "");
   const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [goalId, setGoalId] = useState<string>(editing?.GOAL_ID ?? "");
   const [goalOptions, setGoalOptions] = useState<{ ID: string; NAME: string; ICON: string | null }[]>([]);
@@ -43,7 +58,7 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
   const today = new Date();
   const defaultDate = editing
     ? (editing.DAY ? `${editing.MONTH}-${String(editing.DAY).padStart(2, "0")}` : "")
-    : (month === currentMonth() ? `${monthKey(today)}-${String(today.getDate()).padStart(2, "0")}` : "");
+    : first?.date ?? (month === currentMonth() ? `${monthKey(today)}-${String(today.getDate()).padStart(2, "0")}` : "");
   const [suggestions, setSuggestions] = useState<{ NAME: string; AMOUNT: number }[]>([]);
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
@@ -94,6 +109,34 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
   }
 
   useEffect(() => { setTimeout(() => nameRef.current?.focus(), 100); }, []);
+  // The preview is an object URL of the downscaled photo, freed when replaced or dismissed.
+  function replacePhoto(next: string | null) {
+    if (photoUrl && photoUrl !== next) URL.revokeObjectURL(photoUrl);
+    setPhotoUrl(next);
+  }
+
+  function applyScan(s: ReceiptScan, preview: string | null) {
+    setScan(s);
+    replacePhoto(preview);
+    setSplitByCategory(false);
+    setKind("expense");
+    setCategory(s.category);
+    setGroupId(s.groupId ?? "");
+    if (s.tags) setTags(formatTags([...new Set([...parseTags(tags), ...parseTags(s.tags)])]) ?? "");
+    setNotes(s.notes ?? "");
+    if (s.notes || s.tags) setShowExtra(true);
+    if (nameRef.current) nameRef.current.value = s.name;
+    if (amountRef.current) amountRef.current.value = s.total.toFixed(2);
+    if (dateRef.current && s.date) dateRef.current.value = s.date;
+  }
+
+  // After the row is saved: split it into one row per category of the receipt's items.
+  async function splitScanned(id: string, amount: number): Promise<void> {
+    const parts = scan ? splitParts(scan.items, amount) : null;
+    if (!parts) { toast.showError("Couldn't split: the items don't add up to the amount"); return; }
+    const res = await splitExpense(id, parts.map((p) => ({ category: p.category, groupId: groupId || null, name: null, amount: p.amount })));
+    if (!res.ok) toast.showError(res.error);
+  }
   useEffect(() => { if (!editing) getRecentNames(category, kind).then(setSuggestions); }, [category, kind, editing]);
   useEffect(() => { if (showGoals) getGoalOptions().then(setGoalOptions).catch(() => {}); }, [showGoals]);
   useEffect(() => { if (showExtra) getTags().then((rows) => setTagOptions(rows.map((r) => r.TAG))).catch(() => {}); }, [showExtra]);
@@ -119,6 +162,10 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
       const res = editing ? await updateExpense(editing.ID, data) : await submitOrQueue(createExpense, data);
       if (res === "lost") { toast.showError("You're offline and this browser can't store entries — try again when you're back"); return; }
       if (res !== "queued" && !res.ok) { toast.showError(res.error); return; }
+      const newId = res !== "queued" && "id" in res && typeof res.id === "string" ? res.id : null;
+      if (!editing && newId && scan && splitByCategory && canSplit(scan)) {
+        await splitScanned(newId, Number(String(data.get("amount")).replace(",", ".")));
+      }
       navigator.vibrate?.(10);
       toast.show(res === "queued" ? "Saved offline — will sync when you're back" : editing ? "Saved" : `"${data.get("name")}" added`);
       onDone();
@@ -159,6 +206,36 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
           ↑ Income
         </button>
       </div>
+
+      {/* Scanned receipt */}
+      {!editing && scan && (
+        <div className="surface rounded-xl p-2.5 flex items-start gap-3 border border-white/[0.06]" data-testid="receipt-preview">
+          {photoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- local object URL, never uploaded anywhere else
+            <img src={photoUrl} alt="Scanned receipt" className="w-12 h-16 object-cover rounded-lg border border-white/[0.08] shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className={`text-[11px] font-semibold inline-flex items-center gap-1 ${scan.check ? "text-amber-400" : "text-[#9ca3c0]"}`}>
+              <ScanLine size={12} /> Scanned · check the amount
+            </p>
+            <p className="text-[10px] text-[#5a6380] mt-0.5">
+              {scan.items.length} item{scan.items.length === 1 ? "" : "s"}
+              {scan.check && scan.items.length > 0 && <> · items add up to {fmt(scan.itemsTotal)}, total says {fmt(scan.total)}</>}
+              {scan.currency !== "EUR" && <> · receipt is in {scan.currency}</>}
+            </p>
+            {canSplit(scan) && (
+              <label className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-[#9ca3c0] cursor-pointer">
+                <input type="checkbox" checked={splitByCategory} onChange={(e) => setSplitByCategory(e.target.checked)} className="accent-amber-500" />
+                <Split size={11} /> Split by category
+              </label>
+            )}
+          </div>
+          <button type="button" onClick={() => { setScan(null); replacePhoto(null); setSplitByCategory(false); }} aria-label="Dismiss scan"
+            className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-[#5a6380] hover:text-white hover:bg-white/5 transition-colors">
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Group selector */}
       <div className="flex flex-col gap-1.5">
@@ -263,17 +340,17 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
       <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-3 min-w-0">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Name</label>
-          <input ref={nameRef} name="name" required defaultValue={editing?.NAME ?? prefill?.name} placeholder="e.g. Grocery store, Netflix..."
+          <input ref={nameRef} name="name" required defaultValue={editing?.NAME ?? first?.name ?? prefill?.name} placeholder="e.g. Grocery store, Netflix..."
             className="border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all placeholder:text-[#5a6380]" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Amount (€)</label>
-          <input ref={amountRef} name="amount" type="number" step="0.01" min="0" required defaultValue={editing?.AMOUNT ?? prefill?.amount} placeholder="0.00"
+          <input ref={amountRef} name="amount" type="number" step="0.01" min="0" required defaultValue={editing?.AMOUNT ?? first?.total ?? prefill?.amount} placeholder="0.00"
             className="border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all placeholder:text-[#5a6380] font-mono tabular-nums" />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Date <span className="normal-case tracking-normal font-medium text-[#5a6380]/60">(optional)</span></label>
-          <input name="date" type="date" defaultValue={defaultDate}
+          <input ref={dateRef} name="date" type="date" defaultValue={defaultDate}
             className="min-w-0 w-full border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all font-mono tabular-nums [color-scheme:dark]" />
         </div>
       </div>
@@ -283,7 +360,7 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Notes</label>
-            <input name="notes" defaultValue={editing?.NOTES ?? ""} placeholder="Optional..."
+            <input name="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional..."
               className="border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all placeholder:text-[#5a6380]" />
           </div>
           <div className="flex flex-col gap-1">
@@ -306,7 +383,7 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
           </div>
         </div>
       )}
-      {!showExtra && <input type="hidden" name="notes" value="" />}
+      {!showExtra && <input type="hidden" name="notes" value={notes} />}
 
       {/* Paid by (households) */}
       {members.length > 1 && kind === "expense" && (
@@ -339,6 +416,9 @@ export default function ExpenseForm({ month, editing, prefill, groups, members =
           <CirclePlus size={11} />
           More
         </button>
+        {!editing && scanEnabled && (
+          <ReceiptScanButton onScanned={applyScan} />
+        )}
         {editing && (
           <button type="button" onClick={() => setShowSplit(!showSplit)}
             className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all ${

@@ -31,7 +31,11 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //   v11 + SPLIT_GROUP per row; import_patterns carry the rule fields.
 //   v12 + accounts and account_snapshots sections (net worth).
 //   v13 + PAID_BY per row (households).
-const BACKUP_VERSION = 13;
+//   v14 + EXTERNAL_ID per row (bank sync), so a restored ledger is not
+//       re-imported by the next sync. Bank connections and accounts are NOT
+//       backed up or restored: their SESSION_ID / STATE are live credentials
+//       for one consent, which expires anyway; reconnect after a restore.
+const BACKUP_VERSION = 14;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -46,7 +50,7 @@ export async function GET() {
   const ws = ctx.workspaceId;
 
   const [expenses] = await db.execute(
-    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, NOTES, IS_RECURRING, TAGS, CREATED_AT
+    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, EXTERNAL_ID, NOTES, IS_RECURRING, TAGS, CREATED_AT
      FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`, [ws]
   );
   const [groups] = await db.execute(
@@ -371,13 +375,19 @@ export async function POST(request: NextRequest) {
       const subId = str(e.SUBSCRIPTION_ID);
       const splitGroup = str(e.SPLIT_GROUP);
       const paidBy = str(e.PAID_BY);
+      // Older files have no EXTERNAL_ID: keep whatever the row has. A bank id
+      // already owned by a different row stays with that row (unique index).
+      const hasExternal = "EXTERNAL_ID" in e;
+      let externalId = str(e.EXTERNAL_ID);
+      if (externalId && tx.all("SELECT 1 FROM LEDGER WHERE WORKSPACE_ID = ? AND EXTERNAL_ID = ? AND ID <> ?", [ws, externalId, id]).length > 0) externalId = null;
 
       tx.run(
-        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, NOTES, IS_RECURRING, TAGS)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, NOTES, IS_RECURRING, TAGS, EXTERNAL_ID)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ID) DO UPDATE SET KIND = excluded.KIND, CATEGORY = excluded.CATEGORY, GROUP_ID = excluded.GROUP_ID,
            NAME = excluded.NAME, AMOUNT = excluded.AMOUNT, MONTH = excluded.MONTH, DAY = excluded.DAY, GOAL_ID = excluded.GOAL_ID,
-           SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, SPLIT_GROUP = excluded.SPLIT_GROUP, PAID_BY = excluded.PAID_BY, NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
+           SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, SPLIT_GROUP = excluded.SPLIT_GROUP, PAID_BY = excluded.PAID_BY, NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS,
+           EXTERNAL_ID = CASE WHEN ? = 1 THEN excluded.EXTERNAL_ID ELSE LEDGER.EXTERNAL_ID END, DELETED_AT = NULL`,
         [
           id,
           ws,
@@ -395,6 +405,8 @@ export async function POST(request: NextRequest) {
           str(e.NOTES),
           num(e.IS_RECURRING) ? 1 : 0,
           tags,
+          externalId,
+          hasExternal ? 1 : 0,
         ],
       );
       syncTags(tx, id, tags);

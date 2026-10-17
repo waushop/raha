@@ -21,12 +21,14 @@ import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
 import CategoryIcon from "@/components/CategoryIcon";
 import Glyph from "@/components/Glyph";
-import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, ChartLine, Landmark, Layers, ListChecks, Receipt, Repeat, TriangleAlert, TrendingDown, TrendingUp } from "lucide-react";
+import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, ChartLine, Landmark, Layers, ListChecks, Receipt, Repeat, Sparkles, TriangleAlert, TrendingDown, TrendingUp } from "lucide-react";
+import { aiEnabled } from "@/lib/claude";
 import { listSubscriptions } from "@/lib/subscriptions-db";
 import { getPlan } from "@/lib/plan-db";
 import { getCashflow } from "@/lib/cashflow-db";
 import { getPreferences } from "@/lib/preferences-db";
 import { getNetWorth } from "@/lib/networth-db";
+import { lastBankSync } from "@/lib/banksync-db";
 import { isoDate, upcoming } from "@/lib/subscriptions";
 import type { Insight } from "@/components/Insights";
 
@@ -233,6 +235,8 @@ export default async function DashboardPage() {
   const cash = await getCashflow(ws, today, { userId });
   // Net worth (only once an account exists)
   const netWorth = await getNetWorth(ws, thisMonth);
+  const bankSync = await lastBankSync(ws);
+  const bankSyncHours = bankSync?.hoursAgo ?? null;
   const cashInsights: Insight[] = cash.projection && cash.projection.lowPoint.balance < 0
     ? [{ icon: TrendingDown, text: `Balance dips to ${fmt(cash.projection.lowPoint.balance)} € on ${cash.projection.lowPoint.date.slice(5).replace("-", "/")}${cash.projection.nextPayday ? `, before the ${cash.projection.nextPayday.date.slice(5).replace("-", "/")} payday` : ""}`, type: "warning" as const }]
     : [];
@@ -277,12 +281,19 @@ export default async function DashboardPage() {
       <div className="max-w-5xl mx-auto space-y-5">
         {/* Header */}
         <div className="card rounded-2xl px-5 py-4 sm:px-6 sm:py-5 animate-fade-up">
+          <div className="flex items-start justify-between gap-3">
           <h1
             className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
             style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}
           >
             Empty Wallet
           </h1>
+          {aiEnabled() && (
+            <Link href="/assistant" className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 mt-1 text-xs font-semibold border border-pink-500/25 bg-pink-500/10 text-pink-200 hover:bg-pink-500/20 transition-all btn-press">
+              <Sparkles size={12} /> Ask
+            </Link>
+          )}
+          </div>
           <p className="text-xs text-[#5a6380] mt-1">
             Today is day {dayOfMonth}, {daysLeft} days left.
           </p>
@@ -535,6 +546,7 @@ export default async function DashboardPage() {
               </div>
               <p className={`text-2xl font-bold font-mono tabular-nums ${cash.projection.safeToSpend < 0 ? "text-red-400" : cash.projection.safeToSpend < cash.buffer ? "text-amber-400" : "text-teal-400"}`}>{fmt(cash.projection.safeToSpend)} €</p>
               <p className="text-[10px] text-[#5a6380] mt-1">balance {fmt(cash.balanceToday ?? 0)} € · low point {fmt(cash.projection.lowPoint.balance)} € on {cash.projection.lowPoint.date.slice(5).replace("-", "/")}</p>
+              {bankSync && <p className="text-[10px] text-[#5a6380] mt-0.5">{bankSyncHours === null ? "Bank not synced yet" : `Last bank sync ${bankSyncHours === 0 ? "under 1 h" : `${bankSyncHours} h`} ago`}</p>}
             </Link>
           )}
 

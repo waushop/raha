@@ -15,13 +15,14 @@ import {
   Search,
   Settings,
   Target,
-  Upload, ListChecks, ChartLine, Landmark, Bell } from "lucide-react";
+  Upload, ListChecks, ChartLine, Landmark, Bell, Sparkles, Building2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
   { label: "This month", path: "/", icon: Calendar },
   { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { label: "Search", path: "/search", icon: Search },
+  { label: "Ask your money (assistant)", path: "/assistant", icon: Sparkles },
   { label: "Groups", path: "/groups", icon: Folder },
   { label: "Goals", path: "/goals", icon: Target },
   { label: "Plan (zero-based)", path: "/plan", icon: ListChecks },
@@ -35,6 +36,7 @@ const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
   { label: "Compare", path: "/compare", icon: ArrowLeftRight },
   { label: "Year overview", path: `/year?year=${new Date().getFullYear()}`, icon: CalendarRange },
   { label: "Import bank CSV", path: "/import", icon: Upload },
+  { label: "Bank sync", path: "/bank", icon: Building2 },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 

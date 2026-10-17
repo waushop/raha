@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, CheckCheck, ChartLine, ClipboardList, ListChecks, Mail, RefreshCw, Trash2, TrendingUp, TriangleAlert, type LucideIcon } from "lucide-react";
+import { CalendarClock, Check, CheckCheck, ChartLine, ClipboardList, Landmark, ListChecks, Mail, RefreshCw, Trash2, TrendingUp, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useToast } from "./Toast";
 import { checkNow, clearInbox, markAllRead, markRead } from "@/app/inbox/actions";
 import type { InboxItem } from "@/lib/nudges-db";
@@ -10,6 +10,7 @@ import type { InboxItem } from "@/lib/nudges-db";
 const ICONS: Record<InboxItem["KIND"], LucideIcon> = {
   bill_due: CalendarClock, trial_ending: CalendarClock, price_up: TrendingUp, unused: TriangleAlert,
   plan_line: ListChecks, safe_to_spend: ChartLine, weekly_digest: Mail, monthly_review: ClipboardList,
+  bank_expiring: Landmark, bank_failing: TriangleAlert,
 };
 
 function ago(iso: string): string {

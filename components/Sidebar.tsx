@@ -9,7 +9,7 @@ import { listMonths, whoAmI } from "@/app/actions";
 import { myPreferences } from "@/app/settings/preferences-actions";
 import { DEFAULT_PREFERENCES } from "@/lib/preferences";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
-import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks, ChartLine, Landmark } from "lucide-react";
+import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks, ChartLine, Landmark, Sparkles, Building2 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { OPEN_MENU_EVENT } from "./BottomNav";
 
@@ -166,6 +166,17 @@ export default function Sidebar() {
               Search
             </button>
             <button
+              onClick={() => router.push("/assistant")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mb-0.5 ${
+                pathname === "/assistant"
+                  ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
+                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <Sparkles size={14} />
+              Ask
+            </button>
+            <button
               onClick={() => router.push("/activity")}
               className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mb-0.5 ${
                 pathname === "/activity"
@@ -252,6 +263,17 @@ export default function Sidebar() {
             >
               <Upload size={14} />
               Import
+            </button>
+            <button
+              onClick={() => router.push("/bank")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
+                pathname === "/bank"
+                  ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
+                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <Building2 size={14} />
+              Bank sync
             </button>
           </div>
 

@@ -9,6 +9,7 @@ import { parseQuickAdd } from "@/lib/quickadd";
 import { submitOrQueue } from "@/lib/offline-queue";
 import { CornerDownLeft, Zap } from "lucide-react";
 import CategoryIcon from "./CategoryIcon";
+import ReceiptScanButton, { RECEIPT_SCANNED_EVENT, type ReceiptScannedDetail } from "./ReceiptScanButton";
 
 type Preset = {
   NAME: string;
@@ -19,9 +20,11 @@ type Preset = {
 type Props = {
   presets: Preset[];
   month: string;
+  /** Show the camera (receipt scan) button. */
+  scanEnabled?: boolean;
 };
 
-export default function QuickAddBar({ presets, month }: Props) {
+export default function QuickAddBar({ presets, month, scanEnabled = false }: Props) {
   const [isPending, startTransition] = useTransition();
   const [text, setText] = useState("");
   const toast = useToast();
@@ -93,6 +96,12 @@ export default function QuickAddBar({ presets, month }: Props) {
           enterKeyHint="done"
           className="flex-1 min-w-0 border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all placeholder:text-[#5a6380] disabled:opacity-50"
         />
+        {scanEnabled && (
+          // The month view's add form picks the scan up and opens prefilled.
+          <ReceiptScanButton variant="icon" onScanned={(scan, previewUrl) => {
+            window.dispatchEvent(new CustomEvent<ReceiptScannedDetail>(RECEIPT_SCANNED_EVENT, { detail: { scan, previewUrl } }));
+          }} />
+        )}
         <button
           type="submit"
           disabled={isPending || !text.trim()}
