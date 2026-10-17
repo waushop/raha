@@ -8,7 +8,7 @@ import { listSubscriptions } from "./subscriptions-db";
 import { upcoming } from "./subscriptions";
 import { DEFAULT_PREFERENCES } from "./preferences";
 import { getPreferences } from "./preferences-db";
-import { addDays, paydayOccurrences, project, type Event, type Payday, type Projection } from "./cashflow";
+import { addDays, dropLoggedPaydays, paydayOccurrences, project, type Event, type Payday, type Projection } from "./cashflow";
 
 export const HORIZON_DAYS = 60;
 export const DEFAULT_BUFFER = DEFAULT_PREFERENCES.safeBuffer;
@@ -30,15 +30,26 @@ export async function latestCheckpoint(ws: string): Promise<Checkpoint | null> {
 }
 
 /** Ledger movements (income − expenses) on or after a date, so an older checkpoint still gives today's balance. */
-async function movementsSince(ws: string, date: string): Promise<number> {
-  const month = date.slice(0, 7);
-  const day = Number(date.slice(8, 10));
+const ROW_DATE = "(MONTH || '-' || printf('%02d', COALESCE(DAY, 1)))";
+
+/** Ledger movements after the checkpoint and up to today (rows dated later are not money that moved yet). */
+async function movementsSince(ws: string, date: string, today: string): Promise<number> {
   const [rows] = await db.execute(
     `SELECT CAST(SUM(CASE WHEN KIND = 'income' THEN AMOUNT ELSE -AMOUNT END) AS REAL) AS NET FROM LEDGER
-     WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND (MONTH > ? OR (MONTH = ? AND COALESCE(DAY, 1) > ?))`,
-    [ws, month, month, day],
+     WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND ${ROW_DATE} > ? AND ${ROW_DATE} <= ?`,
+    [ws, date, today],
   );
   return (rows as { NET: number | null }[])[0]?.NET ?? 0;
+}
+
+/** Rows already entered with a date after today (copied recurring bills, a logged salary): they are future events. */
+async function futureRows(ws: string, today: string, until: string): Promise<Array<{ date: string; name: string; amount: number; kind: "income" | "expense" }>> {
+  const [rows] = await db.execute(
+    `SELECT ${ROW_DATE} AS D, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, KIND FROM LEDGER
+     WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND DAY IS NOT NULL AND ${ROW_DATE} > ? AND ${ROW_DATE} <= ?`,
+    [ws, today, until],
+  );
+  return (rows as { D: string; NAME: string; AMOUNT: number; KIND: "income" | "expense" }[]).map((r) => ({ date: r.D, name: r.NAME, amount: r.AMOUNT, kind: r.KIND }));
 }
 
 export type CashflowView = {
@@ -67,9 +78,22 @@ export async function getCashflow(ws: string, today: string, bufferOrUser: numbe
     subs.map((s) => ({ name: s.NAME, amount: s.AMOUNT, status: s.STATUS, cadence: s.CADENCE, day: s.DAY, monthOfYear: s.MONTH_OF_YEAR, lastCharge: s.lastCharge })),
     today, HORIZON_DAYS,
   ).map((u) => ({ date: u.date, label: u.sub.name, amount: u.amount, kind: "bill" as const }));
-  const paydayEvents = paydayOccurrences(paydays, today, addDays(today, HORIZON_DAYS));
+  const until = addDays(today, HORIZON_DAYS);
+  const future = await futureRows(ws, today, until);
+  // Logged future expenses are bills on their date; logged future income is a payday.
+  for (const f of future) {
+    if (f.kind === "expense") bills.push({ date: f.date, label: f.name, amount: f.amount, kind: "bill" });
+  }
+  const [incomeRows] = await db.execute(
+    `SELECT MONTH, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'income' AND DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?`,
+    [ws, today.slice(0, 7), until.slice(0, 7)],
+  );
+  const paydayEvents = [
+    ...dropLoggedPaydays(paydayOccurrences(paydays, today, until), (incomeRows as { MONTH: string; AMOUNT: number }[]).map((r) => ({ month: r.MONTH, amount: r.AMOUNT }))),
+    ...future.filter((f) => f.kind === "income").map((f) => ({ date: f.date, label: f.name, amount: f.amount, kind: "payday" as const })),
+  ];
   let balanceToday: number | null = null;
-  if (checkpoint) balanceToday = Math.round((checkpoint.AMOUNT + (await movementsSince(ws, checkpoint.DATE))) * 100) / 100;
+  if (checkpoint) balanceToday = Math.round((checkpoint.AMOUNT + (await movementsSince(ws, checkpoint.DATE, today))) * 100) / 100;
   const projection = balanceToday === null
     ? null
     : project({ today, startBalance: balanceToday, horizonDays: HORIZON_DAYS, paydays: paydayEvents, bills, dailyVariable, buffer });

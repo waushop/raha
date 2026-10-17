@@ -27,6 +27,12 @@ describe("plan matching", () => {
     assert.deepEqual([...m.entries()], [["r1", "sub"], ["r2", "subs-fun"], ["r3", "groc"]]);
   });
 
+  test("a row of another subscription does not land on a subscription line", () => {
+    const lines = [line({ ID: "nf", LABEL: "Netflix", PLANNED: 13, CATEGORY: "subscriptions", SUBSCRIPTION_ID: "s1" })];
+    const rows = [row({ ID: "sp", AMOUNT: 11, CATEGORY: "subscriptions", SUBSCRIPTION_ID: "s2" }), row({ ID: "x", AMOUNT: 3, CATEGORY: "subscriptions" })];
+    assert.deepEqual([...matchRows(lines, rows).entries()], []);
+  });
+
   test("a generic line wins the category match over a subscription line that sorts first", () => {
     const lines = [
       line({ ID: "idx", LABEL: "Index fund", PLANNED: 250, CATEGORY: "savings", SUBSCRIPTION_ID: "s1", SORT_ORDER: 0 }),
@@ -63,6 +69,15 @@ describe("plan matching", () => {
     const car = s.lines.find((l) => l.ID === "car")!;
     assert.equal(car.balance, 130);
     assert.deepEqual(s.unplanned, [{ KIND: "expense", CATEGORY: "dining", GROUP_ID: "fun", amount: 45, rows: 2 }]);
+  });
+
+  test("fund carry-forward ignores rows that belong to the month's expense lines", () => {
+    const sep = [
+      line({ ID: "nf", MONTH: "2026-09", LABEL: "Netflix", PLANNED: 15, CATEGORY: "subscriptions", SUBSCRIPTION_ID: "s1" }),
+      line({ ID: "dom", MONTH: "2026-09", LABEL: "Domain", PLANNED: 10, KIND: "fund", CATEGORY: "subscriptions", SUBSCRIPTION_ID: "s2" }),
+    ];
+    const before = fundBalancesBefore([{ month: "2026-09", lines: sep, rows: [row({ ID: "c", AMOUNT: 15, CATEGORY: "subscriptions", SUBSCRIPTION_ID: "s1" })] }], "2026-10");
+    assert.equal(before.get("subscriptions\u0000\u0000domain"), 10);
   });
 
   test("fund balances roll over month to month", () => {

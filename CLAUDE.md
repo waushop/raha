@@ -60,7 +60,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 ### APIs (4)
 - `GET /api/export?month=` or `?year=` — CSV download
 - `GET/POST /api/backup` — JSON backup/restore (v13, + PAID_BY; ledger incl. DAY, GOAL_ID, SUBSCRIPTION_ID and SPLIT_GROUP + subscriptions + plan_lines + paydays + balance_checkpoints + accounts + account_snapshots + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
-- `GET|POST /api/cron` — runs the nudges for every workspace; `Authorization: Bearer $CRON_SECRET` (or `?secret=`)
+- `GET|POST /api/cron` — runs the nudges for every workspace; `Authorization: Bearer $CRON_SECRET` (header only, constant-time compare)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
 ### Deep link: `/add` (Siri Shortcuts / Android intents)
@@ -104,4 +104,9 @@ AUTH_PIN_HASH   # OPTIONAL: SHA-256 of a bootstrap PIN (upgraded to scrypt in th
 ```bash
 npm run dev     # App on :3000; SQLite file is created on first query
 npm run check   # lint + typecheck + tests (what CI runs)
+npm run e2e     # Playwright (Chromium; first time: npx playwright install chromium).
+                # Builds the app, wipes and seeds .e2e/e2e.sqlite (Demo 123456, Mari 482916)
+                # and serves it on 127.0.0.1:3199 — never touches raha.sqlite or :3000.
+                # Projects "phone" (iPhone 14 viewport) and "desktop"; add --project=phone
+                # to run one. Specs live in e2e/*.spec.ts. Not part of `npm run check`.
 ```

@@ -50,7 +50,22 @@ export async function updatePlanLine(id: string, patch: { planned?: number; labe
       await db.execute("UPDATE PLAN_LINE SET PLANNED=? WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [planned, lid, ws]);
     }
     if (patch.label !== undefined) {
-      await db.execute("UPDATE PLAN_LINE SET LABEL=? WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [parseName(patch.label, "Label", 60), lid, ws]);
+      const label = parseName(patch.label, "Label", 60);
+      db.transaction((tx) => {
+        const cur = tx.all<{ KIND: string; CATEGORY: string; GROUP_ID: string | null; LABEL: string }>(
+          "SELECT KIND, CATEGORY, GROUP_ID, LABEL FROM PLAN_LINE WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [lid, ws],
+        )[0];
+        if (!cur) return;
+        if (cur.KIND === "fund") {
+          // A fund's identity spans months; rename every month's line so the balance carries over.
+          tx.run(
+            "UPDATE PLAN_LINE SET LABEL=? WHERE WORKSPACE_ID=? AND KIND='fund' AND CATEGORY=? AND COALESCE(GROUP_ID,'')=? AND lower(trim(LABEL))=lower(trim(?)) AND DELETED_AT IS NULL",
+            [label, ws, cur.CATEGORY, cur.GROUP_ID ?? "", cur.LABEL],
+          );
+        } else {
+          tx.run("UPDATE PLAN_LINE SET LABEL=? WHERE ID=? AND WORKSPACE_ID=?", [label, lid, ws]);
+        }
+      });
     }
     revalidate();
     return {};

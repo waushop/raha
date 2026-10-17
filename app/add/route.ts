@@ -28,7 +28,14 @@ export async function GET(request: NextRequest) {
   // intent → "none") or from inside the app. A link on another site just
   // opens the prefilled form, so it can't add rows behind the user's back.
   const site = request.headers.get("sec-fetch-site");
-  const trusted = site === null || site === "none" || site === "same-origin";
+  // Older browsers send no Sec-Fetch-Site: then a Referer from another origin
+  // means a cross-site link; no Referer means typed, bookmarked or a shortcut.
+  const referer = request.headers.get("referer");
+  let refererOk = true;
+  if (site === null && referer) {
+    try { refererOk = new URL(referer).origin === request.nextUrl.origin; } catch { refererOk = false; }
+  }
+  const trusted = site === "none" || site === "same-origin" || (site === null && refererOk);
 
   if (complete && trusted) {
     const now = new Date();

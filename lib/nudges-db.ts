@@ -93,7 +93,12 @@ type PushRow = { ID: string; ENDPOINT: string; P256DH: string; AUTH: string };
 
 export async function sendPush(ws: string, payload: { title: string; body: string; url: string }): Promise<number> {
   if (!ensureVapid()) return 0;
-  const [rows] = await db.execute("SELECT ID, ENDPOINT, P256DH, AUTH FROM PUSH_SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]);
+  const [rows] = await db.execute(
+    `SELECT p.ID, p.ENDPOINT, p.P256DH, p.AUTH FROM PUSH_SUBSCRIPTION p
+     JOIN WORKSPACE_MEMBER m ON m.WORKSPACE_ID = p.WORKSPACE_ID AND m.USER_ID = p.USER_ID
+     JOIN USER u ON u.ID = p.USER_ID AND u.DELETED_AT IS NULL
+     WHERE p.WORKSPACE_ID = ? AND p.DELETED_AT IS NULL`, [ws],
+  );
   let sent = 0;
   for (const r of rows as PushRow[]) {
     try {

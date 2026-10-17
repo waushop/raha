@@ -62,14 +62,16 @@ export function matchRows(lines: PlanLine[], rows: PlanRow[]): Map<string, strin
   const bySub = new Map<string, PlanLine>();
   const byKey = new Map<string, PlanLine>();
   const byCategory = new Map<string, PlanLine>();
-  // Generic lines win the category match over subscription-specific ones, so
-  // a stray "savings" row lands on "Savings", not on "Index fund transfer".
+  // Subscription lines only take their own subscription's rows; a stray row in
+  // the same category goes to a generic line or shows up as unplanned.
   const prefer = (map: Map<string, PlanLine>, k: string, l: PlanLine) => {
-    const cur = map.get(k);
-    if (!cur || (cur.SUBSCRIPTION_ID && !l.SUBSCRIPTION_ID)) map.set(k, l);
+    if (!map.has(k)) map.set(k, l);
   };
   for (const l of sorted) {
-    if (l.SUBSCRIPTION_ID && !bySub.has(l.SUBSCRIPTION_ID)) bySub.set(l.SUBSCRIPTION_ID, l);
+    if (l.SUBSCRIPTION_ID) {
+      if (!bySub.has(l.SUBSCRIPTION_ID)) bySub.set(l.SUBSCRIPTION_ID, l);
+      continue;
+    }
     prefer(byKey, `${l.KIND === "income" ? "i" : "e"}:${key(l.CATEGORY, l.GROUP_ID)}`, l);
     if (l.GROUP_ID === null) prefer(byCategory, `${l.KIND === "income" ? "i" : "e"}:${l.CATEGORY}`, l);
   }

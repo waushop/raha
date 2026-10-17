@@ -81,6 +81,7 @@ export async function removeMember(userId: string): Promise<ActionResult> {
     const uid = parseId(userId, "Member");
     if (uid === me) throw new ValidationError("The owner cannot leave; delete the household instead");
     await db.execute("DELETE FROM WORKSPACE_MEMBER WHERE WORKSPACE_ID = ? AND USER_ID = ? AND ROLE <> 'owner'", [workspaceId, uid]);
+    await db.execute("UPDATE PUSH_SUBSCRIPTION SET DELETED_AT = CURRENT_TIMESTAMP WHERE WORKSPACE_ID = ? AND USER_ID = ? AND DELETED_AT IS NULL", [workspaceId, uid]);
     revalidateAll();
     return {};
   });
@@ -104,6 +105,7 @@ export async function leaveHousehold(): Promise<ActionResult> {
     const [rows] = await db.execute("SELECT ROLE FROM WORKSPACE_MEMBER WHERE WORKSPACE_ID = ? AND USER_ID = ?", [workspaceId, me]);
     if ((rows as { ROLE: string }[])[0]?.ROLE === "owner") throw new ValidationError("The owner cannot leave; delete the household instead");
     await db.execute("DELETE FROM WORKSPACE_MEMBER WHERE WORKSPACE_ID = ? AND USER_ID = ?", [workspaceId, me]);
+    await db.execute("UPDATE PUSH_SUBSCRIPTION SET DELETED_AT = CURRENT_TIMESTAMP WHERE WORKSPACE_ID = ? AND USER_ID = ? AND DELETED_AT IS NULL", [workspaceId, me]);
     (await cookies()).delete(WORKSPACE_COOKIE);
     revalidateAll();
     return {};
@@ -116,8 +118,12 @@ export async function deleteHousehold(): Promise<ActionResult> {
   return attempt(async () => {
     await requireOwner(workspaceId, me);
     db.transaction((tx) => {
-      for (const t of ["LEDGER", "CATEGORY_GROUP", "SAVINGS_GOAL", "SUBSCRIPTION", "PLAN_LINE", "PAYDAY", "ACCOUNT"]) {
+      for (const t of ["LEDGER", "CATEGORY_GROUP", "SAVINGS_GOAL", "SUBSCRIPTION", "PLAN_LINE", "PAYDAY", "ACCOUNT", "PUSH_SUBSCRIPTION"]) {
         tx.run(`UPDATE ${t} SET DELETED_AT = CURRENT_TIMESTAMP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL`, [workspaceId]);
+      }
+      // Configuration and derived rows have no soft delete; remove them with the household.
+      for (const t of ["BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "NOTIFICATION", "BALANCE_CHECKPOINT", "ACCOUNT_SNAPSHOT"]) {
+        tx.run(`DELETE FROM ${t} WHERE WORKSPACE_ID = ?`, [workspaceId]);
       }
       tx.run("DELETE FROM WORKSPACE_MEMBER WHERE WORKSPACE_ID = ?", [workspaceId]);
       tx.run("DELETE FROM WORKSPACE WHERE ID = ? AND KIND = 'shared'", [workspaceId]);

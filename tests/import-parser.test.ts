@@ -203,3 +203,14 @@ describe("other budgeting apps", () => {
     assert.equal(parseDate("13/40/2026"), null);
   });
 });
+
+describe("slash date order", () => {
+  test("detects day-first files and parses accordingly", async () => {
+    const { detectSlashOrder, parseDate } = await import("@/lib/import-parser");
+    assert.equal(detectSlashOrder(["05/10/2026", "25/10/2026"], "mdy"), "dmy");
+    assert.equal(detectSlashOrder(["10/25/2026"], "dmy"), "mdy");
+    assert.equal(detectSlashOrder(["05/10/2026"], "dmy"), "dmy");
+    assert.equal(parseDate("05/10/2026", "dmy"), "2026-10-05");
+    assert.equal(parseDate("05/10/2026", "mdy"), "2026-05-10");
+  });
+});

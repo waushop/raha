@@ -463,9 +463,11 @@ export async function createImportPattern(pattern: string, category: string, gro
   return attempt(async () => {
     const id = randomUUID();
     const o = readRuleOptions(options);
+    const gid = parseOptionalId(groupId, "Group");
+    db.transaction((tx) => ledger.assertGroupExists(tx, ws, gid));
     await db.execute(
       "INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY, SET_NAME, SET_TAGS, SET_RECURRING, AMOUNT_MIN, AMOUNT_MAX) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, ws, parsePattern(pattern), parseCategory(category), parseOptionalId(groupId, "Group"), o.priority, o.setName, o.setTags, o.setRecurring, o.min, o.max],
+      [id, ws, parsePattern(pattern), parseCategory(category), gid, o.priority, o.setName, o.setTags, o.setRecurring, o.min, o.max],
     );
     revalidatePath("/import");
     return { id };
@@ -476,9 +478,11 @@ export async function updateImportPattern(id: string, pattern: string, category:
   const { workspaceId: ws } = await requireAuth();
   return attempt(async () => {
     const o = readRuleOptions(options);
+    const gid = parseOptionalId(groupId, "Group");
+    db.transaction((tx) => ledger.assertGroupExists(tx, ws, gid));
     await db.execute(
       "UPDATE IMPORT_PATTERN SET PATTERN=?, CATEGORY=?, GROUP_ID=?, PRIORITY=?, SET_NAME=?, SET_TAGS=?, SET_RECURRING=?, AMOUNT_MIN=?, AMOUNT_MAX=? WHERE ID=? AND WORKSPACE_ID=?",
-      [parsePattern(pattern), parseCategory(category), parseOptionalId(groupId, "Group"), o.priority, o.setName, o.setTags, o.setRecurring, o.min, o.max, parseId(id), ws],
+      [parsePattern(pattern), parseCategory(category), gid, o.priority, o.setName, o.setTags, o.setRecurring, o.min, o.max, parseId(id), ws],
     );
     revalidatePath("/import");
     return {};

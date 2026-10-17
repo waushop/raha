@@ -109,6 +109,7 @@ export function parseGenericCSV(csv: string): ParsedTransaction[] {
   const lines = csv.split(/\r?\n/).filter(l => l.trim());
   const results: ParsedTransaction[] = [];
 
+  const order = detectSlashOrder(lines.slice(1).map((l) => parseCSVLine(l, sep)[0] ?? ""), "dmy");
   for (let i = 1; i < lines.length; i++) {
     const fields = parseCSVLine(lines[i], sep);
     if (fields.length < 3) continue;
@@ -120,7 +121,7 @@ export function parseGenericCSV(csv: string): ParsedTransaction[] {
 
     if (!description || isNaN(amount) || amount === 0) continue;
 
-    const date = parseDate(dateStr);
+    const date = parseDate(dateStr, order);
     const isIncome = parseFloat(amountStr) > 0;
 
     results.push({
@@ -263,7 +264,11 @@ function sourceTx(date: string | null, description: string, signed: number, cate
  */
 export function parseYNABCSV(csv: string): ParsedTransaction[] {
   const out: ParsedTransaction[] = [];
-  for (const r of readTable(csv)) {
+  const table = readTable(csv);
+  // YNAB writes dates in the user's own format: dollar files are taken as
+  // US (M/D), anything else as European (D/M), unless a date proves otherwise.
+  const order = detectSlashOrder(table.map((r) => r["date"] ?? ""), csv.includes("$") ? "mdy" : "dmy");
+  for (const r of table) {
     const payee = r["payee"] ?? "";
     if (/^transfer\s*:/i.test(payee)) continue;
     const outflow = parseMoney(r["outflow"] ?? "");
@@ -272,7 +277,7 @@ export function parseYNABCSV(csv: string): ParsedTransaction[] {
     const memo = r["memo"] ?? "";
     const description = [payee, memo].filter(Boolean).join(" — ") || memo;
     const category = r["category"] || r["category group/category"] || r["category group"] || "";
-    const tx = sourceTx(parseDate(r["date"] ?? ""), description, signed, category, signed > 0);
+    const tx = sourceTx(parseDate(r["date"] ?? "", order), description, signed, category, signed > 0);
     if (tx) out.push(tx);
   }
   return out;
@@ -285,13 +290,15 @@ export function parseYNABCSV(csv: string): ParsedTransaction[] {
  */
 export function parseEveryDollarCSV(csv: string): ParsedTransaction[] {
   const out: ParsedTransaction[] = [];
-  for (const r of readTable(csv)) {
+  const table = readTable(csv);
+  const order = detectSlashOrder(table.map((r) => r["date"] ?? ""), "mdy");
+  for (const r of table) {
     const signed = parseMoney(r["amount"] ?? "");
     const type = (r["type"] ?? "").toLowerCase();
     const isIncome = type === "income" || type === "credit" ? true : type === "expense" || type === "debit" ? false : signed > 0;
     const category = [r["budget group"], r["budget item"]].filter(Boolean).join(": ");
     const description = r["description"] || r["merchant"] || "";
-    const tx = sourceTx(parseDate(r["date"] ?? ""), description, signed, category, isIncome);
+    const tx = sourceTx(parseDate(r["date"] ?? "", order), description, signed, category, isIncome);
     if (tx) out.push(tx);
   }
   return out;
@@ -310,7 +317,9 @@ export function parseEveryDollarCSV(csv: string): ParsedTransaction[] {
  */
 export function parseRocketMoneyCSV(csv: string): ParsedTransaction[] {
   const out: ParsedTransaction[] = [];
-  for (const r of readTable(csv)) {
+  const table = readTable(csv);
+  const order = detectSlashOrder(table.map((r) => r["date"] || r["original date"] || ""), "mdy");
+  for (const r of table) {
     const ignored = (r["ignored from"] ?? "").toLowerCase();
     if (ignored === "everything") continue;
     const category = r["category"] ?? "";
@@ -320,7 +329,7 @@ export function parseRocketMoneyCSV(csv: string): ParsedTransaction[] {
     const isIncome = incomeCategory || signed < 0;
     const name = r["custom name"] || r["name"] || r["description"] || "";
     const description = [name, r["note"]].filter(Boolean).join(" — ");
-    const tx = sourceTx(parseDate(r["date"] || r["original date"] || ""), description, signed, category, isIncome);
+    const tx = sourceTx(parseDate(r["date"] || r["original date"] || "", order), description, signed, category, isIncome);
     if (tx) out.push(tx);
   }
   return out;
@@ -401,7 +410,24 @@ function guessCategory(desc: string): CategoryKey | null {
   return null;
 }
 
-export function parseDate(str: string): string | null {
+export type SlashOrder = "dmy" | "mdy";
+
+/**
+ * Decides whether "05/10/2026" means 5 Oct or May 10 for a whole file: a
+ * first number above 12 anywhere means day-first, a second one above 12
+ * means month-first; if nothing tells, use the format's convention.
+ */
+export function detectSlashOrder(dates: string[], fallback: SlashOrder): SlashOrder {
+  for (const d of dates) {
+    const m = /^\s*"?(\d{1,2})\/(\d{1,2})\/\d{2,4}/.exec(d ?? "");
+    if (!m) continue;
+    if (Number(m[1]) > 12) return "dmy";
+    if (Number(m[2]) > 12) return "mdy";
+  }
+  return fallback;
+}
+
+export function parseDate(str: string, order: SlashOrder = "mdy"): string | null {
   str = (str ?? "").trim().replace(/^"|"$/g, "");
   if (!str) return null;
 
@@ -413,11 +439,12 @@ export function parseDate(str: string): string | null {
   const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/);
   if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
 
-  // MM/DD/YYYY (US exports: YNAB, EveryDollar, Rocket Money), M/D/YY too
+  // Slash dates: M/D/Y (US exports) or D/M/Y (European), per `order`; 2-digit years too
   const usMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
   if (usMatch) {
     const year = usMatch[3].length === 2 ? `20${usMatch[3]}` : usMatch[3];
-    const mm = Number(usMatch[1]), dd = Number(usMatch[2]);
+    const a = Number(usMatch[1]), b = Number(usMatch[2]);
+    const [mm, dd] = order === "mdy" ? [a, b] : [b, a];
     if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
     return `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
   }

@@ -56,7 +56,7 @@ export async function savePushSubscription(sub: { endpoint: string; keys: { p256
     if (!sub.keys || typeof sub.keys.p256dh !== "string" || typeof sub.keys.auth !== "string") throw new ValidationError("Invalid subscription keys");
     await db.execute(
       `INSERT INTO PUSH_SUBSCRIPTION (ID, WORKSPACE_ID, USER_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, LAST_SEEN_AT) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(ENDPOINT) DO UPDATE SET WORKSPACE_ID = excluded.WORKSPACE_ID, USER_ID = excluded.USER_ID, P256DH = excluded.P256DH, AUTH = excluded.AUTH,
+       ON CONFLICT(ENDPOINT, WORKSPACE_ID) DO UPDATE SET USER_ID = excluded.USER_ID, P256DH = excluded.P256DH, AUTH = excluded.AUTH,
          USER_AGENT = excluded.USER_AGENT, LAST_SEEN_AT = CURRENT_TIMESTAMP, DELETED_AT = NULL`,
       [randomUUID(), ws, userId, sub.endpoint, sub.keys.p256dh, sub.keys.auth, userAgent?.slice(0, 200) ?? null],
     );

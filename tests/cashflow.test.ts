@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { paydayOccurrences, project, type Event } from "@/lib/cashflow";
+import { dropLoggedPaydays, paydayOccurrences, project, type Event } from "@/lib/cashflow";
 
 describe("payday occurrences", () => {
   test("monthly clamps to short months and stays inside the window", () => {
@@ -49,5 +49,13 @@ describe("projection", () => {
     const p = project({ today: "2026-10-17", startBalance: 100, horizonDays: 5, paydays: [], bills: [{ date: "2026-10-17", label: "Gym", amount: 30, kind: "bill" }], dailyVariable: 5, buffer: 0 });
     assert.equal(p.days[0].balance, 70);
     assert.equal(p.safeToSpend, 70 - 25);
+  });
+});
+
+describe("logged paydays", () => {
+  test("a payday already logged as income in that month is dropped once", () => {
+    const pays: Event[] = [{ date: "2026-10-17", label: "Salary", amount: 3000, kind: "payday" }, { date: "2026-11-01", label: "Salary", amount: 3000, kind: "payday" }];
+    assert.deepEqual(dropLoggedPaydays(pays, [{ month: "2026-10", amount: 2990 }]).map((p) => p.date), ["2026-11-01"]);
+    assert.equal(dropLoggedPaydays(pays, [{ month: "2026-10", amount: 500 }]).length, 2);
   });
 });

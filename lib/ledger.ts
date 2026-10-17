@@ -114,6 +114,16 @@ export function linkSubscription(tx: Tx, ws: string, id: string): void {
   syncRowLink(tx, ws, id, currentMonth(), randomUUID);
 }
 
+/** Recurring rows of paused/cancelled subscriptions must not be copied forward. */
+function stoppedSubscriptionKeys(tx: Tx, ws: string): Set<string> {
+  return new Set(
+    tx.all<{ NAME: string; CATEGORY: string; GROUP_ID: string | null }>(
+      "SELECT NAME, CATEGORY, GROUP_ID FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND STATUS <> 'active' AND DELETED_AT IS NULL", [ws],
+    ).map((r) => `${r.NAME}\u0000${r.CATEGORY}\u0000${r.GROUP_ID ?? ""}`),
+  );
+}
+const isStopped = (stopped: Set<string>, r: LedgerSource) => r.IS_RECURRING === 1 && stopped.has(`${r.NAME}\u0000${r.CATEGORY}\u0000${r.GROUP_ID ?? ""}`);
+
 /** Copies every live row of `sourceMonth` into `targetMonth`, skipping duplicates. */
 export function copyMonth(ws: string, sourceMonth: string, targetMonth: string): number {
   if (sourceMonth === targetMonth) return 0;
@@ -123,11 +133,12 @@ export function copyMonth(ws: string, sourceMonth: string, targetMonth: string):
       [ws, sourceMonth],
     );
     const existing = existingKeys(tx, ws, targetMonth);
+    const stopped = stoppedSubscriptionKeys(tx, ws);
     let count = 0;
     for (const row of rows) {
       const key = dedupKey(row.NAME, row.AMOUNT);
-      if (existing.has(key)) continue;
-      insertRow(tx, ws, row, targetMonth);
+      if (existing.has(key) || isStopped(stopped, row)) continue;
+      insertRow(tx, ws, { ...row, SPLIT_GROUP: null }, targetMonth);
       existing.add(key);
       count++;
     }
@@ -143,14 +154,15 @@ export function backfill(ws: string, sourceMonth: string, targetMonths: string[]
       [ws, sourceMonth],
     );
     if (source.length === 0) return 0;
+    const stopped = stoppedSubscriptionKeys(tx, ws);
     let count = 0;
     for (const month of new Set(targetMonths)) {
       if (month === sourceMonth) continue;
       const existing = existingKeys(tx, ws, month);
       for (const row of source) {
         const key = dedupKey(row.NAME, row.AMOUNT);
-        if (existing.has(key)) continue;
-        insertRow(tx, ws, row, month);
+        if (existing.has(key) || isStopped(stopped, row)) continue;
+        insertRow(tx, ws, { ...row, SPLIT_GROUP: null }, month);
         existing.add(key);
         count++;
       }
@@ -176,10 +188,11 @@ export function copyRecurring(ws: string, targetMonth: string): number {
     const names = new Set(
       tx.all<{ NAME: string }>("SELECT NAME FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL", [ws, targetMonth]).map((r) => r.NAME),
     );
+    const stopped = stoppedSubscriptionKeys(tx, ws);
     let count = 0;
     for (const row of rows) {
-      if (names.has(row.NAME)) continue;
-      insertRow(tx, ws, { ...row, IS_RECURRING: 1 }, targetMonth);
+      if (names.has(row.NAME) || isStopped(stopped, row)) continue;
+      insertRow(tx, ws, { ...row, IS_RECURRING: 1, SPLIT_GROUP: null }, targetMonth);
       names.add(row.NAME);
       count++;
     }
@@ -205,6 +218,7 @@ export type ImportRow = {
 /** Inserts rows that don't already exist (name + amount + month). One transaction. */
 export function importRows(ws: string, rows: ImportRow[]): number {
   return db.transaction((tx) => {
+    const ownGroups = new Set(tx.all<{ ID: string }>("SELECT ID FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]).map((g) => g.ID));
     const seen = new Map<string, Set<string>>();
     let count = 0;
     for (const r of rows) {
@@ -215,7 +229,7 @@ export function importRows(ws: string, rows: ImportRow[]): number {
       insertRow(tx, ws, {
         KIND: r.kind === "income" ? "income" : "expense",
         CATEGORY: r.category,
-        GROUP_ID: r.groupId,
+        GROUP_ID: r.groupId && ownGroups.has(r.groupId) ? r.groupId : null,
         NAME: r.name,
         AMOUNT: r.amount,
         NOTES: r.notes,
@@ -308,7 +322,7 @@ export function bulkUpdate(ws: string, ids: string[], patch: BulkPatch): number 
   if (patch.groupId !== undefined) { sets.push("GROUP_ID=?"); params.push(patch.groupId); }
   if (patch.tags !== undefined) { sets.push("TAGS=?"); params.push(patch.tags); }
   if (patch.isRecurring !== undefined) { sets.push("IS_RECURRING=?"); params.push(patch.isRecurring ? 1 : 0); }
-  if (patch.month !== undefined) { sets.push("MONTH=?", "DAY=MIN(COALESCE(DAY, 1), ?)"); params.push(patch.month, daysInMonth(patch.month)); }
+  if (patch.month !== undefined) { sets.push("MONTH=?", "DAY=CASE WHEN DAY IS NULL THEN NULL ELSE MIN(DAY, ?) END"); params.push(patch.month, daysInMonth(patch.month)); }
   if (sets.length === 0) return 0;
   return db.transaction((tx) => {
     if (patch.groupId) assertGroupExists(tx, ws, patch.groupId);
@@ -319,7 +333,7 @@ export function bulkUpdate(ws: string, ids: string[], patch: BulkPatch): number 
       });
       if (!changed) continue;
       if (patch.tags !== undefined) syncTags(tx, id, patch.tags);
-      if (patch.isRecurring !== undefined) linkSubscription(tx, ws, id);
+      if (patch.isRecurring !== undefined || patch.category !== undefined || patch.groupId !== undefined) linkSubscription(tx, ws, id);
       n++;
     }
     return n;
@@ -352,7 +366,7 @@ export function applyRulesToRows(ws: string, ruleId: string | null = null): numb
     const rules = loadRules(tx, ws).filter((r) => ruleId === null || r.ID === ruleId);
     if (rules.length === 0) return 0;
     const rows = tx.all<{ ID: string; NAME: string; NOTES: string | null; AMOUNT: number; CATEGORY: string; GROUP_ID: string | null; TAGS: string | null; IS_RECURRING: number }>(
-      "SELECT ID, NAME, NOTES, CAST(AMOUNT AS REAL) AS AMOUNT, CATEGORY, GROUP_ID, TAGS, IS_RECURRING FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL", [ws],
+      "SELECT ID, NAME, NOTES, CAST(AMOUNT AS REAL) AS AMOUNT, CATEGORY, GROUP_ID, TAGS, IS_RECURRING FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL AND SPLIT_GROUP IS NULL", [ws],
     );
     let n = 0;
     for (const r of rows) {
@@ -366,7 +380,7 @@ export function applyRulesToRows(ws: string, ruleId: string | null = null): numb
         tx.run("UPDATE LEDGER SET CATEGORY=?, GROUP_ID=?, NAME=?, TAGS=?, IS_RECURRING=? WHERE ID=?", [patch.category, patch.groupId, name, tags, recurring, r.ID]);
       });
       syncTags(tx, r.ID, tags);
-      if (recurring !== r.IS_RECURRING) linkSubscription(tx, ws, r.ID);
+      if (recurring === 1 || recurring !== r.IS_RECURRING) linkSubscription(tx, ws, r.ID);
       n++;
     }
     return n;

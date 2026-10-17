@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check, ChevronDown, Home, Users } from "lucide-react";
 import { useToast } from "./Toast";
 import { myWorkspaces, switchWorkspace } from "@/app/household/actions";
+import { whoAmI } from "@/app/actions";
+import { rememberOwner } from "@/lib/offline-queue";
 import type { WorkspaceRow } from "@/lib/household";
 
 // Sidebar pill: which ledger you are in, and a menu to switch when you
@@ -29,6 +31,8 @@ export default function WorkspaceSwitcher({ current }: { current: { name: string
       if (!res.ok) { toast.showError(res.error); return; }
       router.push("/dashboard");
       router.refresh();
+      // Offline entries are tagged with the ledger they were made in.
+      whoAmI().then((me) => rememberOwner(me ? { userId: me.userId, workspaceId: me.workspaceId } : null)).catch(() => {});
     });
   }
 

@@ -207,6 +207,20 @@ function migrateIcons(sqlite: DatabaseSync, tables: Set<string>): void {
   }
 }
 
+// PUSH_SUBSCRIPTION was first created with ENDPOINT UNIQUE, which let one
+// device receive push for only one ledger. Rebuild it keyed by (ENDPOINT, WORKSPACE_ID).
+function migratePushSubscription(sqlite: DatabaseSync): void {
+  const row = sqlite.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='PUSH_SUBSCRIPTION'").get() as { sql: string } | undefined;
+  if (!row || !/ENDPOINT\s+TEXT NOT NULL UNIQUE/i.test(row.sql)) return;
+  sqlite.exec("ALTER TABLE PUSH_SUBSCRIPTION RENAME TO PUSH_SUBSCRIPTION_OLD");
+  sqlite.exec(`CREATE TABLE PUSH_SUBSCRIPTION (
+    ID TEXT NOT NULL PRIMARY KEY, CREATED_AT TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, DELETED_AT TEXT,
+    WORKSPACE_ID TEXT NOT NULL, USER_ID TEXT NOT NULL, ENDPOINT TEXT NOT NULL, P256DH TEXT NOT NULL, AUTH TEXT NOT NULL,
+    USER_AGENT TEXT, LAST_SEEN_AT TEXT, UNIQUE (ENDPOINT, WORKSPACE_ID))`);
+  sqlite.exec("INSERT INTO PUSH_SUBSCRIPTION SELECT ID, CREATED_AT, DELETED_AT, WORKSPACE_ID, USER_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, LAST_SEEN_AT FROM PUSH_SUBSCRIPTION_OLD");
+  sqlite.exec("DROP TABLE PUSH_SUBSCRIPTION_OLD");
+}
+
 function backfillTags(sqlite: DatabaseSync): void {
   const { n } = sqlite.prepare("SELECT COUNT(*) AS n FROM LEDGER_TAG").get() as { n: number };
   if (n > 0) return;
@@ -500,11 +514,12 @@ const STATEMENTS = [
     DELETED_AT   TEXT,
     WORKSPACE_ID TEXT NOT NULL,
     USER_ID      TEXT NOT NULL,
-    ENDPOINT     TEXT NOT NULL UNIQUE,
+    ENDPOINT     TEXT NOT NULL,
     P256DH       TEXT NOT NULL,
     AUTH         TEXT NOT NULL,
     USER_AGENT   TEXT,
-    LAST_SEEN_AT TEXT
+    LAST_SEEN_AT TEXT,
+    UNIQUE (ENDPOINT, WORKSPACE_ID)
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_PUSH_SUBSCRIPTION_WS ON PUSH_SUBSCRIPTION(WORKSPACE_ID)`,
   `CREATE INDEX IF NOT EXISTS IDX_SAVINGS_GOAL_WS ON SAVINGS_GOAL(WORKSPACE_ID)`,
@@ -542,6 +557,7 @@ const STATEMENTS = [
 export function initSchema(sqlite: DatabaseSync): void {
   migrate(sqlite);
   migrateIcons(sqlite, tableNames(sqlite));
+  migratePushSubscription(sqlite);
   for (const stmt of STATEMENTS) {
     sqlite.exec(stmt);
   }

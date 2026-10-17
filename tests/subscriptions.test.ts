@@ -161,3 +161,20 @@ describe("linking ledger rows to subscriptions", () => {
     assert.equal((db.prepare("SELECT SUBSCRIPTION_ID FROM LEDGER WHERE ID = ?").get(id) as { SUBSCRIPTION_ID: string | null }).SUBSCRIPTION_ID, null);
   });
 });
+
+describe("stopped subscriptions stay stopped", () => {
+  test("a charge in or before the cancel month does not revive; a later one does", () => {
+    const db = new DatabaseSync(":memory:");
+    initSchema(db);
+    const ws = seedWorkspace(db);
+    insertRow(db, ws, "Netflix", 13, "2026-09", 12);
+    backfillSubscriptions(q(db), "2026-10", randomUUID);
+    db.prepare("UPDATE SUBSCRIPTION SET STATUS = 'cancelled', STATUS_CHANGED_AT = '2026-10-05 10:00:00'").run();
+    const same = insertRow(db, ws, "Netflix", 13, "2026-10", 12);
+    syncRowLink(q(db), ws, same, "2026-10", randomUUID);
+    assert.equal((db.prepare("SELECT STATUS FROM SUBSCRIPTION").get() as { STATUS: string }).STATUS, "cancelled");
+    const later = insertRow(db, ws, "Netflix", 14, "2026-11", 12);
+    syncRowLink(q(db), ws, later, "2026-11", randomUUID);
+    assert.equal((db.prepare("SELECT STATUS FROM SUBSCRIPTION").get() as { STATUS: string }).STATUS, "active");
+  });
+});

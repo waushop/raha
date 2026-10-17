@@ -222,10 +222,15 @@ export function attachRows(q: Q, rows: LinkRow[], currentMonth: string, newId: (
   let id: string;
   if (existing) {
     id = existing.ID;
-    // A fresh charge means it is alive again; keep the latest price and day.
+    // A charge dated after the pause/cancel month means it is alive again;
+    // copying an old recurring row into the same or an earlier month does not.
+    const revive = `(STATUS <> 'active' AND ? > substr(COALESCE(STATUS_CHANGED_AT, ''), 1, 7))`;
     q.run(
-      "UPDATE SUBSCRIPTION SET AMOUNT = ?, DAY = COALESCE(?, DAY), STATUS = CASE WHEN STATUS = 'active' THEN STATUS ELSE 'active' END, STATUS_CHANGED_AT = CASE WHEN STATUS = 'active' THEN STATUS_CHANGED_AT ELSE CURRENT_TIMESTAMP END WHERE ID = ?",
-      [latest.AMOUNT, latest.DAY, id],
+      `UPDATE SUBSCRIPTION SET AMOUNT = ?, DAY = COALESCE(?, DAY),
+         STATUS_CHANGED_AT = CASE WHEN ${revive} THEN CURRENT_TIMESTAMP ELSE STATUS_CHANGED_AT END,
+         STATUS = CASE WHEN ${revive} THEN 'active' ELSE STATUS END
+       WHERE ID = ?`,
+      [latest.AMOUNT, latest.DAY, latest.MONTH, latest.MONTH, id],
     );
   } else {
     id = newId();
@@ -234,9 +239,11 @@ export function attachRows(q: Q, rows: LinkRow[], currentMonth: string, newId: (
     const active = !isUnused(cadence, lastMonth, currentMonth);
     q.run(
       `INSERT INTO SUBSCRIPTION (ID, WORKSPACE_ID, NAME, CATEGORY, GROUP_ID, AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, STATUS_CHANGED_AT)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
       [id, latest.WORKSPACE_ID, latest.NAME, latest.CATEGORY, latest.GROUP_ID, latest.AMOUNT, cadence, modeDay(rows.map((r) => r.DAY)),
-       cadence === "quarterly" || cadence === "yearly" ? Number(lastMonth.slice(5, 7)) : null, active ? "active" : "cancelled"],
+       cadence === "quarterly" || cadence === "yearly" ? Number(lastMonth.slice(5, 7)) : null, active ? "active" : "cancelled",
+       // Detected as stale: it stopped after its last charge, so any later charge revives it.
+       active ? null : `${lastMonth}-28 00:00:00`],
     );
   }
   for (const r of rows) q.run("UPDATE LEDGER SET SUBSCRIPTION_ID = ? WHERE ID = ?", [id, r.ID]);

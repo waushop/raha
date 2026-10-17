@@ -27,15 +27,18 @@ export async function getPlan(ws: string, month: string): Promise<PlanSummary> {
   const lines = await planLines(ws, month);
   const [rowRows] = await db.execute(ROW_SQL, [ws, month]);
   const rows = rowRows as PlanRow[];
-  // Fund history: every earlier month that has fund lines, with its rows.
-  const [fundLineRows] = await db.execute(
-    `SELECT ${LINE_COLUMNS} FROM PLAN_LINE WHERE WORKSPACE_ID = ? AND MONTH < ? AND KIND = 'fund' AND DELETED_AT IS NULL ORDER BY MONTH`, [ws, month],
+  // Fund history: every earlier month that has a fund line, with ALL of that
+  // month's lines (so rows matching expense lines don't drain the fund) and rows.
+  const [histLineRows] = await db.execute(
+    `SELECT ${LINE_COLUMNS} FROM PLAN_LINE WHERE WORKSPACE_ID = ? AND MONTH < ? AND DELETED_AT IS NULL
+       AND MONTH IN (SELECT MONTH FROM PLAN_LINE WHERE WORKSPACE_ID = ? AND MONTH < ? AND KIND = 'fund' AND DELETED_AT IS NULL)
+     ORDER BY MONTH, SORT_ORDER`, [ws, month, ws, month],
   );
-  const fundLines = fundLineRows as PlanLine[];
+  const histLines = histLineRows as PlanLine[];
   const history: Array<{ month: string; lines: PlanLine[]; rows: PlanRow[] }> = [];
-  for (const m of [...new Set(fundLines.map((l) => l.MONTH))]) {
+  for (const m of [...new Set(histLines.map((l) => l.MONTH))]) {
     const [r] = await db.execute(ROW_SQL, [ws, m]);
-    history.push({ month: m, lines: fundLines.filter((l) => l.MONTH === m), rows: r as PlanRow[] });
+    history.push({ month: m, lines: histLines.filter((l) => l.MONTH === m), rows: r as PlanRow[] });
   }
   return summarise(lines, rows, fundBalancesBefore(history, month));
 }

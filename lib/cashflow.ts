@@ -134,3 +134,16 @@ export function project(i: ProjectionInput): Projection {
     paychecks,
   };
 }
+
+/**
+ * A payday whose salary is already logged as an income row in the same
+ * month (amount within 5 %) is not added again by the projection.
+ */
+export function dropLoggedPaydays(paydays: Event[], logged: Array<{ month: string; amount: number }>): Event[] {
+  const pool = logged.map((l) => ({ ...l, used: false }));
+  return paydays.filter((p) => {
+    const hit = pool.find((l) => !l.used && l.month === p.date.slice(0, 7) && Math.abs(l.amount - p.amount) <= p.amount * 0.05);
+    if (hit) { hit.used = true; return false; }
+    return true;
+  });
+}
