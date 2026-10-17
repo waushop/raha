@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import NotificationBell from "./NotificationBell";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import { listMonths, whoAmI } from "@/app/actions";
@@ -90,12 +91,15 @@ export default function Sidebar() {
             >
               Empty Wallet
             </h2>
-            <button
-              onClick={() => setOpen(false)}
-              className="lg:hidden w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center text-[#5a6380] hover:text-white transition-colors"
-            >
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-1">
+              <NotificationBell />
+              <button
+                onClick={() => setOpen(false)}
+                className="lg:hidden w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center text-[#5a6380] hover:text-white transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
         </div>
 

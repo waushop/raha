@@ -15,7 +15,7 @@ import {
 // never silently open a mutation.
 
 const PUBLIC_PATHS = new Set([
-  "/login", "/logout", "/manifest.json", "/favicon.ico", "/sw.js",
+  "/login", "/logout", "/manifest.json", "/favicon.ico", "/sw.js", "/api/cron",
   "/icon.svg", "/icon-192.png", "/icon-512.png",
 ]);
 

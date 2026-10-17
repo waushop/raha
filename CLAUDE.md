@@ -19,6 +19,7 @@
 - **LEDGER_AUDIT**: before/after JSON for every ledger write (`lib/ledger.ts` `audit` / `auditedUpdate`); `/activity` reads it, falling back to timestamps on pre-audit databases.
 - **CATEGORY_GROUP** table: `ID`, `NAME`, `ICON` (a `lib/icon-names.ts` name or NULL; the old `EMOJI` column is renamed and mapped by `migrateIcons`), `COLOR`, `SORT_ORDER` (reorderable from `/groups`)
 - **SAVINGS_GOAL**: targets with optional deadline and starting balance; contributions are LEDGER rows with `GOAL_ID`.
+- **NOTIFICATION** (in-app inbox: `KIND`, `DEDUP_KEY` unique per workspace, `TITLE`, `BODY`, `URL`, `READ_AT`) and **PUSH_SUBSCRIPTION** (web-push endpoints per user/device). `lib/nudges.ts` `evaluateNudges` (pure, tested) decides what deserves a nudge today: bill due tomorrow, trial ending, stable price increase, unused subscription, plan line at 80 %/100 %, safe-to-spend below zero, Sunday digest, monthly review on the 1st. `lib/nudges-db.ts` `runNudges` stores new rows (dedup), pushes via `web-push` (VAPID) and emails digest-type nudges to verified addresses. Runs hourly in-process from `instrumentation.ts` (`NUDGES=off` disables, `NUDGE_INTERVAL_MIN`) and on demand via `GET/POST /api/cron` with `CRON_SECRET`.
 - **ACCOUNT** (`NAME`, `TYPE` cash|savings|investment|property|debt) and **ACCOUNT_SNAPSHOT** (`ACCOUNT_ID`, `MONTH`, `BALANCE`, unique per account+month): manual net worth. `lib/networth.ts` carries the last known balance forward and subtracts debts; `lib/networth-db.ts` builds the 24-month series.
 - Reports: `lib/reports.ts` (pure, tested) computes the Sankey layout (income → groups → categories), merchant leaderboard with 3-month deltas, sparklines, weekday/weekend split and the savings-rate series used by `/analytics`; row queries in `lib/queries.ts` (`ledgerRowsBetween`, `merchantMonthly`).
 - **PAYDAY** (expected income: `LABEL`, `AMOUNT`, `CADENCE` monthly|biweekly|weekly|once, `DAY` or `START_DATE`) and **BALANCE_CHECKPOINT** (`DATE`, `AMOUNT`: "my account had X on this date"; newest wins and is rolled forward with ledger rows entered after it). `lib/cashflow.ts` projects 60 days (paydays in, subscription charges out, variable daily rate from `lib/forecast.ts` drained daily) and derives safe-to-spend = lowest balance before the next payday − buffer (100 €), the low point and per-paycheck shortfalls; `lib/cashflow-db.ts` assembles it.
@@ -35,13 +36,14 @@
 25 predefined categories with icons in `types/expense.ts` (housing, fuel, groceries, etc.)
 Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
-### Pages (18)
+### Pages (19)
 | Route | Purpose |
 |-------|---------|
 | `/dashboard` | Home — metrics, forecasting, insights, heatmap |
 | `/` | Monthly view — expenses grouped by custom groups |
 | `/search` | Global search across all months with URL filters (kind, category, group, tag, amount, month range) |
 | `/groups` | Group management (CRUD) |
+| `/inbox` | Nudge inbox: mark read, clear, "check now" |
 | `/networth` | Manual net worth: accounts, monthly balance snapshots, 24-month chart |
 | `/cashflow` | 60-day balance projection: safe to spend, low point, next payday, SVG chart, paycheck shortfalls, paydays and balance editors |
 | `/plan` | Zero-based plan for a month: income lines, lines per group with planned/spent/remaining, funds that roll over, unplanned spend; quick starts copy last plan / build from averages / add subscriptions |
@@ -55,9 +57,10 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 | `/settings` | DB stats, budgets, backup/restore |
 | `/login` | PIN authentication |
 
-### APIs (3)
+### APIs (4)
 - `GET /api/export?month=` or `?year=` — CSV download
 - `GET/POST /api/backup` — JSON backup/restore (v12: ledger incl. DAY, GOAL_ID, SUBSCRIPTION_ID and SPLIT_GROUP + subscriptions + plan_lines + paydays + balance_checkpoints + accounts + account_snapshots + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
+- `GET|POST /api/cron` — runs the nudges for every workspace; `Authorization: Bearer $CRON_SECRET` (or `?secret=`)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
 ## Conventions
@@ -80,6 +83,12 @@ DB_PATH         # path to the SQLite file (default ./raha.sqlite). The session
 SMTP_HOST, SMTP_PORT (587), SMTP_SECURE ("true" for 465), SMTP_USER, SMTP_PASS, SMTP_FROM
                 # OPTIONAL: outbound email for the sign-in code on new devices
                 # (lib/mailer.ts). Unset → codes are logged in dev, sending fails in prod.
+VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (mailto:…)
+                # OPTIONAL: web push for nudges (`npx web-push generate-vapid-keys`). Unset → the Settings card explains how.
+CRON_SECRET     # OPTIONAL: enables GET/POST /api/cron for an external scheduler.
+NUDGES=off, NUDGE_INTERVAL_MIN (60)
+                # OPTIONAL: in-process hourly nudge scheduler (instrumentation.ts).
+APP_URL         # OPTIONAL: absolute base for links in nudge emails (e.g. https://raha.waushop.ee).
 AUTH_PIN_HASH   # OPTIONAL: SHA-256 of a bootstrap PIN (upgraded to scrypt in the DB on first login). Used only until the
                 # first successful login persists it to APP_SETTING; after
                 # that the env var can be removed and the DB is authoritative.

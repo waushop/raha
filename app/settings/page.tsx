@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import PushSettings from "@/components/PushSettings";
 import Link from "next/link";
 import db from "@/lib/db";
 import { currentContext, listUsers } from "@/lib/auth";
@@ -196,6 +197,11 @@ export default async function SettingsPage() {
               );
             })}
           </div>
+        </div>
+
+        {/* Push notifications */}
+        <div className="animate-fade-up" style={{ animationDelay: "0.135s" }}>
+          <PushSettings />
         </div>
 
         {/* App info */}

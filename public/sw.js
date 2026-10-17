@@ -1,4 +1,4 @@
-const CACHE_NAME = "empty-wallet-v1";
+const CACHE_NAME = "empty-wallet-v2";
 const OFFLINE_URL = "/login";
 
 // Pre-cache the login page so app loads offline
@@ -25,4 +25,32 @@ self.addEventListener("fetch", (event) => {
       fetch(event.request).catch(() => caches.match(OFFLINE_URL))
     );
   }
+});
+
+// Web push: show the nudge and open its page on tap.
+self.addEventListener("push", (event) => {
+  let data = { title: "Empty Wallet", body: "", url: "/inbox" };
+  try { data = { ...data, ...event.data.json() }; } catch {}
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      data: { url: data.url },
+      tag: data.url,
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/inbox";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ("focus" in client) { client.navigate(url); return client.focus(); }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });
