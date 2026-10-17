@@ -5,6 +5,7 @@ import type { Expense, CategoryKey } from "@/types/expense";
 import { getGroups } from "@/app/actions";
 import MonthNav from "@/components/MonthNav";
 import ExpenseTable from "@/components/ExpenseTable";
+import { planByGroup } from "@/lib/plan-db";
 import TrendChart from "@/components/TrendChart";
 import SwipeContainer from "@/components/SwipeContainer";
 import QuickAddBar from "@/components/QuickAddBar";
@@ -37,6 +38,7 @@ export default async function Page({
 
   // Fetch groups
   const groups = await getGroups();
+  const plan = await planByGroup(ws, month);
 
   // Fetch 6-month trend data
   const trendData = await monthlyTotals(ws, "expense", addMonths(month, -5), month);
@@ -101,7 +103,7 @@ export default async function Page({
 
         {/* Expense cards */}
         <div className="animate-fade-up" style={{ animationDelay: "0.1s" }}>
-          <ExpenseTable expenses={expenses} month={month} groups={groups} />
+          <ExpenseTable expenses={expenses} month={month} groups={groups} plan={plan} />
         </div>
 
         {/* Footer */}

@@ -18,8 +18,9 @@ import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
 import CategoryIcon from "@/components/CategoryIcon";
 import Glyph from "@/components/Glyph";
-import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, Layers, Receipt, Repeat, TriangleAlert, TrendingUp } from "lucide-react";
+import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, Layers, ListChecks, Receipt, Repeat, TriangleAlert, TrendingUp } from "lucide-react";
 import { listSubscriptions } from "@/lib/subscriptions-db";
+import { getPlan } from "@/lib/plan-db";
 import { isoDate, upcoming } from "@/lib/subscriptions";
 import type { Insight } from "@/components/Insights";
 
@@ -206,6 +207,10 @@ export default async function DashboardPage() {
 
   // Names that behave like subscriptions but aren't flagged yet
   const candidates = await recurringCandidates(ws, addMonths(thisMonth, -3));
+
+  // Zero-based plan for this month (if one exists)
+  const plan = await getPlan(ws, thisMonth);
+  const hasPlan = plan.lines.length > 0;
 
   // Subscription hub summary + alerts
   const today = isoDate(new Date());
@@ -495,6 +500,35 @@ export default async function DashboardPage() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Plan */}
+          <Link href={`/plan?month=${thisMonth}`} className="card card-hover rounded-2xl p-5 animate-fade-up block" style={{ animationDelay: "0.08s" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <ListChecks size={14} className="text-purple-400" />
+              <h2 className="text-sm font-bold text-white">Plan</h2>
+              <span className="ml-auto text-[10px] text-[#5a6380]">{hasPlan ? `${plan.lines.length} lines` : "not started"}</span>
+            </div>
+            {hasPlan ? (
+              <>
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380]">Spent of planned</p>
+                    <p className="text-xl font-bold text-white font-mono tabular-nums">{fmt(plan.actualSpending)} <span className="text-sm text-[#5a6380]">/ {fmt(plan.plannedSpending)} €</span></p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5a6380]">Left to plan</p>
+                    <p className={`text-sm font-bold font-mono tabular-nums ${Math.abs(plan.leftToPlan) < 0.005 ? "text-teal-400" : plan.leftToPlan > 0 ? "text-amber-400" : "text-red-400"}`}>{plan.leftToPlan > 0 ? "+" : ""}{fmt(plan.leftToPlan)} €</p>
+                  </div>
+                </div>
+                <div className="h-1.5 rounded-full bg-white/5 mt-3 overflow-hidden">
+                  <div className={`h-full rounded-full ${plan.actualSpending > plan.plannedSpending ? "bg-red-500" : "bg-gradient-to-r from-pink-500 to-purple-500"}`} style={{ width: `${plan.plannedSpending > 0 ? Math.min(100, (plan.actualSpending / plan.plannedSpending) * 100) : 0}%` }} />
+                </div>
+                {plan.unplannedSpending > 0 && <p className="text-[10px] text-red-400/80 mt-2">{fmt(plan.unplannedSpending)} € spent outside the plan</p>}
+              </>
+            ) : (
+              <p className="text-xs text-[#9ca3c0]">Give every euro a job: build this month&rsquo;s plan from your averages and subscriptions.</p>
+            )}
+          </Link>
+
           {/* Subscriptions */}
           {activeSubs.length > 0 && (
             <Link href="/subscriptions" className="card card-hover rounded-2xl p-5 animate-fade-up block" style={{ animationDelay: "0.085s" }}>

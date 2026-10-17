@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { iconFromLegacy } from "@/lib/icon-names";
 import { CADENCES, STATUSES, backfillSubscriptions } from "@/lib/subscriptions";
+import { PLAN_KINDS } from "@/lib/plan";
 import { currentMonth } from "@/lib/months";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
@@ -23,7 +24,8 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //   v7  groups and goals carry ICON (a lib/icon-names.ts name) instead of
 //       EMOJI; older files' EMOJI values are mapped on restore.
 //   v8  + subscriptions section and SUBSCRIPTION_ID per row.
-const BACKUP_VERSION = 8;
+//   v9  + plan_lines section (zero-based plan).
+const BACKUP_VERSION = 9;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,6 +54,9 @@ export async function GET() {
     "SELECT ID, NAME, ICON, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH, CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]
   );
   const [budgetHistory] = await db.execute("SELECT MONTH, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM BUDGET_HISTORY WHERE WORKSPACE_ID = ? ORDER BY MONTH, CATEGORY", [ws]);
+  const [planLines] = await db.execute(
+    "SELECT ID, MONTH, KIND, CATEGORY, GROUP_ID, LABEL, CAST(PLANNED AS REAL) AS PLANNED, SORT_ORDER, SUBSCRIPTION_ID FROM PLAN_LINE WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, SORT_ORDER", [ws]
+  );
   const [subscriptions] = await db.execute(
     `SELECT ID, NAME, CATEGORY, GROUP_ID, CAST(AMOUNT AS REAL) AS AMOUNT, CADENCE, DAY, MONTH_OF_YEAR, STATUS, STATUS_CHANGED_AT, NOTES, CANCEL_URL, TRIAL_ENDS
      FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`, [ws]
@@ -65,6 +70,7 @@ export async function GET() {
     budget_history: budgetHistory,
     goals,
     subscriptions,
+    plan_lines: planLines,
     import_patterns: patterns,
     expenses, // legacy field name kept so older importers still find the rows
   };
@@ -115,10 +121,11 @@ export async function POST(request: NextRequest) {
   const budgetHistory = Array.isArray(body.budget_history) ? body.budget_history : [];
   const goals = Array.isArray(body.goals) ? body.goals : [];
   const subscriptions = Array.isArray(body.subscriptions) ? body.subscriptions : [];
+  const planLines = Array.isArray(body.plan_lines) ? body.plan_lines : [];
   const expenses = body.expenses;
 
   const result = db.transaction((tx) => {
-    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0, subscriptions: 0 };
+    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0, subscriptions: 0, plan_lines: 0 };
 
     for (const g of groups) {
       if (!isObj(g)) continue;
@@ -187,6 +194,29 @@ export async function POST(request: NextRequest) {
     const liveSubIds = new Set(
       tx.all<{ ID: string }>("SELECT ID FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]).map((r) => r.ID),
     );
+
+    for (const l of planLines) {
+      if (!isObj(l)) continue;
+      const id = str(l.ID);
+      const month = str(l.MONTH);
+      const label = str(l.LABEL);
+      const kind = str(l.KIND) ?? "expense";
+      const planned = num(l.PLANNED);
+      if (!id || !UUID_RE.test(id) || !month || !MONTH_RE.test(month) || !label || planned === null || planned < 0) continue;
+      if (!(PLAN_KINDS as readonly string[]).includes(kind)) continue;
+      if (foreign(tx, ws, "PLAN_LINE", id)) continue;
+      const groupId = str(l.GROUP_ID);
+      const subId = str(l.SUBSCRIPTION_ID);
+      tx.run(
+        `INSERT INTO PLAN_LINE (ID, WORKSPACE_ID, MONTH, KIND, CATEGORY, GROUP_ID, LABEL, PLANNED, SORT_ORDER, SUBSCRIPTION_ID)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET MONTH = excluded.MONTH, KIND = excluded.KIND, CATEGORY = excluded.CATEGORY, GROUP_ID = excluded.GROUP_ID,
+           LABEL = excluded.LABEL, PLANNED = excluded.PLANNED, SORT_ORDER = excluded.SORT_ORDER, SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, DELETED_AT = NULL`,
+        [id, ws, month, kind, isCategory(l.CATEGORY) ? l.CATEGORY : "other", groupId && liveGroupIds.has(groupId) ? groupId : null, label, planned,
+         num(l.SORT_ORDER) ?? 0, subId && liveSubIds.has(subId) ? subId : null],
+      );
+      stats.plan_lines++;
+    }
 
     for (const b of budgets) {
       if (!isObj(b)) continue;

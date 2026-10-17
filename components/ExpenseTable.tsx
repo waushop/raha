@@ -20,6 +20,8 @@ const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type Props = {
+  /** Planned vs actual per group (GROUP_ID, "" for none) from /plan; drawn as a thin bar under the header. */
+  plan?: Record<string, { planned: number; actual: number }>;
   expenses: Expense[];
   month: string;
   groups: ExpenseGroup[];
@@ -36,7 +38,7 @@ function readHashId(): string | null {
   return h.startsWith("#e-") ? h.slice(3) : null;
 }
 
-export default function ExpenseTable({ expenses, month, groups }: Props) {
+export default function ExpenseTable({ expenses, month, groups, plan = {} }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Expense | undefined>();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -180,7 +182,17 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
                     <span className={`text-sm font-bold ${colors.text}`}>{s.name}</span>
                     <span className="text-[10px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">{s.items.length}</span>
                   </span>
-                  <span className="text-sm font-mono font-bold text-white/60 tabular-nums">{fmt(s.total)} €</span>
+                  <span className="text-right">
+                    <span className="text-sm font-mono font-bold text-white/60 tabular-nums">{fmt(s.total)} €</span>
+                    {plan[s.groupId ?? ""] && plan[s.groupId ?? ""].planned > 0 && (
+                      <span className="block mt-1 w-24 ml-auto" title={`Planned ${fmt(plan[s.groupId ?? ""].planned)} €`}>
+                        <span className="block h-1 rounded-full bg-white/5 overflow-hidden">
+                          <span className={`block h-full rounded-full ${s.total > plan[s.groupId ?? ""].planned ? "bg-red-500" : "bg-gradient-to-r from-pink-500 to-purple-500"}`} style={{ width: `${Math.min(100, (s.total / plan[s.groupId ?? ""].planned) * 100)}%` }} />
+                        </span>
+                        <span className={`block text-[9px] font-mono tabular-nums ${s.total > plan[s.groupId ?? ""].planned ? "text-red-400" : "text-[#5a6380]"}`}>of {fmt(plan[s.groupId ?? ""].planned)} planned</span>
+                      </span>
+                    )}
+                  </span>
                 </>}
               >
                 <div className="divide-y divide-white/[0.04]">
