@@ -372,3 +372,90 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 @media (max-width: 640px) {
   .row-hover { min-height: 44px; }
 }
+
+/* ============================================
+   LUX PREVIEW (/design): dark leather + monochrome frosted glass.
+   Scoped under .lux so nothing else in the app changes yet.
+   ============================================ */
+.lux {
+  --lux-ink: #f5f5f7;
+  --lux-sub: rgba(245, 245, 247, 0.62);
+  --lux-mute: rgba(245, 245, 247, 0.38);
+  --glass-fill: rgba(22, 22, 24, 0.42);
+  --glass-blur: 22px;
+  --glass-rim-top: rgba(255, 255, 255, 0.55);
+  --glass-rim-side: rgba(255, 255, 255, 0.10);
+  --glass-sheen: rgba(255, 255, 255, 0.07);
+  color: var(--lux-ink);
+  background-color: #0d0d0e;
+  background-image:
+    radial-gradient(ellipse 120% 70% at 30% -10%, rgba(255, 255, 255, 0.10), transparent 60%),
+    radial-gradient(ellipse 90% 60% at 50% 120%, rgba(0, 0, 0, 0.65), transparent 70%),
+    url("/textures/leather-dark.webp");
+  background-size: 100% 100%, 100% 100%, 640px 640px;
+  background-attachment: scroll;
+}
+.lux[data-glass="clear"] { --glass-fill: rgba(30, 30, 33, 0.22); --glass-blur: 14px; --glass-rim-top: rgba(255, 255, 255, 0.7); --glass-sheen: rgba(255, 255, 255, 0.09); }
+.lux[data-glass="smoke"] { --glass-fill: rgba(22, 22, 24, 0.42); }
+.lux[data-glass="ink"]   { --glass-fill: rgba(8, 8, 9, 0.72); --glass-blur: 28px; --glass-rim-top: rgba(255, 255, 255, 0.42); --glass-sheen: rgba(255, 255, 255, 0.05); }
+
+/* Frosted panel: tint + blur, a bright 1px rim strongest on the top edge,
+   an inner sheen near the top and a soft drop shadow into the leather. */
+.lux .glass {
+  position: relative;
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 38%),
+    var(--glass-fill);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 -1px 0 0 rgba(0, 0, 0, 0.35) inset,
+    0 18px 40px -18px rgba(0, 0, 0, 0.85),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  isolation: isolate;
+}
+.lux .glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, var(--glass-rim-top), var(--glass-rim-side) 35%, rgba(255, 255, 255, 0.04) 70%, rgba(255, 255, 255, 0.16));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+/* Specular glint on the top-left corner of the rim, like the reference. */
+.lux .glass-glint::after {
+  content: "";
+  position: absolute;
+  left: 6%;
+  top: -1px;
+  width: 38%;
+  height: 2px;
+  border-radius: 2px;
+  background: radial-gradient(ellipse at 30% 50%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 70%);
+  filter: blur(0.4px);
+  pointer-events: none;
+}
+/* Starry sparkle inside the selected element. */
+.lux .glass-sparkle {
+  background-image:
+    radial-gradient(1px 1px at 12% 30%, rgba(255,255,255,.9), transparent 60%),
+    radial-gradient(1px 1px at 28% 70%, rgba(255,255,255,.6), transparent 60%),
+    radial-gradient(1.5px 1.5px at 47% 22%, rgba(255,255,255,.95), transparent 60%),
+    radial-gradient(1px 1px at 63% 58%, rgba(255,255,255,.55), transparent 60%),
+    radial-gradient(1px 1px at 78% 35%, rgba(255,255,255,.8), transparent 60%),
+    radial-gradient(1px 1px at 90% 72%, rgba(255,255,255,.5), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
+}
+.lux .lux-sub { color: var(--lux-sub); }
+.lux .lux-mute { color: var(--lux-mute); }
+.lux .lux-hair { border-color: rgba(255, 255, 255, 0.08); }
+.lux .lux-btn {
+  background: linear-gradient(180deg, #ffffff, #d9d9de);
+  color: #0b0b0c;
+  box-shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 8px 22px -10px rgba(255,255,255,.35);
+}
