@@ -102,6 +102,17 @@
 /* ============================================
    BASE
    ============================================ */
+/* The root element paints the canvas: the notch/status-bar area, the home
+   indicator strip and the overscroll zones on phones take THIS colour, not
+   body's gradient. Keep it on the theme token so it follows light/dark. */
+html {
+  background: var(--bg-primary);
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
