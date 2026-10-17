@@ -6,17 +6,18 @@ import { GROUP_COLOR_CLASSES } from "@/types/expense";
 import Link from "next/link";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
 import CategoryIcon from "@/components/CategoryIcon";
+import Glyph from "@/components/Glyph";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type Row = {
   NAME: string; CATEGORY: CategoryKey; GROUP_ID: string | null; AMOUNT: number; MONTH: string; DAY: number | null;
-  GROUP_NAME: string | null; GROUP_EMOJI: string | null; GROUP_COLOR: string | null;
+  GROUP_NAME: string | null; GROUP_ICON: string | null; GROUP_COLOR: string | null;
 };
 
 type Subscription = {
-  key: string; name: string; category: CategoryKey; group: { name: string; emoji: string | null; color: string } | null;
+  key: string; name: string; category: CategoryKey; group: { name: string; icon: string | null; color: string } | null;
   amount: number; day: number | null; months: number; firstMonth: string; lastMonth: string; totalSpent: number;
   previousAmount: number | null; changedIn: string | null; active: boolean;
 };
@@ -28,7 +29,7 @@ export default async function RecurringPage() {
   // the charge day and the previous price without a tangle of window functions.
   const [rows] = await db.execute(
     `SELECT e.NAME, e.CATEGORY, e.GROUP_ID, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY,
-            g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
+            g.NAME AS GROUP_NAME, g.ICON AS GROUP_ICON, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
      LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
      WHERE e.WORKSPACE_ID = ? AND e.IS_RECURRING = 1 AND e.KIND = 'expense' AND e.DELETED_AT IS NULL
@@ -50,7 +51,7 @@ export default async function RecurringPage() {
       key,
       name: latest.NAME,
       category: latest.CATEGORY,
-      group: latest.GROUP_NAME ? { name: latest.GROUP_NAME, emoji: latest.GROUP_EMOJI, color: latest.GROUP_COLOR ?? "blue" } : null,
+      group: latest.GROUP_NAME ? { name: latest.GROUP_NAME, icon: latest.GROUP_ICON, color: latest.GROUP_COLOR ?? "blue" } : null,
       amount: latest.AMOUNT,
       day: latest.DAY,
       months: months.size,
@@ -122,7 +123,7 @@ export default async function RecurringPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 text-[10px] text-[#5a6380] flex-wrap">
-                          {s.group && <span className={groupColors?.text ?? ""}>{s.group.emoji} {s.group.name}</span>}
+                          {s.group && <span className={`inline-flex items-center gap-1 ${groupColors?.text ?? ""}`}><Glyph name={s.group.icon} size={12} />{s.group.name}</span>}
                           {s.day !== null && <span>{s.active && s.day > today ? "due" : "charged"} on the {s.day}{s.day === 1 || s.day === 21 || s.day === 31 ? "st" : s.day === 2 || s.day === 22 ? "nd" : s.day === 3 || s.day === 23 ? "rd" : "th"}</span>}
                           <span>{s.months} month{s.months !== 1 ? "s" : ""} · {fmt(s.totalSpent)} € total</span>
                           {s.previousAmount !== null && (

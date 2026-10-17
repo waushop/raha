@@ -49,13 +49,13 @@ const timestampIn = (month: string, day: number): string => {
 };
 
 // ---------- groups ----------
-type Group = { id: string; name: string; emoji: string; color: string };
+type Group = { id: string; name: string; icon: string; color: string };
 const groups: Record<string, Group> = {
-  home: { id: randomUUID(), name: "Home", emoji: "🏡", color: "blue" },
-  car: { id: randomUUID(), name: "Car", emoji: "🚙", color: "orange" },
-  kids: { id: randomUUID(), name: "Kids", emoji: "🧒", color: "pink" },
-  fun: { id: randomUUID(), name: "Fun", emoji: "🎉", color: "purple" },
-  personal: { id: randomUUID(), name: "Personal", emoji: "🙋", color: "green" },
+  home: { id: randomUUID(), name: "Home", icon: "house", color: "blue" },
+  car: { id: randomUUID(), name: "Car", icon: "car", color: "orange" },
+  kids: { id: randomUUID(), name: "Kids", icon: "baby", color: "pink" },
+  fun: { id: randomUUID(), name: "Fun", icon: "party-popper", color: "purple" },
+  personal: { id: randomUUID(), name: "Personal", icon: "user-round", color: "green" },
 };
 
 // ---------- row model ----------
@@ -192,12 +192,12 @@ const result = db.transaction((tx) => {
     for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL"]) tx.run(`DELETE FROM ${t}`);
   }
 
-  tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Emergency fund', '🛡️', 6000, ?, 1500, ?)", [GOAL_FUND, ws, addMonthsKey(months[months.length - 1], 8), `${months[0]}-01 09:00:00`]);
-  tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Summer trip', '🏖️', 1500, ?, 0, ?)", [GOAL_TRIP, ws, addMonthsKey(months[months.length - 1], 7), `${months[months.length - 4]}-01 09:00:00`]);
+  tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Emergency fund', 'shield', 6000, ?, 1500, ?)", [GOAL_FUND, ws, addMonthsKey(months[months.length - 1], 8), `${months[0]}-01 09:00:00`]);
+  tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Summer trip', 'tree-palm', 1500, ?, 0, ?)", [GOAL_TRIP, ws, addMonthsKey(months[months.length - 1], 7), `${months[months.length - 4]}-01 09:00:00`]);
 
   Object.values(groups).forEach((g, i) => {
-    tx.run("INSERT INTO CATEGORY_GROUP (ID, WORKSPACE_ID, NAME, EMOJI, COLOR, SORT_ORDER, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
-      g.id, ws, g.name, g.emoji, g.color, i, `${months[0]}-01 09:00:00`, `${months[0]}-01 09:00:00`,
+    tx.run("INSERT INTO CATEGORY_GROUP (ID, WORKSPACE_ID, NAME, ICON, COLOR, SORT_ORDER, CREATED_AT, UPDATED_AT) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+      g.id, ws, g.name, g.icon, g.color, i, `${months[0]}-01 09:00:00`, `${months[0]}-01 09:00:00`,
     ]);
   });
 

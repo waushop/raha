@@ -15,7 +15,7 @@
 - **LEDGER** table: `ID` (UUID), `KIND` (`expense` | `income`), `CATEGORY`, `GROUP_ID`, `NAME`, `AMOUNT`, `MONTH` (YYYY-MM), `DAY` (1–31 or NULL), `NOTES`, `IS_RECURRING`, `TAGS` (normalised "#a, #b" text). Spending aggregates must filter `KIND = 'expense'`.
 - **LEDGER_TAG**: one row per tag per ledger row, kept in sync with `TAGS` by `lib/ledger.ts` (`syncTags`); search/analytics filter on it.
 - **LEDGER_AUDIT**: before/after JSON for every ledger write (`lib/ledger.ts` `audit` / `auditedUpdate`); `/activity` reads it, falling back to timestamps on pre-audit databases.
-- **CATEGORY_GROUP** table: `ID`, `NAME`, `EMOJI`, `COLOR`, `SORT_ORDER` (reorderable from `/groups`)
+- **CATEGORY_GROUP** table: `ID`, `NAME`, `ICON` (a `lib/icon-names.ts` name or NULL; the old `EMOJI` column is renamed and mapped by `migrateIcons`), `COLOR`, `SORT_ORDER` (reorderable from `/groups`)
 - **SAVINGS_GOAL**: targets with optional deadline and starting balance; contributions are LEDGER rows with `GOAL_ID`.
 - **USER**, **WORKSPACE**, **WORKSPACE_MEMBER**: see Auth above. `BUDGET` and `BUDGET_HISTORY` are keyed by `(WORKSPACE_ID, …)`.
 - **BUDGET** (current targets, `_total` pseudo-key), **BUDGET_HISTORY** (snapshot per month, written on edit and when the dashboard first renders a month; analytics "Budget vs actual" uses `resolveBudgetsFor`), **IMPORT_PATTERN**, **APP_SETTING** (PIN hash)
@@ -47,7 +47,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
 ### APIs (3)
 - `GET /api/export?month=` or `?year=` — CSV download
-- `GET/POST /api/backup` — JSON backup/restore (v6: ledger incl. DAY and GOAL_ID + goals + groups + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
+- `GET/POST /api/backup` — JSON backup/restore (v7: ledger incl. DAY and GOAL_ID + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
 ## Conventions
@@ -60,7 +60,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 - Text colors: `#5a6380` (muted), `#9ca3c0` (secondary)
 - Cards use `.card` CSS class, inner surfaces use `.surface`
 - SQLite specifics: `CAST(... AS REAL)` (no `DOUBLE`), `ON CONFLICT(...) DO ...` (no `ON DUPLICATE KEY`), `UPDATED_AT` maintained by triggers in `lib/schema.ts`.
-- Icons come from `lucide-react` (`import { Pencil } from "lucide-react"`, `size={14}`); no hand-written `<svg>` glyphs. Standard categories render through `components/CategoryIcon.tsx` (`<CategoryIcon category={key} size={16} />`, colour via `currentColor`); the emoji in `CATEGORIES[k].icon` is only for native `<option>` text and plain strings. Group emoji (`CATEGORY_GROUP.EMOJI`) is user-chosen data and stays emoji.
+- Icons come from `lucide-react` (`import { Pencil } from "lucide-react"`, `size={14}`); no hand-written `<svg>` glyphs and no emoji in the UI. Standard categories render through `components/CategoryIcon.tsx` (`<CategoryIcon category={key} size={16} />`); user-picked group/goal icons are names from `lib/icon-names.ts` (`ICON_NAMES`, curated Lucide set) stored in `ICON`, rendered by `components/Glyph.tsx` (`<Glyph name={g.ICON} fallback="target" />`) and chosen with `components/IconPicker.tsx` (form field `icon`, validated by `parseIcon`). Colour via `currentColor`.
 - Headline font (Caveat) is self-hosted via `next/font` and exposed as `var(--font-hand)`; don't add `<link>` tags to Google Fonts.
 
 ## Environment Variables

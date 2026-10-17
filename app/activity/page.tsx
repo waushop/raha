@@ -7,6 +7,8 @@ import Link from "next/link";
 import RestoreButton from "@/components/RestoreButton";
 import CategoryIcon from "@/components/CategoryIcon";
 import type { AuditAction, AuditSnapshot } from "@/lib/ledger";
+import { Pencil, Plus, Trash2, Undo2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -110,11 +112,11 @@ export default async function ActivityPage() {
       .sort((a, b) => b.time.localeCompare(a.time)).slice(0, 50);
   }
 
-  const typeConfig: Record<AuditAction, { icon: string; color: string; bg: string; label: string }> = {
-    create: { icon: "+", color: "text-teal-400", bg: "bg-teal-500/10", label: "Added" },
-    delete: { icon: "×", color: "text-red-400", bg: "bg-red-500/10", label: "Deleted" },
-    update: { icon: "~", color: "text-blue-400", bg: "bg-blue-500/10", label: "Updated" },
-    restore: { icon: "↺", color: "text-amber-400", bg: "bg-amber-500/10", label: "Restored" },
+  const typeConfig: Record<AuditAction, { icon: LucideIcon; color: string; bg: string; label: string }> = {
+    create: { icon: Plus, color: "text-teal-400", bg: "bg-teal-500/10", label: "Added" },
+    delete: { icon: Trash2, color: "text-red-400", bg: "bg-red-500/10", label: "Deleted" },
+    update: { icon: Pencil, color: "text-blue-400", bg: "bg-blue-500/10", label: "Updated" },
+    restore: { icon: Undo2, color: "text-amber-400", bg: "bg-amber-500/10", label: "Restored" },
   };
 
   return (
@@ -143,7 +145,7 @@ export default async function ActivityPage() {
                 return (
                   <div key={a.key} className="px-4 py-3 flex items-center gap-3 row-hover">
                     <div className={`w-7 h-7 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-                      <span className={`text-xs font-bold ${cfg.color}`}>{cfg.icon}</span>
+                      <span className={`text-xs font-bold ${cfg.color}`}><cfg.icon size={12} strokeWidth={2.5} /></span>
                     </div>
                     <CategoryIcon category={a.category} size={16} className="text-[#9ca3c0]" />
                     <div className="flex-1 min-w-0">

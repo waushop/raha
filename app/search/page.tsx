@@ -7,6 +7,7 @@ import Link from "next/link";
 import SearchInput from "@/components/SearchInput";
 import SearchFilters from "@/components/SearchFilters";
 import CategoryIcon from "@/components/CategoryIcon";
+import Glyph from "@/components/Glyph";
 import { getGroups, getTags } from "@/app/actions";
 import { isValidMonth, monthLabel } from "@/lib/months";
 
@@ -52,7 +53,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   if (hasCriteria) {
     const [rows] = await db.execute(
       `SELECT e.ID, e.KIND, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.NOTES, e.IS_RECURRING, e.TAGS,
-              e.GROUP_ID, g.NAME AS GROUP_NAME, g.EMOJI AS GROUP_EMOJI, g.COLOR AS GROUP_COLOR
+              e.GROUP_ID, g.NAME AS GROUP_NAME, g.ICON AS GROUP_ICON, g.COLOR AS GROUP_COLOR
        FROM LEDGER e
        LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
        WHERE ${where.join(" AND ")}
@@ -129,7 +130,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       </div>
                       <p className="text-[10px] text-[#5a6380] truncate mt-0.5 flex items-center gap-1.5">
                         {e.DAY && <span className="font-mono tabular-nums">{e.MONTH}-{String(e.DAY).padStart(2, "0")}</span>}
-                        {e.GROUP_NAME && <span className={groupText}>{e.GROUP_EMOJI} {e.GROUP_NAME}</span>}
+                        {e.GROUP_NAME && <span className={`inline-flex items-center gap-1 ${groupText}`}><Glyph name={e.GROUP_ICON} size={12} />{e.GROUP_NAME}</span>}
                         {e.TAGS && <span className="text-purple-300/60">{e.TAGS}</span>}
                         {e.NOTES && <span className="truncate">{e.NOTES}</span>}
                       </p>

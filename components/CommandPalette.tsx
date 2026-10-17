@@ -2,22 +2,37 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Search } from "lucide-react";
+import {
+  Activity,
+  ArrowLeftRight,
+  Calendar,
+  CalendarRange,
+  ChartColumn,
+  ClipboardList,
+  Folder,
+  LayoutDashboard,
+  Repeat,
+  Search,
+  Settings,
+  Target,
+  Upload,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const NAV_ITEMS = [
-  { label: "This month", path: "/", icon: "🗓️" },
-  { label: "Dashboard", path: "/dashboard", icon: "📊" },
-  { label: "Search", path: "/search", icon: "🔍" },
-  { label: "Groups", path: "/groups", icon: "📁" },
-  { label: "Goals", path: "/goals", icon: "🎯" },
-  { label: "Recurring", path: "/recurring", icon: "🔄" },
-  { label: "Activity", path: "/activity", icon: "📝" },
-  { label: "Monthly review", path: "/review", icon: "📝" },
-  { label: "Analytics", path: "/analytics", icon: "📈" },
-  { label: "Compare", path: "/compare", icon: "⚖️" },
-  { label: "Year overview", path: `/year?year=${new Date().getFullYear()}`, icon: "📅" },
-  { label: "Import bank CSV", path: "/import", icon: "📥" },
-  { label: "Settings", path: "/settings", icon: "⚙️" },
+const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
+  { label: "This month", path: "/", icon: Calendar },
+  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { label: "Search", path: "/search", icon: Search },
+  { label: "Groups", path: "/groups", icon: Folder },
+  { label: "Goals", path: "/goals", icon: Target },
+  { label: "Recurring", path: "/recurring", icon: Repeat },
+  { label: "Activity", path: "/activity", icon: Activity },
+  { label: "Monthly review", path: "/review", icon: ClipboardList },
+  { label: "Analytics", path: "/analytics", icon: ChartColumn },
+  { label: "Compare", path: "/compare", icon: ArrowLeftRight },
+  { label: "Year overview", path: `/year?year=${new Date().getFullYear()}`, icon: CalendarRange },
+  { label: "Import bank CSV", path: "/import", icon: Upload },
+  { label: "Settings", path: "/settings", icon: Settings },
 ];
 
 export default function CommandPalette() {
@@ -92,7 +107,7 @@ export default function CommandPalette() {
                   pathname === item.path.split("?")[0] ? "bg-purple-500/10 text-white" : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
                 }`}
               >
-                <span className="text-base">{item.icon}</span>
+                <span className="text-base inline-flex items-center justify-center shrink-0"><item.icon size={16} className="text-[#9ca3c0]" /></span>
                 <span className="text-sm font-medium">{item.label}</span>
                 {pathname === item.path.split("?")[0] && (
                   <span className="text-[9px] text-purple-400 ml-auto">Current</span>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { iconFromLegacy } from "@/lib/icon-names";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import db from "@/lib/db";
@@ -17,7 +18,9 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //   v5  + DAY per row, plus budget_history section. LEDGER_TAG is derived
 //       from TAGS on restore, so it is not backed up separately.
 //   v6  + GOAL_ID per row, plus goals section.
-const BACKUP_VERSION = 6;
+//   v7  groups and goals carry ICON (a lib/icon-names.ts name) instead of
+//       EMOJI; older files' EMOJI values are mapped on restore.
+const BACKUP_VERSION = 7;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,14 +39,14 @@ export async function GET() {
      FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`, [ws]
   );
   const [groups] = await db.execute(
-    "SELECT ID, NAME, EMOJI, COLOR, SORT_ORDER FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY SORT_ORDER, NAME", [ws]
+    "SELECT ID, NAME, ICON, COLOR, SORT_ORDER FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY SORT_ORDER, NAME", [ws]
   );
   const [budgets] = await db.execute("SELECT CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM BUDGET WHERE WORKSPACE_ID = ? ORDER BY CATEGORY", [ws]);
   const [patterns] = await db.execute(
     "SELECT ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY FROM IMPORT_PATTERN WHERE WORKSPACE_ID = ? ORDER BY PRIORITY DESC, PATTERN", [ws]
   );
   const [goals] = await db.execute(
-    "SELECT ID, NAME, EMOJI, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH, CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]
+    "SELECT ID, NAME, ICON, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH, CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]
   );
   const [budgetHistory] = await db.execute("SELECT MONTH, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM BUDGET_HISTORY WHERE WORKSPACE_ID = ? ORDER BY MONTH, CATEGORY", [ws]);
 
@@ -115,10 +118,10 @@ export async function POST(request: NextRequest) {
       if (!id || !UUID_RE.test(id) || !name) continue;
       if (foreign(tx, ws, "CATEGORY_GROUP", id)) continue;
       tx.run(
-        `INSERT INTO CATEGORY_GROUP (ID, WORKSPACE_ID, NAME, EMOJI, COLOR, SORT_ORDER) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(ID) DO UPDATE SET NAME = excluded.NAME, EMOJI = excluded.EMOJI, COLOR = excluded.COLOR,
+        `INSERT INTO CATEGORY_GROUP (ID, WORKSPACE_ID, NAME, ICON, COLOR, SORT_ORDER) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET NAME = excluded.NAME, ICON = excluded.ICON, COLOR = excluded.COLOR,
            SORT_ORDER = excluded.SORT_ORDER, DELETED_AT = NULL`,
-        [id, ws, name, str(g.EMOJI), isColor(g.COLOR) ? g.COLOR : "blue", num(g.SORT_ORDER) ?? 0],
+        [id, ws, name, iconFromLegacy(g.ICON ?? g.EMOJI), isColor(g.COLOR) ? g.COLOR : "blue", num(g.SORT_ORDER) ?? 0],
       );
       stats.groups++;
     }
@@ -132,10 +135,10 @@ export async function POST(request: NextRequest) {
       const targetMonth = str(g.TARGET_MONTH);
       if (foreign(tx, ws, "SAVINGS_GOAL", id)) continue;
       tx.run(
-        `INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(ID) DO UPDATE SET NAME = excluded.NAME, EMOJI = excluded.EMOJI, TARGET_AMOUNT = excluded.TARGET_AMOUNT,
+        `INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET NAME = excluded.NAME, ICON = excluded.ICON, TARGET_AMOUNT = excluded.TARGET_AMOUNT,
            TARGET_MONTH = excluded.TARGET_MONTH, STARTING_AMOUNT = excluded.STARTING_AMOUNT, DELETED_AT = NULL`,
-        [id, ws, name, str(g.EMOJI), target, targetMonth && MONTH_RE.test(targetMonth) ? targetMonth : null, Math.max(0, num(g.STARTING_AMOUNT) ?? 0)],
+        [id, ws, name, iconFromLegacy(g.ICON ?? g.EMOJI), target, targetMonth && MONTH_RE.test(targetMonth) ? targetMonth : null, Math.max(0, num(g.STARTING_AMOUNT) ?? 0)],
       );
       stats.goals++;
     }

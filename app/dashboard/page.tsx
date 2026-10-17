@@ -17,7 +17,8 @@ import { monthlyTotals, monthlyVariableTotals, recurringCandidates } from "@/lib
 import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
 import CategoryIcon from "@/components/CategoryIcon";
-import { Layers, Repeat } from "lucide-react";
+import Glyph from "@/components/Glyph";
+import { CalendarDays, CalendarRange, ChartColumn, Layers, Receipt, Repeat } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -328,7 +329,7 @@ export default async function DashboardPage() {
                 <Link key={g.ID} href="/goals" className="flex items-center gap-3 rounded-xl p-2 -m-2 hover:bg-white/5 transition-colors">
                   <div className="relative">
                     <GoalRing pct={g.pct} size={44} stroke={5} />
-                    <span className="absolute inset-0 flex items-center justify-center text-base">{g.EMOJI ?? "🎯"}</span>
+                    <span className="absolute inset-0 flex items-center justify-center text-base"><Glyph name={g.ICON} fallback="target" size={16} /></span>
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-white truncate">{g.NAME}</p>
@@ -577,19 +578,19 @@ export default async function DashboardPage() {
         {/* Quick links */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-up" style={{ animationDelay: "0.17s" }}>
           <Link href={`/review?month=${prevMonth}`} className="card rounded-2xl p-4 text-center card-hover">
-            <span className="text-2xl block mb-1">🧾</span>
+            <Receipt size={24} className="mx-auto mb-1 text-[#9ca3c0]" aria-hidden />
             <span className="text-xs font-semibold text-[#9ca3c0]">Review {monthLabel(prevMonth, "short")}</span>
           </Link>
           <Link href={`/?month=${thisMonth}`} className="card rounded-2xl p-4 text-center card-hover">
-            <span className="text-2xl block mb-1">📝</span>
+            <CalendarDays size={24} className="mx-auto mb-1 text-[#9ca3c0]" aria-hidden />
             <span className="text-xs font-semibold text-[#9ca3c0]">This month</span>
           </Link>
           <Link href={`/?month=${prevMonth}`} className="card rounded-2xl p-4 text-center card-hover">
-            <span className="text-2xl block mb-1">📅</span>
+            <CalendarRange size={24} className="mx-auto mb-1 text-[#9ca3c0]" aria-hidden />
             <span className="text-xs font-semibold text-[#9ca3c0]">Last month</span>
           </Link>
           <Link href="/analytics" className="card rounded-2xl p-4 text-center card-hover">
-            <span className="text-2xl block mb-1">📊</span>
+            <ChartColumn size={24} className="mx-auto mb-1 text-[#9ca3c0]" aria-hidden />
             <span className="text-xs font-semibold text-[#9ca3c0]">Analytics</span>
           </Link>
         </div>

@@ -43,12 +43,12 @@ export default function SearchFilters({ groups, tags }: Props) {
         </select>
         <select aria-label="Category" value={get("category")} onChange={(e) => update({ category: e.target.value })} className={`${select} panel`}>
           <option value="">Any category</option>
-          {CATEGORY_KEYS.map((k) => <option key={k} value={k}>{CATEGORIES[k].icon} {CATEGORIES[k].label}</option>)}
+          {CATEGORY_KEYS.map((k) => <option key={k} value={k}>{CATEGORIES[k].label}</option>)}
         </select>
         {groups.length > 0 && (
           <select aria-label="Group" value={get("group")} onChange={(e) => update({ group: e.target.value })} className={`${select} panel`}>
             <option value="">Any group</option>
-            {groups.map((g) => <option key={g.ID} value={g.ID}>{g.EMOJI} {g.NAME}</option>)}
+            {groups.map((g) => <option key={g.ID} value={g.ID}>{g.NAME}</option>)}
             <option value="none">Ungrouped</option>
           </select>
         )}

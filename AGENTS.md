@@ -29,7 +29,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Text hierarchy: `text-white` (primary), `text-[#9ca3c0]` (secondary), `text-[#5a6380]` (muted)
 - Borders: `border-white/[0.08]` (primary), `border-white/[0.06]` (subtle)
 - All animations use classes from globals.css (animate-fade-up, animate-fade-in)
-- Icons: `lucide-react` components only (no inline `<svg>` glyphs except charts); category glyphs via `components/CategoryIcon.tsx`
+- Icons: `lucide-react` components only (no inline `<svg>` glyphs except charts, no emoji); category glyphs via `components/CategoryIcon.tsx`, group/goal icons by name via `components/Glyph.tsx` + `components/IconPicker.tsx` (`lib/icon-names.ts`)
 
 ## Forms
 - Use `useRef<HTMLFormElement>` + `FormData` pattern

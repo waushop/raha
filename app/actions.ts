@@ -10,7 +10,7 @@ import {
   ValidationError,
   parseAmount,
   parseCategory,
-  parseColor,
+  parseIcon, parseColor,
   parseId,
   parseMonth,
   parseName,
@@ -289,7 +289,7 @@ export async function resetAllBudgets() {
 export async function getGroups(): Promise<ExpenseGroup[]> {
   const { workspaceId: ws } = await requireAuth();
   const [rows] = await db.execute(
-    "SELECT ID, NAME, EMOJI, COLOR, SORT_ORDER FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY SORT_ORDER, NAME",
+    "SELECT ID, NAME, ICON, COLOR, SORT_ORDER FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY SORT_ORDER, NAME",
     [ws],
   );
   return rows as ExpenseGroup[];
@@ -298,7 +298,7 @@ export async function getGroups(): Promise<ExpenseGroup[]> {
 function readGroupForm(formData: FormData) {
   return {
     name: parseName(formData.get("name"), "Group name", 40),
-    emoji: parseOptionalText(formData.get("emoji"), "Icon", 8),
+    icon: parseIcon(formData.get("icon")),
     color: parseColor(formData.get("color")),
   };
 }
@@ -309,8 +309,8 @@ export async function createGroup(formData: FormData): Promise<ActionResult<{ id
     const g = readGroupForm(formData);
     const id = randomUUID();
     await db.execute(
-      "INSERT INTO CATEGORY_GROUP (ID, WORKSPACE_ID, NAME, EMOJI, COLOR, SORT_ORDER) VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(SORT_ORDER), -1) + 1 FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL))",
-      [id, ws, g.name, g.emoji, g.color, ws],
+      "INSERT INTO CATEGORY_GROUP (ID, WORKSPACE_ID, NAME, ICON, COLOR, SORT_ORDER) VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(SORT_ORDER), -1) + 1 FROM CATEGORY_GROUP WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL))",
+      [id, ws, g.name, g.icon, g.color, ws],
     );
     revalidatePath("/");
     revalidatePath("/groups");
@@ -323,7 +323,7 @@ export async function updateGroup(id: string, formData: FormData): Promise<Actio
   return attempt(async () => {
     const gid = parseId(id);
     const g = readGroupForm(formData);
-    await db.execute("UPDATE CATEGORY_GROUP SET NAME=?, EMOJI=?, COLOR=? WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [g.name, g.emoji, g.color, gid, ws]);
+    await db.execute("UPDATE CATEGORY_GROUP SET NAME=?, ICON=?, COLOR=? WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [g.name, g.icon, g.color, gid, ws]);
     revalidatePath("/");
     revalidatePath("/groups");
     return {};
@@ -352,7 +352,7 @@ function readGoalForm(formData: FormData) {
   const targetMonthRaw = String(formData.get("target_month") ?? "").trim();
   return {
     name: parseName(formData.get("name"), "Goal name", 60),
-    emoji: parseOptionalText(formData.get("emoji"), "Icon", 8),
+    icon: parseIcon(formData.get("icon")),
     target: parseAmount(formData.get("target_amount"), "Target"),
     targetMonth: targetMonthRaw ? parseMonth(targetMonthRaw) : null,
     starting: String(formData.get("starting_amount") ?? "").trim() ? parseAmount(formData.get("starting_amount"), "Already saved") : 0,
@@ -365,8 +365,8 @@ export async function createGoal(formData: FormData): Promise<ActionResult<{ id:
     const g = readGoalForm(formData);
     const id = randomUUID();
     await db.execute(
-      "INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, ws, g.name, g.emoji, g.target, g.targetMonth, g.starting],
+      "INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, ws, g.name, g.icon, g.target, g.targetMonth, g.starting],
     );
     revalidatePath("/goals");
     revalidatePath("/dashboard");
@@ -380,8 +380,8 @@ export async function updateGoal(id: string, formData: FormData): Promise<Action
     const gid = parseId(id);
     const g = readGoalForm(formData);
     await db.execute(
-      "UPDATE SAVINGS_GOAL SET NAME=?, EMOJI=?, TARGET_AMOUNT=?, TARGET_MONTH=?, STARTING_AMOUNT=? WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL",
-      [g.name, g.emoji, g.target, g.targetMonth, g.starting, gid, ws],
+      "UPDATE SAVINGS_GOAL SET NAME=?, ICON=?, TARGET_AMOUNT=?, TARGET_MONTH=?, STARTING_AMOUNT=? WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL",
+      [g.name, g.icon, g.target, g.targetMonth, g.starting, gid, ws],
     );
     revalidatePath("/goals");
     revalidatePath("/dashboard");
@@ -402,10 +402,10 @@ export async function deleteGoal(id: string) {
   revalidatePath("/");
 }
 
-export async function getGoalOptions(): Promise<{ ID: string; NAME: string; EMOJI: string | null }[]> {
+export async function getGoalOptions(): Promise<{ ID: string; NAME: string; ICON: string | null }[]> {
   const { workspaceId: ws } = await requireAuth();
-  const [rows] = await db.execute("SELECT ID, NAME, EMOJI FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]);
-  return rows as { ID: string; NAME: string; EMOJI: string | null }[];
+  const [rows] = await db.execute("SELECT ID, NAME, ICON FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]);
+  return rows as { ID: string; NAME: string; ICON: string | null }[];
 }
 
 // ============================================

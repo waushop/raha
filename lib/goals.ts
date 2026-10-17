@@ -7,7 +7,7 @@ import { addMonths, currentMonth } from "./months";
 export type Goal = {
   ID: string;
   NAME: string;
-  EMOJI: string | null;
+  ICON: string | null;
   TARGET_AMOUNT: number;
   TARGET_MONTH: string | null;
   STARTING_AMOUNT: number;
@@ -33,7 +33,7 @@ function monthsBetween(from: string, to: string): number {
 
 export async function listGoals(ws: string): Promise<GoalProgress[]> {
   const [goalRows] = await db.execute(
-    `SELECT ID, NAME, EMOJI, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH,
+    `SELECT ID, NAME, ICON, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH,
             CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT, CREATED_AT
      FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`,
     [ws],

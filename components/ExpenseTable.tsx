@@ -12,7 +12,9 @@ import CollapsibleCard from "./CollapsibleCard";
 import SwipeRow from "./SwipeRow";
 import InlineAmount from "./InlineAmount";
 import CategoryIcon from "./CategoryIcon";
-import { Copy, Plus, Repeat, SquarePen, Trash2, X } from "lucide-react";
+import Glyph from "./Glyph";
+import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
+import { Banknote, Copy, Plus, Repeat, SquarePen, Target, Trash2, Wallet, X } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -101,7 +103,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
   const incomeTotal = income.reduce((s, e) => s + e.AMOUNT, 0);
 
   // Group spending by GROUP_ID; income gets its own card below
-  type Section = { groupId: string | null; name: string; emoji: string | null; color: string; items: Expense[]; total: number };
+  type Section = { groupId: string | null; name: string; icon: string | null; color: string; items: Expense[]; total: number };
   const sections: Section[] = [];
   const buckets = new Map<string, Expense[]>();
   for (const e of spending) {
@@ -113,13 +115,13 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
     const items = buckets.get(g.ID);
     if (!items) continue;
     items.sort((a, b) => b.AMOUNT - a.AMOUNT);
-    sections.push({ groupId: g.ID, name: g.NAME, emoji: g.EMOJI, color: g.COLOR, items, total: items.reduce((s, e) => s + e.AMOUNT, 0) });
+    sections.push({ groupId: g.ID, name: g.NAME, icon: g.ICON, color: g.COLOR, items, total: items.reduce((s, e) => s + e.AMOUNT, 0) });
     buckets.delete(g.ID);
   }
   const ungrouped = buckets.get("__none__");
   if (ungrouped?.length) {
     ungrouped.sort((a, b) => b.AMOUNT - a.AMOUNT);
-    sections.push({ groupId: null, name: "Ungrouped", emoji: "📦", color: "gray", items: ungrouped, total: ungrouped.reduce((s, e) => s + e.AMOUNT, 0) });
+    sections.push({ groupId: null, name: "Ungrouped", icon: DEFAULT_GROUP_ICON, color: "gray", items: ungrouped, total: ungrouped.reduce((s, e) => s + e.AMOUNT, 0) });
   }
   sections.sort((a, b) => b.total - a.total);
 
@@ -128,7 +130,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
       {expenses.length === 0 && !showForm && (
         <div className="card rounded-2xl p-10 sm:p-14 text-center">
           <div className="flex flex-col items-center gap-4">
-            <div className="text-5xl animate-gentle-pulse">💸</div>
+            <Wallet size={48} strokeWidth={1.25} className="mx-auto text-[#5a6380] animate-gentle-pulse" aria-hidden />
             <div>
               <p className="text-sm text-[#9ca3c0] font-medium">No expenses this month</p>
               <p className="text-xs text-[#5a6380] mt-1">Add an expense or copy from last month</p>
@@ -147,7 +149,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
           className="card rounded-2xl overflow-hidden border-t-2 border-teal-500/30 animate-fade-in cat-card-hover"
           header={<>
             <span className="inline-flex items-center gap-2">
-              <span className="text-sm">💵</span>
+              <Banknote size={14} className="text-teal-400" aria-hidden />
               <span className="text-sm font-bold text-teal-400">Income</span>
               <span className="text-[10px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">{income.length}</span>
             </span>
@@ -174,7 +176,7 @@ export default function ExpenseTable({ expenses, month, groups }: Props) {
                 className={`card rounded-2xl overflow-hidden border-t-2 ${colors.border} animate-fade-in cat-card-hover`}
                 header={<>
                   <span className="inline-flex items-center gap-2">
-                    {s.emoji && <span className="text-sm">{s.emoji}</span>}
+                    <Glyph name={s.icon} size={16} className={colors.text} />
                     <span className={`text-sm font-bold ${colors.text}`}>{s.name}</span>
                     <span className="text-[10px] text-[#5a6380] bg-white/5 rounded-full px-1.5 py-0.5">{s.items.length}</span>
                   </span>
@@ -279,7 +281,7 @@ function ExpenseRow({ expense: e, highlighted, onEdit, onDelete, onDuplicate, on
               <span className="text-[9px] font-mono tabular-nums text-[#5a6380] bg-white/5 rounded px-1 shrink-0" title={`Day ${e.DAY}`}>{e.DAY}</span>
             )}
             {e.NAME}
-            {e.GOAL_ID && <span className="text-[10px] shrink-0" title="Counts towards a goal">🎯</span>}
+            {e.GOAL_ID && <span className="text-[10px] shrink-0 inline-flex" title="Counts towards a goal"><Target size={10} className="text-purple-400 shrink-0" aria-hidden /></span>}
             {e.IS_RECURRING === 1 && (
               <Repeat size={10} strokeWidth={2.5} className="text-teal-400/50 shrink-0" />
             )}

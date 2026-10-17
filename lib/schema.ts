@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { iconFromLegacy } from "./icon-names";
 import { randomUUID } from "node:crypto";
 import { parseTags } from "./tags";
 
@@ -35,6 +36,12 @@ const USER_TABLES = [
     PRIMARY KEY (WORKSPACE_ID, USER_ID)
   )`,
 ];
+
+function tableNames(sqlite: DatabaseSync): Set<string> {
+  return new Set(
+    (sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map((r) => r.name),
+  );
+}
 
 function hasColumn(sqlite: DatabaseSync, table: string, column: string): boolean {
   return (sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some((c) => c.name === column);
@@ -159,6 +166,27 @@ function migrate(sqlite: DatabaseSync): void {
 
 // One row per tag so search/analytics can filter without LIKE. Populated
 // from the free-text TAGS column the first time the table is empty.
+// EMOJI → ICON. Groups and goals used to store a free-text emoji; they now
+// store a Lucide icon name from lib/icon-names.ts. Known emoji are mapped,
+// anything else becomes NULL (the default icon). Triggers are dropped first
+// so the STATEMENTS below recreate them against the new column name.
+function migrateIcons(sqlite: DatabaseSync, tables: Set<string>): void {
+  for (const [table, trigger] of [
+    ["CATEGORY_GROUP", "TRG_CATEGORY_GROUP_UPDATED_AT"],
+    ["SAVINGS_GOAL", "TRG_SAVINGS_GOAL_UPDATED_AT"],
+  ] as const) {
+    if (!tables.has(table) || !hasColumn(sqlite, table, "EMOJI")) continue;
+    sqlite.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
+    sqlite.exec(`ALTER TABLE ${table} RENAME COLUMN EMOJI TO ICON`);
+    const rows = sqlite.prepare(`SELECT DISTINCT ICON FROM ${table} WHERE ICON IS NOT NULL`).all() as Array<{ ICON: string }>;
+    const update = sqlite.prepare(`UPDATE ${table} SET ICON = ? WHERE ICON = ?`);
+    for (const { ICON } of rows) {
+      const mapped = iconFromLegacy(ICON);
+      if (mapped !== ICON) update.run(mapped, ICON);
+    }
+  }
+}
+
 function backfillTags(sqlite: DatabaseSync): void {
   const { n } = sqlite.prepare("SELECT COUNT(*) AS n FROM LEDGER_TAG").get() as { n: number };
   if (n > 0) return;
@@ -184,7 +212,7 @@ const STATEMENTS = [
     DELETED_AT  TEXT,
     WORKSPACE_ID TEXT,
     NAME        TEXT NOT NULL,
-    EMOJI       TEXT,
+    ICON        TEXT,
     COLOR       TEXT NOT NULL DEFAULT 'blue',
     SORT_ORDER  INTEGER NOT NULL DEFAULT 0
   )`,
@@ -215,7 +243,7 @@ const STATEMENTS = [
     DELETED_AT      TEXT,
     WORKSPACE_ID    TEXT,
     NAME            TEXT NOT NULL,
-    EMOJI           TEXT,
+    ICON            TEXT,
     TARGET_AMOUNT   REAL NOT NULL,
     TARGET_MONTH    TEXT,
     STARTING_AMOUNT REAL NOT NULL DEFAULT 0
@@ -313,13 +341,13 @@ const STATEMENTS = [
      UPDATE LEDGER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
    END`,
   `CREATE TRIGGER IF NOT EXISTS TRG_CATEGORY_GROUP_UPDATED_AT
-   AFTER UPDATE OF NAME, EMOJI, COLOR, SORT_ORDER, DELETED_AT
+   AFTER UPDATE OF NAME, ICON, COLOR, SORT_ORDER, DELETED_AT
    ON CATEGORY_GROUP
    BEGIN
      UPDATE CATEGORY_GROUP SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
    END`,
   `CREATE TRIGGER IF NOT EXISTS TRG_SAVINGS_GOAL_UPDATED_AT
-   AFTER UPDATE OF NAME, EMOJI, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, DELETED_AT
+   AFTER UPDATE OF NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, DELETED_AT
    ON SAVINGS_GOAL
    BEGIN
      UPDATE SAVINGS_GOAL SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
@@ -350,6 +378,7 @@ const STATEMENTS = [
 
 export function initSchema(sqlite: DatabaseSync): void {
   migrate(sqlite);
+  migrateIcons(sqlite, tableNames(sqlite));
   for (const stmt of STATEMENTS) {
     sqlite.exec(stmt);
   }

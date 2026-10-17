@@ -7,7 +7,8 @@ import { CATEGORIES } from "@/types/expense";
 import { addMonths, currentMonth, isValidMonth, monthLabel, daysInMonth } from "@/lib/months";
 import { getBudgets, getBudgetHistory, resolveBudgetsFor } from "@/lib/budgets";
 import CategoryIcon from "@/components/CategoryIcon";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import Glyph from "@/components/Glyph";
+import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (a: number, b: number) => (b > 0 ? ((a - b) / b) * 100 : null);
@@ -75,9 +76,9 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
      WHERE e.WORKSPACE_ID = ? AND e.KIND = 'expense' AND e.MONTH = ? AND e.DELETED_AT IS NULL GROUP BY t.TAG ORDER BY TOTAL DESC LIMIT 5`, [ws, month]);
   const tags = tagRows as Array<{ TAG: string; TOTAL: number }>;
   const [goalRows] = await db.execute(
-    `SELECT g.NAME, g.EMOJI, CAST(SUM(e.AMOUNT) AS REAL) AS AMOUNT FROM LEDGER e JOIN SAVINGS_GOAL g ON g.ID = e.GOAL_ID AND g.DELETED_AT IS NULL
+    `SELECT g.NAME, g.ICON, CAST(SUM(e.AMOUNT) AS REAL) AS AMOUNT FROM LEDGER e JOIN SAVINGS_GOAL g ON g.ID = e.GOAL_ID AND g.DELETED_AT IS NULL
      WHERE e.WORKSPACE_ID = ? AND e.MONTH = ? AND e.DELETED_AT IS NULL GROUP BY g.ID ORDER BY AMOUNT DESC`, [ws, month]);
-  const goalContribs = goalRows as Array<{ NAME: string; EMOJI: string | null; AMOUNT: number }>;
+  const goalContribs = goalRows as Array<{ NAME: string; ICON: string | null; AMOUNT: number }>;
   const [recRows] = await db.execute(
     `SELECT a.NAME, CAST(a.AMOUNT AS REAL) AS NOW_AMOUNT, CAST(b.AMOUNT AS REAL) AS PREV_AMOUNT FROM LEDGER a
      JOIN LEDGER b ON b.WORKSPACE_ID = a.WORKSPACE_ID AND b.NAME = a.NAME AND b.MONTH = ? AND b.IS_RECURRING = 1 AND b.DELETED_AT IS NULL AND b.KIND = 'expense'
@@ -232,10 +233,10 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
                   <h2 className={h2}>Also</h2>
                   <div className="space-y-2 text-xs">
                     {goalContribs.map((g) => (
-                      <div key={g.NAME} className="flex items-center gap-2"><span>{g.EMOJI ?? "🎯"}</span><span className="text-white/80 flex-1 truncate">{g.NAME}</span><span className="font-mono tabular-nums text-teal-400/80">+{fmt(g.AMOUNT)} €</span></div>
+                      <div key={g.NAME} className="flex items-center gap-2"><Glyph name={g.ICON} fallback="target" size={14} /><span className="text-white/80 flex-1 truncate">{g.NAME}</span><span className="font-mono tabular-nums text-teal-400/80">+{fmt(g.AMOUNT)} €</span></div>
                     ))}
                     {busiest && (
-                      <div className="flex items-center gap-2"><span>📅</span><span className="text-white/80 flex-1">Busiest day was the {busiest.DAY}{busiest.DAY === 1 ? "st" : busiest.DAY === 2 ? "nd" : busiest.DAY === 3 ? "rd" : "th"} of {daysInMonth(month)}</span><span className="font-mono tabular-nums text-white/60">{fmt(busiest.TOTAL)} €</span></div>
+                      <div className="flex items-center gap-2"><Calendar size={14} className="text-[#9ca3c0]" aria-hidden /><span className="text-white/80 flex-1">Busiest day was the {busiest.DAY}{busiest.DAY === 1 ? "st" : busiest.DAY === 2 ? "nd" : busiest.DAY === 3 ? "rd" : "th"} of {daysInMonth(month)}</span><span className="font-mono tabular-nums text-white/60">{fmt(busiest.TOTAL)} €</span></div>
                     )}
                     {tags.map((t) => (
                       <div key={t.TAG} className="flex items-center gap-2"><span className="text-purple-300">#{t.TAG}</span><span className="flex-1" /><span className="font-mono tabular-nums text-white/60">{fmt(t.TOTAL)} €</span></div>

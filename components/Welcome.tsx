@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { Wallet } from "lucide-react";
 
 export default function Welcome() {
   return (
     <div className="card rounded-2xl p-8 sm:p-12 text-center max-w-lg mx-auto animate-fade-up">
-      <div className="text-6xl mb-4">💸</div>
+      <div className="text-6xl mb-4"><Wallet size={56} strokeWidth={1.5} className="text-pink-400 mx-auto" /></div>
       <h2
         className="text-3xl sm:text-4xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight mb-2"
         style={{ fontFamily: "var(--font-hand), cursive", fontWeight: 700 }}

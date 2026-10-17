@@ -8,6 +8,8 @@ import type { Expense, CategoryKey, ExpenseGroup, Kind } from "@/types/expense";
 import { CATEGORIES, CATEGORY_KEYS, GROUP_COLORS, GROUP_COLOR_CLASSES } from "@/types/expense";
 import { useToast } from "./Toast";
 import CategoryIcon from "./CategoryIcon";
+import Glyph from "./Glyph";
+import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
 import { CirclePlus, Repeat } from "lucide-react";
 
 type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; onDone: () => void };
@@ -24,7 +26,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   const [tags, setTags] = useState(editing?.TAGS ?? "");
   const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [goalId, setGoalId] = useState<string>(editing?.GOAL_ID ?? "");
-  const [goalOptions, setGoalOptions] = useState<{ ID: string; NAME: string; EMOJI: string | null }[]>([]);
+  const [goalOptions, setGoalOptions] = useState<{ ID: string; NAME: string; ICON: string | null }[]>([]);
   const showGoals = category === "savings" || !!goalId;
   // Default the date to today when adding to the current month; otherwise
   // leave it blank (the row then has a month but no day).
@@ -47,11 +49,11 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
     if (!name) return;
     const color = GROUP_COLORS[allGroups.length % GROUP_COLORS.length];
     const fd = new FormData();
-    fd.set("name", name); fd.set("emoji", "📦"); fd.set("color", color);
+    fd.set("name", name); fd.set("icon", DEFAULT_GROUP_ICON); fd.set("color", color);
     startGroupTransition(async () => {
       const res = await createGroup(fd);
       if (!res.ok) { toast.showError(res.error); return; }
-      setLocalGroups((p) => [...p, { ID: res.id, NAME: name, EMOJI: "📦", COLOR: color, SORT_ORDER: allGroups.length }]);
+      setLocalGroups((p) => [...p, { ID: res.id, NAME: name, ICON: DEFAULT_GROUP_ICON, COLOR: color, SORT_ORDER: allGroups.length }]);
       setGroupId(res.id);
       setNewGroupName(null);
     });
@@ -132,10 +134,10 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
             const colors = GROUP_COLOR_CLASSES[g.COLOR] ?? GROUP_COLOR_CLASSES.blue;
             return (
               <button key={g.ID} type="button" onClick={() => setGroupId(g.ID)}
-                className={`shrink-0 border rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all whitespace-nowrap ${
+                className={`shrink-0 inline-flex items-center gap-1 border rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all whitespace-nowrap ${
                   groupId === g.ID ? `${colors.border} bg-white/10 ${colors.text}` : "border-white/[0.06] text-[#9ca3c0] hover:border-white/15"
                 }`}>
-                {g.EMOJI && <span className="mr-1">{g.EMOJI}</span>}{g.NAME}
+                <Glyph name={g.ICON} size={12} />{g.NAME}
               </button>
             );
           })}
@@ -199,8 +201,8 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
             </button>
             {goalOptions.map((g) => (
               <button key={g.ID} type="button" onClick={() => setGoalId(g.ID)}
-                className={`shrink-0 border rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all whitespace-nowrap ${goalId === g.ID ? "border-teal-500/40 bg-teal-500/10 text-teal-300" : "border-white/[0.06] text-[#9ca3c0] hover:border-white/15"}`}>
-                {g.EMOJI && <span className="mr-1">{g.EMOJI}</span>}{g.NAME}
+                className={`shrink-0 inline-flex items-center gap-1 border rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all whitespace-nowrap ${goalId === g.ID ? "border-teal-500/40 bg-teal-500/10 text-teal-300" : "border-white/[0.06] text-[#9ca3c0] hover:border-white/15"}`}>
+                <Glyph name={g.ICON} fallback="target" size={12} />{g.NAME}
               </button>
             ))}
           </div>

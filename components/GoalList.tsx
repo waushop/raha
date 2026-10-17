@@ -6,8 +6,10 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useToast } from "./Toast";
 import type { GoalProgress } from "@/lib/goals";
 import { monthLabel } from "@/lib/months";
+import { DEFAULT_GOAL_ICON, iconFromLegacy, type IconName } from "@/lib/icon-names";
+import Glyph from "./Glyph";
+import IconPicker from "./IconPicker";
 
-const EMOJI_OPTIONS = ["🎯", "🏖️", "🚗", "🏠", "💍", "🎓", "🛡️", "✈️", "💻", "🎸", "👶", "💰"];
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 const STATUS: Record<GoalProgress["status"], { label: string; cls: string }> = {
@@ -38,17 +40,16 @@ export function GoalRing({ pct, size = 56, stroke = 6, className = "" }: { pct: 
 export default function GoalList({ goals }: { goals: GoalProgress[] }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<GoalProgress | null>(null);
-  const [emoji, setEmoji] = useState("🎯");
+  const [icon, setIcon] = useState<IconName>(DEFAULT_GOAL_ICON);
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
 
-  function openCreate() { setEditing(null); setEmoji("🎯"); setShowForm(true); }
-  function openEdit(g: GoalProgress) { setEditing(g); setEmoji(g.EMOJI ?? "🎯"); setShowForm(true); }
+  function openCreate() { setEditing(null); setIcon(DEFAULT_GOAL_ICON); setShowForm(true); }
+  function openEdit(g: GoalProgress) { setEditing(g); setIcon(iconFromLegacy(g.ICON) ?? DEFAULT_GOAL_ICON); setShowForm(true); }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
-    data.set("emoji", emoji);
     startTransition(async () => {
       const res = editing ? await updateGoal(editing.ID, data) : await createGoal(data);
       if (!res.ok) { toast.showError(res.error); return; }
@@ -75,7 +76,7 @@ export default function GoalList({ goals }: { goals: GoalProgress[] }) {
               <div key={g.ID} className="card rounded-2xl p-4 flex gap-4">
                 <div className="relative">
                   <GoalRing pct={g.pct} />
-                  <span className="absolute inset-0 flex items-center justify-center text-xl">{g.EMOJI ?? "🎯"}</span>
+                  <span className="absolute inset-0 flex items-center justify-center text-xl"><Glyph name={g.ICON} fallback="target" size={20} /></span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
@@ -120,14 +121,7 @@ export default function GoalList({ goals }: { goals: GoalProgress[] }) {
           <h3 className="text-sm font-bold text-white">{editing ? "Edit goal" : "New goal"}</h3>
           <div className="flex flex-col gap-1.5">
             <label className={label}>Icon</label>
-            <div className="flex flex-wrap gap-1.5">
-              {EMOJI_OPTIONS.map((e) => (
-                <button key={e} type="button" onClick={() => setEmoji(e)}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all ${emoji === e ? "bg-purple-500/20 border border-purple-500/40 scale-110" : "bg-white/5 border border-white/[0.06] hover:bg-white/10"}`}>
-                  {e}
-                </button>
-              ))}
-            </div>
+            <IconPicker value={icon} onChange={setIcon} field="icon" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">

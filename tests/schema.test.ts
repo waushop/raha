@@ -43,7 +43,8 @@ describe("schema", () => {
       MONTH TEXT NOT NULL, NOTES TEXT, IS_RECURRING INTEGER NOT NULL DEFAULT 0, TAGS TEXT)`);
     db.exec(`CREATE TRIGGER TRG_EXPENSE_UPDATED_AT AFTER UPDATE OF NAME ON EXPENSE
       BEGIN UPDATE EXPENSE SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID; END`);
-    db.exec(`INSERT INTO EXPENSE_GROUP (ID, NAME) VALUES ('g1', 'Home')`);
+    db.exec(`INSERT INTO EXPENSE_GROUP (ID, NAME, EMOJI) VALUES ('g1', 'Home', '🏠')`);
+    db.exec(`INSERT INTO EXPENSE_GROUP (ID, NAME, EMOJI) VALUES ('g2', 'Odd', '🦄')`);
     db.exec(`INSERT INTO EXPENSE (ID, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH) VALUES ('e1', 'housing', 'g1', 'Rent', 900, '2026-01')`);
 
     initSchema(db);
@@ -53,8 +54,14 @@ describe("schema", () => {
     assert.ok(!names.includes("EXPENSE") && !names.includes("EXPENSE_GROUP"));
     const row = { ...(db.prepare("SELECT KIND, NAME, GROUP_ID FROM LEDGER WHERE ID = 'e1'").get() as { KIND: string; NAME: string; GROUP_ID: string }) };
     assert.deepEqual(row, { KIND: "expense", NAME: "Rent", GROUP_ID: "g1" });
-    const group = db.prepare("SELECT NAME FROM CATEGORY_GROUP WHERE ID = 'g1'").get() as { NAME: string };
-    assert.equal(group.NAME, "Home");
+    const group = { ...(db.prepare("SELECT NAME, ICON FROM CATEGORY_GROUP WHERE ID = 'g1'").get() as { NAME: string; ICON: string }) };
+    assert.deepEqual(group, { NAME: "Home", ICON: "house" });
+    // EMOJI → ICON: unknown emoji become NULL, the column is renamed, the trigger follows
+    assert.ok(!columns(db, "CATEGORY_GROUP").includes("EMOJI"));
+    assert.equal((db.prepare("SELECT ICON FROM CATEGORY_GROUP WHERE ID = 'g2'").get() as { ICON: string | null }).ICON, null);
+    db.exec("UPDATE CATEGORY_GROUP SET UPDATED_AT = '2020-01-01 00:00:00' WHERE ID = 'g1'");
+    db.exec("UPDATE CATEGORY_GROUP SET ICON = 'car' WHERE ID = 'g1'");
+    assert.notEqual((db.prepare("SELECT UPDATED_AT FROM CATEGORY_GROUP WHERE ID = 'g1'").get() as { UPDATED_AT: string }).UPDATED_AT, "2020-01-01 00:00:00");
   });
 
   test("adds DAY to an older LEDGER and backfills LEDGER_TAG from TAGS text", () => {

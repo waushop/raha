@@ -2,6 +2,7 @@
 // the cleaned value or throws ValidationError with a message fit for a toast.
 // Deliberately dependency-free: the app has no runtime deps and this is small.
 import { CATEGORY_KEYS, GROUP_COLORS, type CategoryKey } from "@/types/expense";
+import { iconFromLegacy, type IconName } from "./icon-names";
 import { MONTH_RE, daysInMonth } from "./months";
 import { MAX_TAGS, MAX_TAG_LENGTH, formatTags, parseTags } from "./tags";
 
@@ -71,6 +72,14 @@ export function parseCategory(v: unknown): CategoryKey {
   const s = text(v);
   if (!(CATEGORY_KEYS as string[]).includes(s)) throw new ValidationError("Unknown category");
   return s as CategoryKey;
+}
+
+export function parseIcon(v: unknown): IconName | null {
+  const s = text(v);
+  if (!s) return null;
+  const name = iconFromLegacy(s);
+  if (!name) throw new ValidationError("Unknown icon");
+  return name;
 }
 
 export function parseColor(v: unknown): string {

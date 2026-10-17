@@ -6,8 +6,9 @@ import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useToast } from "./Toast";
 import type { ExpenseGroup } from "@/types/expense";
 import { GROUP_COLORS, GROUP_COLOR_CLASSES } from "@/types/expense";
-
-const EMOJI_OPTIONS = ["🏠", "🚗", "👶", "📱", "💼", "🎓", "🏥", "✈️", "🎭", "⚽", "🐕", "🎁", "💰", "📦", "🔧", "🍽️", "👕", "📋"];
+import { DEFAULT_GROUP_ICON, iconFromLegacy, type IconName } from "@/lib/icon-names";
+import Glyph from "./Glyph";
+import IconPicker from "./IconPicker";
 
 type Props = { groups: ExpenseGroup[] };
 
@@ -15,7 +16,7 @@ export default function GroupList({ groups }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ExpenseGroup | null>(null);
   const [name, setName] = useState("");
-  const [emoji, setEmoji] = useState("📦");
+  const [icon, setIcon] = useState<IconName>(DEFAULT_GROUP_ICON);
   const [color, setColor] = useState("blue");
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
@@ -23,7 +24,7 @@ export default function GroupList({ groups }: Props) {
   function openCreate() {
     setEditing(null);
     setName("");
-    setEmoji("📦");
+    setIcon(DEFAULT_GROUP_ICON);
     setColor("blue");
     setShowForm(true);
   }
@@ -31,7 +32,7 @@ export default function GroupList({ groups }: Props) {
   function openEdit(g: ExpenseGroup) {
     setEditing(g);
     setName(g.NAME);
-    setEmoji(g.EMOJI ?? "📦");
+    setIcon(iconFromLegacy(g.ICON) ?? DEFAULT_GROUP_ICON);
     setColor(g.COLOR);
     setShowForm(true);
   }
@@ -42,7 +43,7 @@ export default function GroupList({ groups }: Props) {
 
     const data = new FormData();
     data.set("name", name.trim());
-    data.set("emoji", emoji);
+    data.set("icon", icon);
     data.set("color", color);
 
     startTransition(async () => {
@@ -82,7 +83,7 @@ export default function GroupList({ groups }: Props) {
                       <ChevronDown size={10} strokeWidth={3} />
                     </button>
                   </div>
-                  <span className="text-2xl">{g.EMOJI}</span>
+                  <Glyph name={g.ICON} size={22} className={colors.text} />
                   <div>
                     <span className={`text-sm font-bold ${colors.text}`}>{g.NAME}</span>
                   </div>
@@ -111,19 +112,10 @@ export default function GroupList({ groups }: Props) {
         <form onSubmit={handleSubmit} className="card rounded-2xl p-5 space-y-4 animate-fade-in">
           <h3 className="text-sm font-bold text-white">{editing ? "Edit group" : "New group"}</h3>
 
-          {/* Emoji picker */}
+          {/* Icon picker */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Icon</label>
-            <div className="flex flex-wrap gap-1.5">
-              {EMOJI_OPTIONS.map(e => (
-                <button key={e} type="button" onClick={() => setEmoji(e)}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all ${
-                    emoji === e ? "bg-purple-500/20 border border-purple-500/40 scale-110" : "bg-white/5 border border-white/[0.06] hover:bg-white/10"
-                  }`}>
-                  {e}
-                </button>
-              ))}
-            </div>
+            <IconPicker value={icon} onChange={setIcon} field="icon" />
           </div>
 
           {/* Name */}

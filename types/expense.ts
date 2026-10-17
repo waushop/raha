@@ -1,33 +1,34 @@
 // ============================================
-// STANDARD CATEGORIES (predefined, with icons). Used for both expenses
+// STANDARD CATEGORIES (predefined; glyphs live in components/CategoryIcon.tsx).
+// Used for both expenses
 // and income — pick the one that fits.
 // ============================================
 export const CATEGORIES = {
-  housing:       { label: "Housing",         icon: "🏠" },
-  utilities:     { label: "Utilities",       icon: "💡" },
-  groceries:     { label: "Groceries",       icon: "🛒" },
-  dining:        { label: "Dining",          icon: "🍽️" },
-  fuel:          { label: "Fuel",            icon: "⛽" },
-  transport:     { label: "Transport",       icon: "🚗" },
-  maintenance:   { label: "Maintenance",     icon: "🔧" },
-  insurance:     { label: "Insurance",       icon: "📋" },
-  health:        { label: "Health",          icon: "🏥" },
-  education:     { label: "Education",       icon: "📚" },
-  kids:          { label: "Kids",            icon: "👶" },
-  entertainment: { label: "Entertainment",   icon: "🎭" },
-  subscriptions: { label: "Subscriptions",   icon: "📱" },
-  clothing:      { label: "Clothing",        icon: "👕" },
-  gifts:         { label: "Gifts",           icon: "🎁" },
-  travel:        { label: "Travel",          icon: "✈️" },
-  personal:      { label: "Personal",        icon: "💈" },
-  pets:          { label: "Pets",            icon: "🐕" },
-  savings:       { label: "Savings",         icon: "💰" },
-  sports:        { label: "Sports",          icon: "⚽" },
-  phone:         { label: "Phone",           icon: "📞" },
-  internet:      { label: "Internet",        icon: "🌐" },
-  loan:          { label: "Loan",            icon: "🏦" },
-  tax:           { label: "Tax",             icon: "📄" },
-  other:         { label: "Other",           icon: "📦" },
+  housing:       { label: "Housing",         },
+  utilities:     { label: "Utilities",       },
+  groceries:     { label: "Groceries",       },
+  dining:        { label: "Dining",          },
+  fuel:          { label: "Fuel",            },
+  transport:     { label: "Transport",       },
+  maintenance:   { label: "Maintenance",     },
+  insurance:     { label: "Insurance",       },
+  health:        { label: "Health",          },
+  education:     { label: "Education",       },
+  kids:          { label: "Kids",            },
+  entertainment: { label: "Entertainment",   },
+  subscriptions: { label: "Subscriptions",   },
+  clothing:      { label: "Clothing",        },
+  gifts:         { label: "Gifts",           },
+  travel:        { label: "Travel",          },
+  personal:      { label: "Personal",        },
+  pets:          { label: "Pets",            },
+  savings:       { label: "Savings",         },
+  sports:        { label: "Sports",          },
+  phone:         { label: "Phone",           },
+  internet:      { label: "Internet",        },
+  loan:          { label: "Loan",            },
+  tax:           { label: "Tax",             },
+  other:         { label: "Other",           },
 } as const;
 
 export type CategoryKey = keyof typeof CATEGORIES;
@@ -39,7 +40,7 @@ export const CATEGORY_KEYS = Object.keys(CATEGORIES) as CategoryKey[];
 export type ExpenseGroup = {
   ID: string;
   NAME: string;
-  EMOJI: string | null;
+  ICON: string | null;
   COLOR: string;
   SORT_ORDER: number;
 };
@@ -86,6 +87,6 @@ export type Expense = {
   TAGS: string | null;
   // Joined fields
   GROUP_NAME?: string;
-  GROUP_EMOJI?: string;
+  GROUP_ICON?: string;
   GROUP_COLOR?: string;
 };

@@ -4,6 +4,7 @@ import LoginForm from "@/components/LoginForm";
 import SetupForm from "@/components/SetupForm";
 import CodeForm from "@/components/CodeForm";
 import { pendingChallenge } from "./actions";
+import { Wallet } from "lucide-react";
 
 export default async function LoginPage() {
   await connection();
@@ -18,7 +19,7 @@ export default async function LoginPage() {
       <div className="animate-fade-up text-center">
         <div className="mb-10">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border border-white/10 mb-6 shadow-2xl shadow-purple-500/10">
-            <span className="text-4xl">💸</span>
+            <Wallet size={36} strokeWidth={1.5} className="text-pink-400" />
           </div>
           <h1
             className="text-5xl bg-gradient-to-r from-pink-500 via-purple-400 to-violet-500 bg-clip-text text-transparent leading-tight"
