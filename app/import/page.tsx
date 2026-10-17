@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { getImportPatterns } from "@/app/actions";
+import { getImportPatterns, getGroups } from "@/app/actions";
 import Link from "next/link";
 import ImportFlow from "./ImportFlow";
 import db from "@/lib/db";
@@ -9,7 +9,7 @@ import { train } from "@/lib/classifier";
 export default async function ImportPage() {
   await connection();
   const { workspaceId: ws } = await currentContext();
-  const patterns = await getImportPatterns();
+  const [patterns, groups] = await Promise.all([getImportPatterns(), getGroups()]);
   // Train on everything the user has categorised so far (expenses only).
   const [rows] = await db.execute("SELECT NAME, CATEGORY, GROUP_ID FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL", [ws]);
   const model = train((rows as Array<{ NAME: string; CATEGORY: string; GROUP_ID: string | null }>).map((r) => ({ name: r.NAME, category: r.CATEGORY, groupId: r.GROUP_ID })));
@@ -25,11 +25,11 @@ export default async function ImportPage() {
           >
             Import
           </h1>
-          <p className="text-xs text-[#5a6380] mt-1">Upload a bank CSV to import transactions</p>
+          <p className="text-xs text-[#5a6380] mt-1">Upload a bank CSV to import transactions; rules categorise and rename them on the way in</p>
         </div>
 
         <div className="animate-fade-up" style={{ animationDelay: "0.05s" }}>
-          <ImportFlow patterns={patterns} model={model} />
+          <ImportFlow patterns={patterns} groups={groups} model={model} />
         </div>
       </div>
     </main>

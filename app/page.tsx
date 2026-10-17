@@ -25,7 +25,7 @@ export default async function Page({
   // Fetch expenses with group info
   const [rows] = await db.execute(
     `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.GOAL_ID, e.NAME,
-            e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.CREATED_AT,
+            e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.SPLIT_GROUP, e.CREATED_AT,
             g.NAME AS GROUP_NAME, g.ICON AS GROUP_ICON, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
      LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
@@ -94,12 +94,10 @@ export default async function Page({
           </div>
         )}
 
-        {/* Quick-add presets */}
-        {quickPresets.length > 0 && (
-          <div className="animate-fade-up" style={{ animationDelay: "0.08s" }}>
-            <QuickAddBar presets={quickPresets} month={month} />
-          </div>
-        )}
+        {/* Quick add: one-line entry plus preset chips */}
+        <div className="animate-fade-up" style={{ animationDelay: "0.08s" }}>
+          <QuickAddBar presets={quickPresets} month={month} />
+        </div>
 
         {/* Expense cards */}
         <div className="animate-fade-up" style={{ animationDelay: "0.1s" }}>

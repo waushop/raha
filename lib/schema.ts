@@ -167,6 +167,16 @@ function migrate(sqlite: DatabaseSync): void {
       sqlite.exec("ALTER TABLE LEDGER ADD COLUMN SUBSCRIPTION_ID TEXT");
       sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
     }
+    if (!cols.includes("SPLIT_GROUP")) {
+      sqlite.exec("ALTER TABLE LEDGER ADD COLUMN SPLIT_GROUP TEXT");
+      sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
+    }
+  }
+  // Import patterns grew into rules (lib/rules.ts).
+  if (tables.has("IMPORT_PATTERN")) {
+    for (const [col, type] of [["SET_NAME", "TEXT"], ["SET_TAGS", "TEXT"], ["SET_RECURRING", "INTEGER"], ["AMOUNT_MIN", "REAL"], ["AMOUNT_MAX", "REAL"]] as const) {
+      if (!hasColumn(sqlite, "IMPORT_PATTERN", col)) sqlite.exec(`ALTER TABLE IMPORT_PATTERN ADD COLUMN ${col} ${type}`);
+    }
   }
 }
 
@@ -239,7 +249,8 @@ const STATEMENTS = [
     TAGS         TEXT,
     DAY          INTEGER,
     GOAL_ID      TEXT,
-    SUBSCRIPTION_ID TEXT
+    SUBSCRIPTION_ID TEXT,
+    SPLIT_GROUP  TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_GOAL ON LEDGER(GOAL_ID)`,
   // Savings goals; contributions are LEDGER rows with GOAL_ID set.
@@ -321,7 +332,12 @@ const STATEMENTS = [
     PATTERN     TEXT NOT NULL,
     CATEGORY    TEXT NOT NULL,
     GROUP_ID    TEXT,
-    PRIORITY    INTEGER NOT NULL DEFAULT 0
+    PRIORITY    INTEGER NOT NULL DEFAULT 0,
+    SET_NAME      TEXT,
+    SET_TAGS      TEXT,
+    SET_RECURRING INTEGER,
+    AMOUNT_MIN    REAL,
+    AMOUNT_MAX    REAL
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_IMPORT_PATTERN_PRIORITY ON IMPORT_PATTERN(PRIORITY DESC)`,
   `CREATE TABLE IF NOT EXISTS APP_SETTING (
@@ -342,7 +358,7 @@ const STATEMENTS = [
   // a non-timestamp column avoids the recursive trigger that would fire when the
   // trigger itself updates UPDATED_AT.
   `CREATE TRIGGER IF NOT EXISTS TRG_LEDGER_UPDATED_AT
-   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT, SUBSCRIPTION_ID
+   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT, SUBSCRIPTION_ID, SPLIT_GROUP
    ON LEDGER
    BEGIN
      UPDATE LEDGER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;

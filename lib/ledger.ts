@@ -7,7 +7,8 @@ import type { Kind } from "@/types/expense";
 import { ValidationError } from "./validate";
 import { currentMonth, daysInMonth } from "./months";
 import { syncRowLink } from "./subscriptions";
-import { parseTags } from "./tags";
+import { applyRules, type Rule } from "./rules";
+import { formatTags, parseTags } from "./tags";
 
 export type LedgerSource = {
   KIND: Kind;
@@ -20,12 +21,13 @@ export type LedgerSource = {
   TAGS: string | null;
   DAY: number | null;
   GOAL_ID?: string | null;
+  SPLIT_GROUP?: string | null;
 };
 
-export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID";
+export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP";
 
-const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** A copied row keeps its day where the target month has it (31st → 30th otherwise). */
 export function clampDay(day: number | null, month: string): number | null {
@@ -93,7 +95,7 @@ export function assertGroupExists(tx: Tx, ws: string, id: string | null): void {
 export function insertRow(tx: Tx, ws: string, row: LedgerSource, month: string): string {
   const id = randomUUID();
   const day = clampDay(row.DAY, month);
-  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null]);
+  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null, row.SPLIT_GROUP ?? null]);
   if (row.TAGS) syncTags(tx, id, row.TAGS);
   audit(tx, id, "create", null, { ID: id, ...row, MONTH: month, DAY: day });
   if (row.IS_RECURRING && row.KIND === "expense") linkSubscription(tx, ws, id);
@@ -242,4 +244,127 @@ export function reorderGroup(ws: string, id: string, direction: -1 | 1): void {
     [ids[i], ids[j]] = [ids[j], ids[i]];
     ids.forEach((gid, idx) => tx.run("UPDATE CATEGORY_GROUP SET SORT_ORDER=? WHERE ID=?", [idx, gid]));
   });
+}
+
+// ---------- splits, bulk edits, rules ----------
+
+export type SplitPart = { category: string; groupId: string | null; name?: string | null; amount: number };
+
+/**
+ * Splits one row into several (same month/day/notes/kind) that share a
+ * SPLIT_GROUP. The original row keeps its id and becomes the first part; the
+ * parts must add up to the original amount (±0.01).
+ */
+export function splitRow(ws: string, id: string, parts: SplitPart[]): string[] {
+  if (parts.length < 2) throw new ValidationError("A split needs at least two parts");
+  return db.transaction((tx) => {
+    const row = tx.all<LedgerSource & { ID: string; MONTH: string }>(
+      `SELECT ID, MONTH, ${SOURCE_COLUMNS} FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL`, [id, ws],
+    )[0];
+    if (!row) throw new ValidationError("Row not found");
+    const total = parts.reduce((s, p) => s + p.amount, 0);
+    if (Math.abs(total - row.AMOUNT) > 0.011) throw new ValidationError(`Parts add up to ${total.toFixed(2)}, the row is ${row.AMOUNT.toFixed(2)}`);
+    for (const p of parts) assertGroupExists(tx, ws, p.groupId);
+    const group = row.SPLIT_GROUP ?? id;
+    const [first, ...rest] = parts;
+    auditedUpdate(tx, id, "update", () => {
+      tx.run("UPDATE LEDGER SET CATEGORY=?, GROUP_ID=?, NAME=?, AMOUNT=?, SPLIT_GROUP=? WHERE ID=?", [first.category, first.groupId, first.name?.trim() || row.NAME, first.amount, group, id]);
+    });
+    const ids = [id];
+    for (const p of rest) {
+      ids.push(insertRow(tx, ws, { ...row, CATEGORY: p.category, GROUP_ID: p.groupId, NAME: p.name?.trim() || row.NAME, AMOUNT: p.amount, IS_RECURRING: 0, GOAL_ID: null, SPLIT_GROUP: group }, row.MONTH));
+    }
+    return ids;
+  });
+}
+
+/** The subset of ids that are live rows of this workspace (keeps bulk edits honest). */
+function ownedLiveIds(tx: Tx, ws: string, ids: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const rows = tx.all<{ ID: string }>(`SELECT ID FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND ID IN (${chunk.map(() => "?").join(",")})`, [ws, ...chunk]);
+    out.push(...rows.map((r) => r.ID));
+  }
+  return out;
+}
+
+export type BulkPatch = { category?: string; groupId?: string | null; tags?: string | null; isRecurring?: boolean; month?: string };
+
+/** Applies the same change to many rows; returns how many changed. */
+export function bulkUpdate(ws: string, ids: string[], patch: BulkPatch): number {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (patch.category !== undefined) { sets.push("CATEGORY=?"); params.push(patch.category); }
+  if (patch.groupId !== undefined) { sets.push("GROUP_ID=?"); params.push(patch.groupId); }
+  if (patch.tags !== undefined) { sets.push("TAGS=?"); params.push(patch.tags); }
+  if (patch.isRecurring !== undefined) { sets.push("IS_RECURRING=?"); params.push(patch.isRecurring ? 1 : 0); }
+  if (patch.month !== undefined) { sets.push("MONTH=?", "DAY=MIN(COALESCE(DAY, 1), ?)"); params.push(patch.month, daysInMonth(patch.month)); }
+  if (sets.length === 0) return 0;
+  return db.transaction((tx) => {
+    if (patch.groupId) assertGroupExists(tx, ws, patch.groupId);
+    let n = 0;
+    for (const id of ownedLiveIds(tx, ws, ids)) {
+      const changed = auditedUpdate(tx, id, "update", () => {
+        tx.run(`UPDATE LEDGER SET ${sets.join(", ")} WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL`, [...params, id, ws]);
+      });
+      if (!changed) continue;
+      if (patch.tags !== undefined) syncTags(tx, id, patch.tags);
+      if (patch.isRecurring !== undefined) linkSubscription(tx, ws, id);
+      n++;
+    }
+    return n;
+  });
+}
+
+export function bulkDelete(ws: string, ids: string[]): number {
+  return db.transaction((tx) => {
+    let n = 0;
+    for (const id of ownedLiveIds(tx, ws, ids)) {
+      if (auditedUpdate(tx, id, "delete", () => tx.run("UPDATE LEDGER SET DELETED_AT=CURRENT_TIMESTAMP WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL", [id, ws]))) n++;
+    }
+    return n;
+  });
+}
+
+export const RULE_COLUMNS = "ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY, SET_NAME, SET_TAGS, SET_RECURRING, CAST(AMOUNT_MIN AS REAL) AS AMOUNT_MIN, CAST(AMOUNT_MAX AS REAL) AS AMOUNT_MAX";
+
+export function loadRules(tx: Tx, ws: string): Rule[] {
+  return tx.all<Rule>(`SELECT ${RULE_COLUMNS} FROM IMPORT_PATTERN WHERE WORKSPACE_ID = ? ORDER BY PRIORITY DESC, PATTERN`, [ws]);
+}
+
+/**
+ * Re-runs the rules over live expense rows (optionally only one rule) and
+ * rewrites category/group/name/tags/recurring where a rule matches the
+ * row's name or notes. Returns rows changed.
+ */
+export function applyRulesToRows(ws: string, ruleId: string | null = null): number {
+  return db.transaction((tx) => {
+    const rules = loadRules(tx, ws).filter((r) => ruleId === null || r.ID === ruleId);
+    if (rules.length === 0) return 0;
+    const rows = tx.all<{ ID: string; NAME: string; NOTES: string | null; AMOUNT: number; CATEGORY: string; GROUP_ID: string | null; TAGS: string | null; IS_RECURRING: number }>(
+      "SELECT ID, NAME, NOTES, CAST(AMOUNT AS REAL) AS AMOUNT, CATEGORY, GROUP_ID, TAGS, IS_RECURRING FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL", [ws],
+    );
+    let n = 0;
+    for (const r of rows) {
+      const patch = applyRules(rules, { text: `${r.NAME} ${r.NOTES ?? ""}`, amount: r.AMOUNT });
+      if (!patch) continue;
+      const name = patch.name ?? r.NAME;
+      const tags = patch.tags !== undefined ? mergeTags(r.TAGS, patch.tags) : r.TAGS;
+      const recurring = patch.isRecurring !== undefined ? (patch.isRecurring ? 1 : 0) : r.IS_RECURRING;
+      if (patch.category === r.CATEGORY && (patch.groupId ?? null) === (r.GROUP_ID ?? null) && name === r.NAME && tags === r.TAGS && recurring === r.IS_RECURRING) continue;
+      auditedUpdate(tx, r.ID, "update", () => {
+        tx.run("UPDATE LEDGER SET CATEGORY=?, GROUP_ID=?, NAME=?, TAGS=?, IS_RECURRING=? WHERE ID=?", [patch.category, patch.groupId, name, tags, recurring, r.ID]);
+      });
+      syncTags(tx, r.ID, tags);
+      if (recurring !== r.IS_RECURRING) linkSubscription(tx, ws, r.ID);
+      n++;
+    }
+    return n;
+  });
+}
+
+/** Union of two "#a, #b" strings. */
+export function mergeTags(a: string | null, b: string | null): string | null {
+  return formatTags([...new Set([...parseTags(a ?? ""), ...parseTags(b ?? "")])]);
 }

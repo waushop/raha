@@ -1,26 +1,29 @@
 "use client";
 
 import { useState, useTransition, useCallback } from "react";
-import { importTransactions, createImportPattern, deleteImportPattern } from "@/app/actions";
+import { importTransactions, createImportPattern } from "@/app/actions";
 import type { ImportPatternRow } from "@/app/actions";
 import type { ParsedTransaction } from "@/lib/import-parser";
 import type { ClassifierModel } from "@/lib/classifier";
 import { parseGenericCSV, classifyTransactions } from "@/lib/import-parser";
+import { applyRules, literalPattern, type Rule } from "@/lib/rules";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
-import type { CategoryKey } from "@/types/expense";
+import type { CategoryKey, ExpenseGroup } from "@/types/expense";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import CategoryIcon from "@/components/CategoryIcon";
-import { Check, Upload } from "lucide-react";
+import RulesEditor from "./RulesEditor";
+import { Check, Upload, Repeat } from "lucide-react";
 
 type Props = {
   patterns: ImportPatternRow[];
+  groups: ExpenseGroup[];
   model: ClassifierModel;
 };
 
 type Step = "upload" | "preview" | "done";
 
-export default function ImportFlow({ patterns: initialPatterns, model }: Props) {
+export default function ImportFlow({ patterns: initialPatterns, groups, model }: Props) {
   const [step, setStep] = useState<Step>("upload");
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -80,32 +83,27 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
     ));
   }
 
-  function handleLearnPattern(description: string, category: CategoryKey) {
-    // Extract a keyword from the description for the pattern
-    const keyword = description.split(/\s*[—\-,]\s*/)[0].trim();
+  function handleLearnPattern(tx: ParsedTransaction, category: CategoryKey) {
+    // Match on the cleaned merchant name (escaped) and rename rows to it.
+    const keyword = literalPattern(tx.merchant);
     if (!keyword) return;
 
     startTransition(async () => {
-      const res = await createImportPattern(keyword, category);
+      const res = await createImportPattern(keyword, category, tx.groupId ?? null, { setName: tx.merchant });
       if (!res.ok) { toast.showError(res.error); return; }
-      const id = res.id;
-      const newPattern = { ID: id, PATTERN: keyword, CATEGORY: category, GROUP_ID: null, PRIORITY: 0 };
-      setPatterns(prev => [...prev, newPattern]);
-      // Re-classify unmatched transactions with new pattern
-      setTransactions(prev => prev.map(tx => {
-        if (tx.confidence !== "none") return tx;
-        try {
-          if (new RegExp(keyword, "i").test(tx.description)) {
-            return { ...tx, category, confidence: "pattern" as const, patternId: id };
-          }
-        } catch {
-          if (tx.description.toLowerCase().includes(keyword.toLowerCase())) {
-            return { ...tx, category, confidence: "pattern" as const, patternId: id };
-          }
-        }
-        return tx;
+      const newRule: Rule = {
+        ID: res.id, PATTERN: keyword, CATEGORY: category, GROUP_ID: tx.groupId ?? null, PRIORITY: 0,
+        SET_NAME: tx.merchant, SET_TAGS: null, SET_RECURRING: null, AMOUNT_MIN: null, AMOUNT_MAX: null,
+      };
+      setPatterns(prev => [...prev, newRule]);
+      // Re-classify unmatched transactions with the new rule
+      setTransactions(prev => prev.map(t => {
+        if (t.confidence === "pattern") return t;
+        const patch = applyRules([newRule], { text: t.description, amount: t.amount });
+        if (!patch) return t;
+        return { ...t, category, groupId: patch.groupId, confidence: "pattern" as const, patternId: newRule.ID, name: patch.name };
       }));
-      toast.show(`Pattern "${keyword}" → ${CATEGORIES[category].label} saved`);
+      toast.show(`Rule "${tx.merchant}" → ${CATEGORIES[category].label} saved`);
     });
   }
 
@@ -117,12 +115,14 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
           category: tx.category,
           // Group suggested by the matching pattern or the learned model.
           groupId: tx.groupId ?? null,
-          name: tx.description,
+          name: tx.name ?? tx.merchant,
           amount: tx.amount,
           month: tx.month,
-          notes: `Imported from bank CSV (${tx.date})`,
+          notes: `Imported from bank CSV (${tx.date}): ${tx.description}`,
           kind: tx.isIncome ? "income" as const : "expense" as const,
           day: /^\d{4}-\d{2}-\d{2}$/.test(tx.date) ? Number(tx.date.slice(8, 10)) : null,
+          tags: tx.tags ?? null,
+          isRecurring: tx.isRecurring ?? false,
         }))
       );
       if (!res.ok) { toast.showError(res.error); return; }
@@ -133,25 +133,30 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
     });
   }
 
+  const rulesEditor = <RulesEditor rules={patterns} groups={groups} onChange={setPatterns} />;
+
   // Upload step
   if (step === "upload") {
     return (
-      <div
-        onDrop={handleDrop}
-        onDragOver={(e) => e.preventDefault()}
-        className="card rounded-2xl p-10 text-center border-2 border-dashed border-white/10 hover:border-pink-500/30 transition-colors cursor-pointer group"
-        onClick={() => document.getElementById("csv-file")?.click()}
-      >
-        <input id="csv-file" type="file" accept=".csv" onChange={handleFileInput} className="hidden" />
-        <div className="space-y-3">
-          <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto group-hover:bg-pink-500/10 transition-colors">
-            <Upload size={28} strokeWidth={1.5} className="text-[#5a6380] group-hover:text-pink-400 transition-colors" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white">Drop CSV file here</p>
-            <p className="text-xs text-[#5a6380] mt-1">or click to browse — supports Swedbank Estonia format</p>
+      <div className="space-y-4">
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="card rounded-2xl p-10 text-center border-2 border-dashed border-white/10 hover:border-pink-500/30 transition-colors cursor-pointer group"
+          onClick={() => document.getElementById("csv-file")?.click()}
+        >
+          <input id="csv-file" type="file" accept=".csv" onChange={handleFileInput} className="hidden" />
+          <div className="space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto group-hover:bg-pink-500/10 transition-colors">
+              <Upload size={28} strokeWidth={1.5} className="text-[#5a6380] group-hover:text-pink-400 transition-colors" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Drop CSV file here</p>
+              <p className="text-xs text-[#5a6380] mt-1">or click to browse — supports Swedbank Estonia format</p>
+            </div>
           </div>
         </div>
+        {rulesEditor}
       </div>
     );
   }
@@ -266,11 +271,18 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
                       </div>
                     </div>
 
-                    {/* Description + date */}
+                    {/* Name (rule rename or cleaned merchant) + raw description + date */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white truncate">{tx.description}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-sm text-white truncate">
+                        {tx.name ?? tx.merchant}
+                        {tx.isRecurring && <Repeat size={11} className="inline ml-1.5 -mt-0.5 text-purple-300" aria-label="Recurring" />}
+                      </p>
+                      {(tx.name ?? tx.merchant) !== tx.description && (
+                        <p className="text-[10px] text-[#5a6380] truncate" title={tx.description}>{tx.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[10px] text-[#5a6380]">{tx.date}</span>
+                        {tx.tags && <span className="text-[10px] text-purple-300/80">{tx.tags}</span>}
                         {tx.confidence === "pattern" && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400">auto</span>
                         )}
@@ -285,7 +297,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
                         )}
                         {tx.confidence !== "pattern" && (
                           <button
-                            onClick={() => handleLearnPattern(tx.description, tx.category)}
+                            onClick={() => handleLearnPattern(tx, tx.category)}
                             className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 text-[#5a6380] hover:bg-purple-500/10 hover:text-purple-400 transition-colors"
                           >
                             learn
@@ -306,26 +318,7 @@ export default function ImportFlow({ patterns: initialPatterns, model }: Props) 
         );
       })}
 
-      {/* Patterns section */}
-      {patterns.length > 0 && (
-        <div className="card rounded-2xl px-5 py-4">
-          <h3 className="text-xs font-bold text-[#5a6380] uppercase tracking-widest mb-3">Learned patterns</h3>
-          <div className="flex flex-wrap gap-1.5">
-            {patterns.map(p => (
-              <span key={p.ID} className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg bg-white/5 text-[#9ca3c0] border border-white/[0.06]">
-                <CategoryIcon category={p.CATEGORY} size={14} />
-                <span>{p.PATTERN}</span>
-                <button onClick={() => {
-                  startTransition(async () => {
-                    await deleteImportPattern(p.ID);
-                    setPatterns(prev => prev.filter(x => x.ID !== p.ID));
-                  });
-                }} className="text-[#5a6380] hover:text-red-400 transition-colors ml-0.5">×</button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {rulesEditor}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition, useEffect } from "react";
-import { createExpense, updateExpense, getRecentNames, createGroup, getTags, getGoalOptions } from "@/app/actions";
+import { createExpense, updateExpense, getRecentNames, createGroup, getTags, getGoalOptions, splitExpense } from "@/app/actions";
 import { currentMonth, monthKey } from "@/lib/months";
 import { formatTags, parseTags } from "@/lib/tags";
 import type { Expense, CategoryKey, ExpenseGroup, Kind } from "@/types/expense";
@@ -10,9 +10,16 @@ import { useToast } from "./Toast";
 import CategoryIcon from "./CategoryIcon";
 import Glyph from "./Glyph";
 import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
-import { CirclePlus, Repeat } from "lucide-react";
+import { CirclePlus, Plus, Repeat, Split, X } from "lucide-react";
 
 type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; onDone: () => void };
+
+type Part = { category: CategoryKey; groupId: string; name: string; amount: string };
+
+const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const partAmount = (p: Part) => { const n = parseFloat(p.amount.replace(",", ".")); return Number.isFinite(n) ? n : 0; };
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const selectCls = "min-w-0 w-full border border-white/[0.08] rounded-xl px-2.5 py-2 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all";
 
 export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -43,6 +50,30 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
   const [localGroups, setLocalGroups] = useState<ExpenseGroup[]>([]);
   const [isCreatingGroup, startGroupTransition] = useTransition();
   const allGroups = [...groups, ...localGroups.filter((l) => !groups.some((g) => g.ID === l.ID))];
+  // Split editor (editing only): the first part keeps the row's category and
+  // the full amount; parts must add up to the row's amount before "Split" enables.
+  const [showSplit, setShowSplit] = useState(false);
+  const [parts, setParts] = useState<Part[]>(() => editing
+    ? [{ category: editing.CATEGORY, groupId: editing.GROUP_ID ?? "", name: "", amount: editing.AMOUNT.toString() }, { category: "other", groupId: "", name: "", amount: "" }]
+    : []);
+  const [isSplitting, startSplitTransition] = useTransition();
+  const partsSum = round2(parts.reduce((s, p) => s + partAmount(p), 0));
+  const remaining = editing ? round2(editing.AMOUNT - partsSum) : 0;
+  const splitReady = !!editing && Math.abs(remaining) < 0.005 && parts.length >= 2 && parts.every((p) => partAmount(p) > 0);
+
+  function updatePart(i: number, patch: Partial<Part>) {
+    setParts((prev) => prev.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  }
+  function submitSplit() {
+    if (!editing || !splitReady) return;
+    startSplitTransition(async () => {
+      const res = await splitExpense(editing.ID, parts.map((p) => ({ category: p.category, groupId: p.groupId || null, name: p.name.trim() || null, amount: round2(partAmount(p)) })));
+      if (!res.ok) { toast.showError(res.error); return; }
+      navigator.vibrate?.(10);
+      toast.show(`Split into ${res.ids.length} parts`);
+      onDone();
+    });
+  }
 
   function submitNewGroup() {
     const name = newGroupName?.trim();
@@ -222,7 +253,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
       )}
 
       {/* Name + Amount + Date */}
-      <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr] gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-3 min-w-0">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Name</label>
           <input ref={nameRef} name="name" required defaultValue={editing?.NAME} placeholder="e.g. Grocery store, Netflix..."
@@ -236,7 +267,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Date <span className="normal-case tracking-normal font-medium text-[#5a6380]/60">(optional)</span></label>
           <input name="date" type="date" defaultValue={defaultDate}
-            className="border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all font-mono tabular-nums [color-scheme:dark]" />
+            className="min-w-0 w-full border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500/40 transition-all font-mono tabular-nums [color-scheme:dark]" />
         </div>
       </div>
 
@@ -286,7 +317,69 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
           <CirclePlus size={11} />
           More
         </button>
+        {editing && (
+          <button type="button" onClick={() => setShowSplit(!showSplit)}
+            className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all ${
+              showSplit ? "border-amber-500/30 bg-amber-500/10 text-amber-400" : "border-white/[0.06] text-[#5a6380] hover:text-[#9ca3c0]"
+            }`}>
+            <Split size={11} />
+            Split…
+          </button>
+        )}
       </div>
+
+      {/* Split editor */}
+      {editing && showSplit && (
+        <div className="surface rounded-xl p-3 flex flex-col gap-3 border border-amber-500/20">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Split {fmt(editing.AMOUNT)} € into parts</span>
+            <span className={`text-[11px] font-mono tabular-nums font-bold ${Math.abs(remaining) < 0.005 ? "text-teal-400" : "text-red-400"}`}>
+              {Math.abs(remaining) < 0.005 ? "Adds up" : `${remaining > 0 ? "" : "−"}${fmt(Math.abs(remaining))} € ${remaining > 0 ? "left" : "over"}`}
+            </span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {parts.map((p, i) => (
+              <div key={i} className="grid grid-cols-2 gap-1.5 items-center">
+                <select value={p.category} onChange={(e) => updatePart(i, { category: e.target.value as CategoryKey })} aria-label={`Part ${i + 1} category`} className={selectCls}>
+                  {CATEGORY_KEYS.map((key) => <option key={key} value={key} className="panel">{CATEGORIES[key].label}</option>)}
+                </select>
+                <select value={p.groupId} onChange={(e) => updatePart(i, { groupId: e.target.value })} aria-label={`Part ${i + 1} group`} className={selectCls}>
+                  <option value="" className="panel">No group</option>
+                  {allGroups.map((g) => <option key={g.ID} value={g.ID} className="panel">{g.NAME}</option>)}
+                </select>
+                <input value={p.name} onChange={(e) => updatePart(i, { name: e.target.value })} placeholder={editing.NAME} aria-label={`Part ${i + 1} name`}
+                  className="min-w-0 border border-white/[0.08] rounded-xl px-2.5 py-2 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all placeholder:text-[#5a6380]" />
+                <div className="flex items-center gap-1">
+                  <input value={p.amount} onChange={(e) => updatePart(i, { amount: e.target.value })} type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" aria-label={`Part ${i + 1} amount`}
+                    className="w-full min-w-0 border border-white/[0.08] rounded-xl px-2.5 py-2 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all placeholder:text-[#5a6380] font-mono tabular-nums" />
+                  {Math.abs(remaining) >= 0.005 && (
+                    <button type="button" onClick={() => updatePart(i, { amount: round2(partAmount(p) + remaining).toString() })} title="Put the remainder here"
+                      className="shrink-0 text-[10px] font-bold px-1.5 py-1 rounded-lg border border-white/[0.06] text-[#5a6380] hover:text-amber-400 hover:border-amber-500/30 transition-all">
+                      rest
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setParts((prev) => prev.filter((_, j) => j !== i))} disabled={parts.length <= 2} aria-label={`Remove part ${i + 1}`}
+                    className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center text-[#5a6380] hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 transition-colors">
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setParts((prev) => [...prev, { category: "other", groupId: "", name: "", amount: "" }])} disabled={parts.length >= 10}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-dashed border-white/[0.08] text-[#9ca3c0] hover:text-white hover:border-white/15 disabled:opacity-40 transition-all">
+              <Plus size={11} /> Add part
+            </button>
+            <button type="button" onClick={submitSplit} disabled={!splitReady || isSplitting}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 disabled:opacity-40 transition-all btn-press">
+              <Split size={13} />
+              {isSplitting ? "Splitting..." : `Split into ${parts.length}`}
+            </button>
+          </div>
+          <p className="text-[10px] text-[#5a6380]">The first part keeps this row; the others become new rows in the same month. Empty names reuse “{editing.NAME}”.</p>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-2 pt-1">

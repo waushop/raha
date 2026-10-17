@@ -27,7 +27,8 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //   v8  + subscriptions section and SUBSCRIPTION_ID per row.
 //   v9  + plan_lines section (zero-based plan).
 //   v10 + paydays and balance_checkpoints sections (cash flow).
-const BACKUP_VERSION = 10;
+//   v11 + SPLIT_GROUP per row; import_patterns carry the rule fields.
+const BACKUP_VERSION = 11;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,7 +43,7 @@ export async function GET() {
   const ws = ctx.workspaceId;
 
   const [expenses] = await db.execute(
-    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, NOTES, IS_RECURRING, TAGS, CREATED_AT
+    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, NOTES, IS_RECURRING, TAGS, CREATED_AT
      FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`, [ws]
   );
   const [groups] = await db.execute(
@@ -50,7 +51,7 @@ export async function GET() {
   );
   const [budgets] = await db.execute("SELECT CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM BUDGET WHERE WORKSPACE_ID = ? ORDER BY CATEGORY", [ws]);
   const [patterns] = await db.execute(
-    "SELECT ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY FROM IMPORT_PATTERN WHERE WORKSPACE_ID = ? ORDER BY PRIORITY DESC, PATTERN", [ws]
+    "SELECT ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY, SET_NAME, SET_TAGS, SET_RECURRING, CAST(AMOUNT_MIN AS REAL) AS AMOUNT_MIN, CAST(AMOUNT_MAX AS REAL) AS AMOUNT_MAX FROM IMPORT_PATTERN WHERE WORKSPACE_ID = ? ORDER BY PRIORITY DESC, PATTERN", [ws]
   );
   const [goals] = await db.execute(
     "SELECT ID, NAME, ICON, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH, CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]
@@ -289,11 +290,14 @@ export async function POST(request: NextRequest) {
       if (!id || !UUID_RE.test(id) || !pattern || !isCategory(category)) continue;
       const groupId = str(p.GROUP_ID);
       if (foreign(tx, ws, "IMPORT_PATTERN", id)) continue;
+      const rec = num(p.SET_RECURRING);
       tx.run(
-        `INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY) VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY, SET_NAME, SET_TAGS, SET_RECURRING, AMOUNT_MIN, AMOUNT_MAX) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ID) DO UPDATE SET PATTERN = excluded.PATTERN, CATEGORY = excluded.CATEGORY,
-           GROUP_ID = excluded.GROUP_ID, PRIORITY = excluded.PRIORITY`,
-        [id, ws, pattern, category, groupId && liveGroupIds.has(groupId) ? groupId : null, num(p.PRIORITY) ?? 0],
+           GROUP_ID = excluded.GROUP_ID, PRIORITY = excluded.PRIORITY, SET_NAME = excluded.SET_NAME, SET_TAGS = excluded.SET_TAGS,
+           SET_RECURRING = excluded.SET_RECURRING, AMOUNT_MIN = excluded.AMOUNT_MIN, AMOUNT_MAX = excluded.AMOUNT_MAX`,
+        [id, ws, pattern, category, groupId && liveGroupIds.has(groupId) ? groupId : null, num(p.PRIORITY) ?? 0,
+         str(p.SET_NAME), str(p.SET_TAGS), rec === 1 ? 1 : rec === 0 ? 0 : null, num(p.AMOUNT_MIN), num(p.AMOUNT_MAX)],
       );
       stats.patterns++;
     }
@@ -317,13 +321,14 @@ export async function POST(request: NextRequest) {
       const tags = str(e.TAGS);
       const goalId = str(e.GOAL_ID);
       const subId = str(e.SUBSCRIPTION_ID);
+      const splitGroup = str(e.SPLIT_GROUP);
 
       tx.run(
-        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, NOTES, IS_RECURRING, TAGS)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, NOTES, IS_RECURRING, TAGS)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ID) DO UPDATE SET KIND = excluded.KIND, CATEGORY = excluded.CATEGORY, GROUP_ID = excluded.GROUP_ID,
            NAME = excluded.NAME, AMOUNT = excluded.AMOUNT, MONTH = excluded.MONTH, DAY = excluded.DAY, GOAL_ID = excluded.GOAL_ID,
-           SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
+           SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, SPLIT_GROUP = excluded.SPLIT_GROUP, NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
         [
           id,
           ws,
@@ -336,6 +341,7 @@ export async function POST(request: NextRequest) {
           day,
           goalId && liveGoalIds.has(goalId) ? goalId : null,
           subId && liveSubIds.has(subId) ? subId : null,
+          splitGroup && UUID_RE.test(splitGroup) ? splitGroup : null,
           str(e.NOTES),
           num(e.IS_RECURRING) ? 1 : 0,
           tags,

@@ -1,6 +1,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { parseSwedbankCSV, parseGenericCSV, classifyTransactions } from "@/lib/import-parser";
+import type { Rule } from "@/lib/rules";
+
+const rule = (o: Partial<Rule> & { ID: string; PATTERN: string; CATEGORY: string }): Rule => ({
+  GROUP_ID: null, PRIORITY: 0, SET_NAME: null, SET_TAGS: null, SET_RECURRING: null, AMOUNT_MIN: null, AMOUNT_MAX: null, ...o,
+});
 
 const SWEDBANK = [
   "Client account;Row type;Date;Beneficiary/Payer;Details;Amount;Currency;Debit/Credit;Reference;Type;RefNo;DocNo",
@@ -46,8 +51,8 @@ describe("classifyTransactions", () => {
 
   test("user patterns win over built-in guesses and respect priority", () => {
     const out = classifyTransactions(tx, [
-      { ID: "p1", PATTERN: "rimi", CATEGORY: "dining", GROUP_ID: null, PRIORITY: 0 },
-      { ID: "p2", PATTERN: "^RIMI", CATEGORY: "groceries", GROUP_ID: null, PRIORITY: 10 },
+      rule({ ID: "p1", PATTERN: "rimi", CATEGORY: "dining" }),
+      rule({ ID: "p2", PATTERN: "^RIMI", CATEGORY: "groceries", PRIORITY: 10 }),
     ]);
     assert.equal(out[0].category, "groceries");
     assert.equal(out[0].confidence, "pattern");
@@ -64,9 +69,32 @@ describe("classifyTransactions", () => {
   });
 
   test("an invalid regex pattern is treated as a plain substring", () => {
-    const out = classifyTransactions(tx, [{ ID: "p", PATTERN: "netflix(", CATEGORY: "entertainment", GROUP_ID: null, PRIORITY: 0 }]);
+    const out = classifyTransactions(tx, [rule({ ID: "p", PATTERN: "netflix(", CATEGORY: "entertainment" })]);
     assert.equal(out[2].category, "subscriptions", "substring 'netflix(' does not occur, so guess applies");
-    const out2 = classifyTransactions(tx, [{ ID: "p", PATTERN: "sala[ry", CATEGORY: "savings", GROUP_ID: null, PRIORITY: 0 }]);
+    const out2 = classifyTransactions(tx, [rule({ ID: "p", PATTERN: "sala[ry", CATEGORY: "savings" })]);
     assert.equal(out2[1].category, "other");
+  });
+
+  test("a matching rule carries name, tags, recurring and group; amount range is honoured", () => {
+    const out = classifyTransactions(tx, [
+      rule({ ID: "r1", PATTERN: "netflix", CATEGORY: "subscriptions", GROUP_ID: "g1", SET_NAME: "Netflix", SET_TAGS: "#tv", SET_RECURRING: 1 }),
+      rule({ ID: "r2", PATTERN: "rimi", CATEGORY: "household", AMOUNT_MIN: 100 }),
+    ]);
+    assert.equal(out[2].confidence, "pattern");
+    assert.equal(out[2].patternId, "r1");
+    assert.equal(out[2].groupId, "g1");
+    assert.equal(out[2].name, "Netflix");
+    assert.equal(out[2].tags, "#tv");
+    assert.equal(out[2].isRecurring, true);
+    // 42.10 is below the minimum, so the rule does not fire and the guess applies
+    assert.equal(out[0].confidence, "guess");
+    assert.equal(out[0].name, undefined);
+  });
+
+  test("every parsed transaction carries a cleaned merchant name", () => {
+    assert.deepEqual(tx.map((r) => r.merchant), ["Rimi Eesti Food AS", "Employer OÜ", "Netflix"]);
+    const simple = parseGenericCSV("Date,Name,Amount\n2026-01-05,CIRCLE K TALLINN 1234 EE 17.10.2026,-30");
+    assert.equal(simple[0].merchant, "Circle K");
+    assert.equal(simple[0].description, "CIRCLE K TALLINN 1234 EE 17.10.2026");
   });
 });

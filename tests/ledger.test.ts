@@ -161,4 +161,43 @@ describe("ledger writes", () => {
     assert.doesNotThrow(() => db.transaction((tx) => ledger.assertGroupExists(tx, WS, null)));
     assert.doesNotThrow(() => db.transaction((tx) => ledger.assertGroupExists(tx, WS, home)));
   });
+  test("splitRow keeps the id for the first part, shares a SPLIT_GROUP and enforces the sum", async () => {
+    let id = "";
+    db.transaction((tx) => { id = ledger.insertRow(tx, WS, row({ NAME: "Rimi", AMOUNT: 80, DAY: 5 }), "2026-10"); });
+    assert.throws(() => ledger.splitRow(WS, id, [{ category: "groceries", groupId: home, amount: 50 }, { category: "household", groupId: home, amount: 20 }]), /add up/);
+    const ids = ledger.splitRow(WS, id, [{ category: "groceries", groupId: home, amount: 60 }, { category: "household", groupId: home, name: "Rimi (cleaning)", amount: 20 }]);
+    assert.equal(ids[0], id);
+    const [rows] = await db.execute("SELECT NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, DAY, SPLIT_GROUP FROM LEDGER WHERE SPLIT_GROUP = ? AND DELETED_AT IS NULL ORDER BY AMOUNT DESC", [id]);
+    assert.deepEqual((rows as Array<Record<string, unknown>>).map((r) => ({ ...r })), [
+      { NAME: "Rimi", CATEGORY: "groceries", AMOUNT: 60, DAY: 5, SPLIT_GROUP: id },
+      { NAME: "Rimi (cleaning)", CATEGORY: "household", AMOUNT: 20, DAY: 5, SPLIT_GROUP: id },
+    ]);
+  });
+
+  test("bulkUpdate and bulkDelete touch only the workspace's live rows and audit each", async () => {
+    const ids: string[] = [];
+    db.transaction((tx) => {
+      ids.push(ledger.insertRow(tx, WS, row({ NAME: "A" }), "2026-10"));
+      ids.push(ledger.insertRow(tx, WS, row({ NAME: "B" }), "2026-10"));
+      ids.push(ledger.insertRow(tx, OTHER, row({ NAME: "C", GROUP_ID: null }), "2026-10"));
+    });
+    assert.equal(ledger.bulkUpdate(WS, ids, { category: "dining", tags: "#x", month: "2026-11" }), 2);
+    assert.equal(await count("CATEGORY = 'dining' AND MONTH = '2026-11' AND TAGS = '#x'"), 2);
+    assert.equal(await count("ID = ? AND CATEGORY = 'groceries'", [ids[2]]), 1, "other workspace untouched");
+    assert.equal(ledger.bulkDelete(WS, ids), 2);
+    assert.equal(await count("ID IN (?, ?)", [ids[0], ids[1]]), 0);
+    const [audit] = await db.execute("SELECT COUNT(*) AS N FROM LEDGER_AUDIT WHERE LEDGER_ID IN (?, ?) AND ACTION IN ('update', 'delete')", [ids[0], ids[1]]);
+    assert.equal((audit as Array<{ N: number }>)[0].N, 4);
+  });
+
+  test("applyRulesToRows rewrites matching rows, merges tags and is idempotent", async () => {
+    let id = "";
+    db.transaction((tx) => { id = ledger.insertRow(tx, WS, row({ NAME: "RIMI TALLINN 123", CATEGORY: "other", GROUP_ID: null, TAGS: "#old" }), "2026-10"); });
+    await db.execute("INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY, SET_NAME, SET_TAGS) VALUES (?, ?, 'rimi', 'groceries', ?, 1, 'Rimi', '#food')", [randomUUID(), WS, home]);
+    assert.equal(ledger.applyRulesToRows(WS), 1);
+    const [rows] = await db.execute("SELECT NAME, CATEGORY, GROUP_ID, TAGS FROM LEDGER WHERE ID = ?", [id]);
+    assert.deepEqual({ ...(rows as Array<Record<string, unknown>>)[0] }, { NAME: "Rimi", CATEGORY: "groceries", GROUP_ID: home, TAGS: "#old, #food" });
+    assert.equal(ledger.applyRulesToRows(WS), 0, "nothing left to change");
+  });
+
 });

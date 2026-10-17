@@ -35,6 +35,7 @@ import type { ExpenseGroup, Kind } from "@/types/expense";
 // on bad input instead, since that can only mean a programming error.
 
 import { attempt, type ActionResult } from "@/lib/action-result";
+import { applyRules, type Rule } from "@/lib/rules";
 
 /** Name of the signed-in user, for the sidebar. Null when signed out. */
 export async function whoAmI(): Promise<{ name: string; isAdmin: boolean } | null> {
@@ -78,6 +79,13 @@ export async function createExpense(formData: FormData): Promise<ActionResult> {
     db.transaction((tx) => {
       ledger.assertGroupExists(tx, ws, row.GROUP_ID);
       ledger.assertGoalExists(tx, ws, row.GOAL_ID);
+      // Rules only normalise the name and add tags on manual entry; the
+      // category the user picked stands.
+      if (row.KIND === "expense") {
+        const hit = applyRules(ledger.loadRules(tx, ws), { text: row.NAME, amount: row.AMOUNT });
+        if (hit?.name) row.NAME = hit.name;
+        if (hit?.tags) row.TAGS = ledger.mergeTags(row.TAGS, hit.tags);
+      }
       ledger.insertRow(tx, ws, row, month);
     });
     revalidatePath("/");
@@ -409,30 +417,118 @@ export async function getGoalOptions(): Promise<{ ID: string; NAME: string; ICON
 // IMPORT PATTERN ACTIONS
 // ============================================
 
-export type ImportPatternRow = {
-  ID: string;
-  PATTERN: string;
-  CATEGORY: string;
-  GROUP_ID: string | null;
-  PRIORITY: number;
-};
+/** A rule (lib/rules.ts); the table is still called IMPORT_PATTERN. */
+export type ImportPatternRow = Rule;
 
 export async function getImportPatterns(): Promise<ImportPatternRow[]> {
   const { workspaceId: ws } = await requireAuth();
-  const [rows] = await db.execute("SELECT ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY FROM IMPORT_PATTERN WHERE WORKSPACE_ID = ? ORDER BY PRIORITY DESC, PATTERN", [ws]);
+  const [rows] = await db.execute(`SELECT ${ledger.RULE_COLUMNS} FROM IMPORT_PATTERN WHERE WORKSPACE_ID = ? ORDER BY PRIORITY DESC, PATTERN`, [ws]);
   return rows as ImportPatternRow[];
 }
 
-export async function createImportPattern(pattern: string, category: string, groupId?: string | null): Promise<ActionResult<{ id: string }>> {
+export type RuleOptions = {
+  priority?: number;
+  setName?: string | null;
+  setTags?: string | null;
+  /** true = mark recurring, false = mark not recurring, null/undefined = leave alone */
+  setRecurring?: boolean | null;
+  amountMin?: number | null;
+  amountMax?: number | null;
+};
+
+function readRuleOptions(o: RuleOptions) {
+  const min = o.amountMin == null || o.amountMin === 0 ? null : parseAmount(o.amountMin, "Minimum");
+  const max = o.amountMax == null || o.amountMax === 0 ? null : parseAmount(o.amountMax, "Maximum");
+  if (min !== null && max !== null && min > max) throw new ValidationError("Minimum is above maximum");
+  const priority = o.priority === undefined ? 0 : Number(o.priority);
+  if (!Number.isInteger(priority) || priority < -100 || priority > 100) throw new ValidationError("Priority must be a whole number between -100 and 100");
+  return {
+    priority,
+    setName: o.setName ? parseName(o.setName, "Name", 120) : null,
+    setTags: o.setTags ? parseTagsText(o.setTags) : null,
+    setRecurring: o.setRecurring == null ? null : o.setRecurring ? 1 : 0,
+    min, max,
+  };
+}
+
+export async function createImportPattern(pattern: string, category: string, groupId?: string | null, options: RuleOptions = {}): Promise<ActionResult<{ id: string }>> {
   const { workspaceId: ws } = await requireAuth();
   return attempt(async () => {
     const id = randomUUID();
+    const o = readRuleOptions(options);
     await db.execute(
-      "INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID) VALUES (?, ?, ?, ?, ?)",
-      [id, ws, parsePattern(pattern), parseCategory(category), parseOptionalId(groupId, "Group")],
+      "INSERT INTO IMPORT_PATTERN (ID, WORKSPACE_ID, PATTERN, CATEGORY, GROUP_ID, PRIORITY, SET_NAME, SET_TAGS, SET_RECURRING, AMOUNT_MIN, AMOUNT_MAX) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, ws, parsePattern(pattern), parseCategory(category), parseOptionalId(groupId, "Group"), o.priority, o.setName, o.setTags, o.setRecurring, o.min, o.max],
     );
     revalidatePath("/import");
     return { id };
+  });
+}
+
+export async function updateImportPattern(id: string, pattern: string, category: string, groupId: string | null, options: RuleOptions = {}): Promise<ActionResult> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(async () => {
+    const o = readRuleOptions(options);
+    await db.execute(
+      "UPDATE IMPORT_PATTERN SET PATTERN=?, CATEGORY=?, GROUP_ID=?, PRIORITY=?, SET_NAME=?, SET_TAGS=?, SET_RECURRING=?, AMOUNT_MIN=?, AMOUNT_MAX=? WHERE ID=? AND WORKSPACE_ID=?",
+      [parsePattern(pattern), parseCategory(category), parseOptionalId(groupId, "Group"), o.priority, o.setName, o.setTags, o.setRecurring, o.min, o.max, parseId(id), ws],
+    );
+    revalidatePath("/import");
+    return {};
+  });
+}
+
+/** Re-runs one rule (or all) over the existing expense rows. Returns rows changed. */
+export async function applyRulesToExisting(ruleId?: string | null): Promise<ActionResult<{ changed: number }>> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(() => {
+    const changed = ledger.applyRulesToRows(ws, ruleId ? parseId(ruleId) : null);
+    if (changed > 0) { revalidatePath("/"); revalidatePath("/dashboard"); revalidatePath("/subscriptions"); }
+    return { changed };
+  });
+}
+
+// ---------- splits and bulk edits ----------
+
+export async function splitExpense(id: string, parts: Array<{ category: string; groupId: string | null; name?: string | null; amount: number }>): Promise<ActionResult<{ ids: string[] }>> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(() => {
+    if (!Array.isArray(parts) || parts.length < 2 || parts.length > 10) throw new ValidationError("Split into 2 to 10 parts");
+    const clean = parts.map((p) => ({
+      category: parseCategory(p.category),
+      groupId: parseOptionalId(p.groupId, "Group"),
+      name: p.name ? parseName(p.name, "Name", 120) : null,
+      amount: parseAmount(p.amount),
+    }));
+    const ids = ledger.splitRow(ws, parseId(id), clean);
+    revalidatePath("/");
+    return { ids };
+  });
+}
+
+export async function bulkUpdateExpenses(ids: string[], patch: { category?: string; groupId?: string | null; tags?: string | null; isRecurring?: boolean; month?: string }): Promise<ActionResult<{ changed: number }>> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(() => {
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) throw new ValidationError("Select 1 to 500 rows");
+    const clean: ledger.BulkPatch = {};
+    if (patch.category !== undefined) clean.category = parseCategory(patch.category);
+    if (patch.groupId !== undefined) clean.groupId = parseOptionalId(patch.groupId, "Group");
+    if (patch.tags !== undefined) clean.tags = parseTagsText(patch.tags);
+    if (patch.isRecurring !== undefined) clean.isRecurring = !!patch.isRecurring;
+    if (patch.month !== undefined) clean.month = parseMonth(patch.month);
+    const changed = ledger.bulkUpdate(ws, ids.map((i) => parseId(i)), clean);
+    revalidatePath("/"); revalidatePath("/dashboard"); revalidatePath("/subscriptions");
+    return { changed };
+  });
+}
+
+export async function bulkDeleteExpenses(ids: string[]): Promise<ActionResult<{ changed: number }>> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(() => {
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) throw new ValidationError("Select 1 to 500 rows");
+    const changed = ledger.bulkDelete(ws, ids.map((i) => parseId(i)));
+    revalidatePath("/"); revalidatePath("/dashboard"); revalidatePath("/activity");
+    return { changed };
   });
 }
 
@@ -445,7 +541,7 @@ export async function deleteImportPattern(id: string) {
 const MAX_IMPORT_ROWS = 5000;
 
 export async function importTransactions(
-  transactions: Array<{ category: string; groupId: string | null; name: string; amount: number; month: string; notes: string | null; kind?: Kind; day?: number | null }>,
+  transactions: Array<{ category: string; groupId: string | null; name: string; amount: number; month: string; notes: string | null; kind?: Kind; day?: number | null; tags?: string | null; isRecurring?: boolean }>,
 ): Promise<ActionResult<{ count: number }>> {
   const { workspaceId: ws } = await requireAuth();
   return attempt(() => {
@@ -460,6 +556,8 @@ export async function importTransactions(
       month: parseMonth(t.month),
       notes: parseOptionalText(t.notes, "Notes"),
       day: parseOptionalDay(t.day ?? "", parseMonth(t.month)),
+      tags: t.tags ? parseTagsText(t.tags) : null,
+      isRecurring: !!t.isRecurring,
     }));
     const count = ledger.importRows(ws, rows);
     if (count > 0) revalidatePath("/");

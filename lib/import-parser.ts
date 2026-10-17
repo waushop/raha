@@ -1,5 +1,7 @@
 import type { CategoryKey } from "@/types/expense";
 import { predict, type ClassifierModel } from "./classifier";
+import { applyRules, type Rule } from "./rules";
+import { cleanMerchant } from "./merchants";
 
 export type ParsedTransaction = {
   date: string;          // YYYY-MM-DD
@@ -10,17 +12,16 @@ export type ParsedTransaction = {
   isIncome: boolean;
   category: CategoryKey;
   confidence: "pattern" | "learned" | "guess" | "manual" | "none";
-  patternId?: string;    // which pattern matched
-  groupId?: string | null; // suggested by a pattern or the learned model
+  patternId?: string;    // which rule matched
+  groupId?: string | null; // suggested by a rule or the learned model
+  merchant: string;      // cleanMerchant(description): what a human would type
+  name?: string;         // rename from the matching rule (SET_NAME)
+  tags?: string | null;  // tags from the matching rule (SET_TAGS)
+  isRecurring?: boolean; // recurring flag from the matching rule (SET_RECURRING)
 };
 
-export type ImportPattern = {
-  ID: string;
-  PATTERN: string;
-  CATEGORY: string;
-  GROUP_ID: string | null;
-  PRIORITY: number;
-};
+/** Rules live in lib/rules.ts; the old name is kept for callers. */
+export type ImportPattern = Rule;
 
 /**
  * Parse Swedbank Estonia CSV export.
@@ -74,6 +75,7 @@ export function parseSwedbankCSV(csv: string): ParsedTransaction[] {
       date,
       month,
       description,
+      merchant: cleanMerchant(description),
       amount,
       currency,
       isIncome,
@@ -123,6 +125,7 @@ export function parseGenericCSV(csv: string): ParsedTransaction[] {
       date: date || dateStr,
       month: date ? date.substring(0, 7) : "",
       description,
+      merchant: cleanMerchant(description),
       amount,
       currency: "EUR",
       isIncome,
@@ -135,42 +138,28 @@ export function parseGenericCSV(csv: string): ParsedTransaction[] {
 }
 
 /**
- * Apply pattern-based auto-categorization to parsed transactions.
+ * Auto-categorise parsed transactions: user rules first (lib/rules.ts), then
+ * the model learned from the ledger, then built-in keyword guesses.
  */
 export function classifyTransactions(
   transactions: ParsedTransaction[],
-  patterns: ImportPattern[],
+  rules: Rule[],
   model?: ClassifierModel | null,
 ): ParsedTransaction[] {
-  // Sort by priority descending
-  const sorted = [...patterns].sort((a, b) => b.PRIORITY - a.PRIORITY);
-
   return transactions.map(tx => {
-    const desc = tx.description.toLowerCase();
-
-    for (const p of sorted) {
-      try {
-        if (new RegExp(p.PATTERN, "i").test(tx.description)) {
-          return {
-            ...tx,
-            category: p.CATEGORY as CategoryKey,
-            confidence: "pattern",
-            patternId: p.ID,
-            groupId: p.GROUP_ID,
-          };
-        }
-      } catch {
-        // Invalid regex, try as plain substring
-        if (desc.includes(p.PATTERN.toLowerCase())) {
-          return {
-            ...tx,
-            category: p.CATEGORY as CategoryKey,
-            confidence: "pattern",
-            patternId: p.ID,
-            groupId: p.GROUP_ID,
-          };
-        }
-      }
+    const patch = applyRules(rules, { text: tx.description, amount: tx.amount });
+    if (patch) {
+      const out: ParsedTransaction = {
+        ...tx,
+        category: patch.category as CategoryKey,
+        confidence: "pattern",
+        patternId: patch.ruleId,
+        groupId: patch.groupId,
+      };
+      if (patch.name !== undefined) out.name = patch.name;
+      if (patch.tags !== undefined) out.tags = patch.tags;
+      if (patch.isRecurring !== undefined) out.isRecurring = patch.isRecurring;
+      return out;
     }
 
     // Learned from the user's own history (beats generic keyword guesses).
@@ -182,7 +171,7 @@ export function classifyTransactions(
     }
 
     // Guess based on common keywords
-    const guessed = guessCategory(desc);
+    const guessed = guessCategory(tx.description.toLowerCase());
     if (guessed) {
       return { ...tx, category: guessed, confidence: "guess" };
     }

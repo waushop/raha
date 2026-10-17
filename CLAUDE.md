@@ -13,6 +13,8 @@
 
 ### Database
 - **LEDGER** table: `ID` (UUID), `KIND` (`expense` | `income`), `CATEGORY`, `GROUP_ID`, `NAME`, `AMOUNT`, `MONTH` (YYYY-MM), `DAY` (1–31 or NULL), `NOTES`, `IS_RECURRING`, `TAGS` (normalised "#a, #b" text). Spending aggregates must filter `KIND = 'expense'`.
+- **Splits**: `LEDGER.SPLIT_GROUP` groups the parts of one bank line (`lib/ledger.ts` `splitRow`: first part keeps the id, parts must sum to the original). **Bulk edits**: `bulkUpdate` / `bulkDelete` (category, group, tags, recurring, month; scoped to owned live rows; one audit entry per row).
+- **Rules** live in **IMPORT_PATTERN** (`PATTERN` regex-or-substring, `CATEGORY`, `GROUP_ID`, `PRIORITY`, `SET_NAME`, `SET_TAGS`, `SET_RECURRING` 1/0/NULL, `AMOUNT_MIN`/`AMOUNT_MAX`). `lib/rules.ts` `applyRules` picks the highest-priority match; rules run on CSV import, on "apply to existing rows" (`applyRulesToRows`) and, name + tags only, on manual entry. `lib/merchants.ts` `cleanMerchant` normalises bank descriptions; `lib/quickadd.ts` parses "coffee 3.5 #work" / "+2850 salary".
 - **LEDGER_TAG**: one row per tag per ledger row, kept in sync with `TAGS` by `lib/ledger.ts` (`syncTags`); search/analytics filter on it.
 - **LEDGER_AUDIT**: before/after JSON for every ledger write (`lib/ledger.ts` `audit` / `auditedUpdate`); `/activity` reads it, falling back to timestamps on pre-audit databases.
 - **CATEGORY_GROUP** table: `ID`, `NAME`, `ICON` (a `lib/icon-names.ts` name or NULL; the old `EMOJI` column is renamed and mapped by `migrateIcons`), `COLOR`, `SORT_ORDER` (reorderable from `/groups`)
@@ -24,7 +26,7 @@
 - **BUDGET** (current targets, `_total` pseudo-key), **BUDGET_HISTORY** (snapshot per month, written on edit and when the dashboard first renders a month; analytics "Budget vs actual" uses `resolveBudgetsFor`), **IMPORT_PATTERN**, **APP_SETTING** (PIN hash)
 - Soft deletes via `DELETED_AT` (config tables BUDGET / IMPORT_PATTERN hard-delete by design)
 - Schema + idempotent migrations (EXPENSE→LEDGER rename, KIND and DAY columns, tag backfill): `lib/schema.ts`
-- Import categorisation order: learned regex patterns → `lib/classifier.ts` (naive Bayes trained on the ledger at page load) → keyword guesses. Dashboard forecast is `lib/forecast.ts` (spent + recurring still due + variable daily rate × days left).
+- Import categorisation order: rules (`lib/rules.ts`) → `lib/classifier.ts` (naive Bayes trained on the ledger at page load) → keyword guesses. Dashboard forecast is `lib/forecast.ts` (spent + recurring still due + variable daily rate × days left).
 - Shared write logic in `lib/ledger.ts` (copy/backfill/import/dedup, audit, tags); shared read queries in `lib/queries.ts`; month helpers in `lib/months.ts`; input parsing in `lib/validate.ts`
 
 ### Categories
@@ -52,7 +54,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 
 ### APIs (3)
 - `GET /api/export?month=` or `?year=` — CSV download
-- `GET/POST /api/backup` — JSON backup/restore (v10: ledger incl. DAY, GOAL_ID and SUBSCRIPTION_ID + subscriptions + plan_lines + paydays + balance_checkpoints + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
+- `GET/POST /api/backup` — JSON backup/restore (v11: ledger incl. DAY, GOAL_ID, SUBSCRIPTION_ID and SPLIT_GROUP + subscriptions + plan_lines + paydays + balance_checkpoints + goals + groups (ICON names; older files' EMOJI is mapped on restore) + budgets + budget history + import patterns; rows keep their IDs so restore is idempotent and overwrites to backup values; tags are rebuilt from TAGS)
 - `POST /api/import` — CSV import matching the export's columns by header (Kind, Notes, Recurring, Day honoured; old Estonian headers accepted), deduplicated by name+amount+month
 
 ## Conventions
