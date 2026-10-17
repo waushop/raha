@@ -14,7 +14,7 @@ describe("schema", () => {
   test("fresh database gets every table, index and trigger", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
-    assert.deepEqual(tableNames(db), ["APP_SETTING", "BUDGET", "BUDGET_HISTORY", "CATEGORY_GROUP", "IMPORT_PATTERN", "LEDGER", "LEDGER_AUDIT", "LEDGER_TAG", "LOGIN_CHALLENGE", "PLAN_LINE", "SAVINGS_GOAL", "SUBSCRIPTION", "TRUSTED_DEVICE", "USER", "WORKSPACE", "WORKSPACE_MEMBER"]);
+    assert.deepEqual(tableNames(db), ["APP_SETTING", "BALANCE_CHECKPOINT", "BUDGET", "BUDGET_HISTORY", "CATEGORY_GROUP", "IMPORT_PATTERN", "LEDGER", "LEDGER_AUDIT", "LEDGER_TAG", "LOGIN_CHALLENGE", "PAYDAY", "PLAN_LINE", "SAVINGS_GOAL", "SUBSCRIPTION", "TRUSTED_DEVICE", "USER", "WORKSPACE", "WORKSPACE_MEMBER"]);
     assert.ok(columns(db, "LEDGER").includes("KIND"));
     assert.ok(columns(db, "LEDGER").includes("DAY"));
     assert.ok(columns(db, "LEDGER").includes("GOAL_ID"));
@@ -27,7 +27,7 @@ describe("schema", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
     initSchema(db);
-    assert.equal(tableNames(db).length, 16);
+    assert.equal(tableNames(db).length, 18);
   });
 
   test("migrates a pre-income database: renames tables and adds KIND", () => {

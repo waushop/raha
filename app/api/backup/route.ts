@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { iconFromLegacy } from "@/lib/icon-names";
 import { CADENCES, STATUSES, backfillSubscriptions } from "@/lib/subscriptions";
 import { PLAN_KINDS } from "@/lib/plan";
+import { PAYDAY_CADENCES } from "@/lib/cashflow";
 import { currentMonth } from "@/lib/months";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
@@ -25,7 +26,8 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //       EMOJI; older files' EMOJI values are mapped on restore.
 //   v8  + subscriptions section and SUBSCRIPTION_ID per row.
 //   v9  + plan_lines section (zero-based plan).
-const BACKUP_VERSION = 9;
+//   v10 + paydays and balance_checkpoints sections (cash flow).
+const BACKUP_VERSION = 10;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,6 +56,8 @@ export async function GET() {
     "SELECT ID, NAME, ICON, CAST(TARGET_AMOUNT AS REAL) AS TARGET_AMOUNT, TARGET_MONTH, CAST(STARTING_AMOUNT AS REAL) AS STARTING_AMOUNT FROM SAVINGS_GOAL WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]
   );
   const [budgetHistory] = await db.execute("SELECT MONTH, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT FROM BUDGET_HISTORY WHERE WORKSPACE_ID = ? ORDER BY MONTH, CATEGORY", [ws]);
+  const [paydays] = await db.execute("SELECT ID, LABEL, CAST(AMOUNT AS REAL) AS AMOUNT, CADENCE, DAY, START_DATE FROM PAYDAY WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT", [ws]);
+  const [checkpoints] = await db.execute("SELECT ID, DATE, CAST(AMOUNT AS REAL) AS AMOUNT, NOTE FROM BALANCE_CHECKPOINT WHERE WORKSPACE_ID = ? ORDER BY DATE", [ws]);
   const [planLines] = await db.execute(
     "SELECT ID, MONTH, KIND, CATEGORY, GROUP_ID, LABEL, CAST(PLANNED AS REAL) AS PLANNED, SORT_ORDER, SUBSCRIPTION_ID FROM PLAN_LINE WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, SORT_ORDER", [ws]
   );
@@ -71,6 +75,8 @@ export async function GET() {
     goals,
     subscriptions,
     plan_lines: planLines,
+    paydays,
+    balance_checkpoints: checkpoints,
     import_patterns: patterns,
     expenses, // legacy field name kept so older importers still find the rows
   };
@@ -122,10 +128,12 @@ export async function POST(request: NextRequest) {
   const goals = Array.isArray(body.goals) ? body.goals : [];
   const subscriptions = Array.isArray(body.subscriptions) ? body.subscriptions : [];
   const planLines = Array.isArray(body.plan_lines) ? body.plan_lines : [];
+  const paydays = Array.isArray(body.paydays) ? body.paydays : [];
+  const checkpoints = Array.isArray(body.balance_checkpoints) ? body.balance_checkpoints : [];
   const expenses = body.expenses;
 
   const result = db.transaction((tx) => {
-    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0, subscriptions: 0, plan_lines: 0 };
+    const stats = { imported: 0, updated: 0, skipped: 0, groups: 0, budgets: 0, patterns: 0, budget_history: 0, goals: 0, subscriptions: 0, plan_lines: 0, paydays: 0, balance_checkpoints: 0 };
 
     for (const g of groups) {
       if (!isObj(g)) continue;
@@ -194,6 +202,36 @@ export async function POST(request: NextRequest) {
     const liveSubIds = new Set(
       tx.all<{ ID: string }>("SELECT ID FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]).map((r) => r.ID),
     );
+
+    for (const pd of paydays) {
+      if (!isObj(pd)) continue;
+      const id = str(pd.ID);
+      const label = str(pd.LABEL);
+      const amount = num(pd.AMOUNT);
+      const cadence = str(pd.CADENCE) ?? "monthly";
+      if (!id || !UUID_RE.test(id) || !label || amount === null || amount <= 0 || !(PAYDAY_CADENCES as readonly string[]).includes(cadence)) continue;
+      if (foreign(tx, ws, "PAYDAY", id)) continue;
+      const day = num(pd.DAY);
+      tx.run(
+        `INSERT INTO PAYDAY (ID, WORKSPACE_ID, LABEL, AMOUNT, CADENCE, DAY, START_DATE) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(ID) DO UPDATE SET LABEL = excluded.LABEL, AMOUNT = excluded.AMOUNT, CADENCE = excluded.CADENCE, DAY = excluded.DAY, START_DATE = excluded.START_DATE, DELETED_AT = NULL`,
+        [id, ws, label, amount, cadence, day !== null && Number.isInteger(day) && day >= 1 && day <= 31 ? day : null, str(pd.START_DATE)],
+      );
+      stats.paydays++;
+    }
+    for (const c of checkpoints) {
+      if (!isObj(c)) continue;
+      const id = str(c.ID);
+      const date = str(c.DATE);
+      const amount = num(c.AMOUNT);
+      if (!id || !UUID_RE.test(id) || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || amount === null) continue;
+      if (foreign(tx, ws, "BALANCE_CHECKPOINT", id)) continue;
+      tx.run(
+        "INSERT INTO BALANCE_CHECKPOINT (ID, WORKSPACE_ID, DATE, AMOUNT, NOTE) VALUES (?, ?, ?, ?, ?) ON CONFLICT(ID) DO UPDATE SET DATE = excluded.DATE, AMOUNT = excluded.AMOUNT, NOTE = excluded.NOTE",
+        [id, ws, date, amount, str(c.NOTE)],
+      );
+      stats.balance_checkpoints++;
+    }
 
     for (const l of planLines) {
       if (!isObj(l)) continue;

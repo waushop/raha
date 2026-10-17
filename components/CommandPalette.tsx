@@ -15,7 +15,7 @@ import {
   Search,
   Settings,
   Target,
-  Upload, ListChecks } from "lucide-react";
+  Upload, ListChecks, ChartLine } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
@@ -25,6 +25,7 @@ const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
   { label: "Groups", path: "/groups", icon: Folder },
   { label: "Goals", path: "/goals", icon: Target },
   { label: "Plan (zero-based)", path: "/plan", icon: ListChecks },
+  { label: "Cash flow / safe to spend", path: "/cashflow", icon: ChartLine },
   { label: "Subscriptions", path: "/subscriptions", icon: Repeat },
   { label: "Activity", path: "/activity", icon: Activity },
   { label: "Monthly review", path: "/review", icon: ClipboardList },

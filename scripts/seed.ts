@@ -190,7 +190,7 @@ const result = db.transaction((tx) => {
     throw new Error(`LEDGER already has ${existing} rows. Re-run with --force to wipe and reseed.`);
   }
   if (force) {
-    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL", "SUBSCRIPTION", "PLAN_LINE"]) tx.run(`DELETE FROM ${t}`);
+    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "CATEGORY_GROUP", "BUDGET", "BUDGET_HISTORY", "IMPORT_PATTERN", "SAVINGS_GOAL", "SUBSCRIPTION", "PLAN_LINE", "PAYDAY", "BALANCE_CHECKPOINT"]) tx.run(`DELETE FROM ${t}`);
   }
 
   tx.run("INSERT INTO SAVINGS_GOAL (ID, WORKSPACE_ID, NAME, ICON, TARGET_AMOUNT, TARGET_MONTH, STARTING_AMOUNT, CREATED_AT) VALUES (?, ?, 'Emergency fund', 'shield', 6000, ?, 1500, ?)", [GOAL_FUND, ws, addMonthsKey(months[months.length - 1], 8), `${months[0]}-01 09:00:00`]);
@@ -233,6 +233,10 @@ const result = db.transaction((tx) => {
   }
 
   const subscriptions = backfillSubscriptions(tx, currentMonth(), randomUUID);
+
+  // Cash flow: salary on the 1st and a balance checkpoint from this morning.
+  tx.run("INSERT INTO PAYDAY (ID, WORKSPACE_ID, LABEL, AMOUNT, CADENCE, DAY) VALUES (?, ?, 'Salary', 2850, 'monthly', 1)", [randomUUID(), ws]);
+  tx.run("INSERT INTO BALANCE_CHECKPOINT (ID, WORKSPACE_ID, DATE, AMOUNT, NOTE) VALUES (?, ?, ?, 1850, 'Seeded')", [randomUUID(), ws, new Date().toISOString().slice(0, 10)]);
 
   // A zero-based plan for the current month: income, a line per group, a fund.
   const planMonth = months[months.length - 1];

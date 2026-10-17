@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import { listMonths, whoAmI } from "@/app/actions";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
-import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks } from "lucide-react";
+import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks, ChartLine } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { OPEN_MENU_EVENT } from "./BottomNav";
 
@@ -196,6 +196,17 @@ export default function Sidebar() {
             >
               <ListChecks size={14} />
               Plan
+            </button>
+            <button
+              onClick={() => router.push("/cashflow")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
+                pathname === "/cashflow"
+                  ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
+                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <ChartLine size={14} />
+              Cash flow
             </button>
             <button
               onClick={() => router.push("/goals")}

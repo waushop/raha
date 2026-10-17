@@ -18,9 +18,10 @@ import { addMonths, daysInMonth } from "@/lib/months";
 import { forecastMonth, variableDailyRate } from "@/lib/forecast";
 import CategoryIcon from "@/components/CategoryIcon";
 import Glyph from "@/components/Glyph";
-import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, Layers, ListChecks, Receipt, Repeat, TriangleAlert, TrendingUp } from "lucide-react";
+import { CalendarClock, CalendarDays, CalendarRange, ChartColumn, ChartLine, Layers, ListChecks, Receipt, Repeat, TriangleAlert, TrendingDown, TrendingUp } from "lucide-react";
 import { listSubscriptions } from "@/lib/subscriptions-db";
 import { getPlan } from "@/lib/plan-db";
+import { getCashflow } from "@/lib/cashflow-db";
 import { isoDate, upcoming } from "@/lib/subscriptions";
 import type { Insight } from "@/components/Insights";
 
@@ -222,7 +223,14 @@ export default async function DashboardPage() {
     today, 7,
   );
   const nextBill = dueSoon[0] ?? null;
+  // Cash flow (only once a balance checkpoint exists)
+  const cash = await getCashflow(ws, today);
+  const cashInsights: Insight[] = cash.projection && cash.projection.lowPoint.balance < 0
+    ? [{ icon: TrendingDown, text: `Balance dips to ${fmt(cash.projection.lowPoint.balance)} € on ${cash.projection.lowPoint.date.slice(5).replace("-", "/")}${cash.projection.nextPayday ? `, before the ${cash.projection.nextPayday.date.slice(5).replace("-", "/")} payday` : ""}`, type: "warning" as const }]
+    : [];
+
   const subInsights: Insight[] = [
+    ...cashInsights,
     ...activeSubs.filter((s) => s.TRIAL_ENDS && s.TRIAL_ENDS >= today && Date.parse(s.TRIAL_ENDS) - Date.parse(today) <= 3 * 86400000)
       .map((s) => ({ icon: CalendarClock, text: `${s.NAME} trial ends ${s.TRIAL_ENDS} — ${fmt(s.AMOUNT)} € after that`, type: "warning" as const })),
     ...activeSubs.filter((s) => s.previousAmount !== null && s.AMOUNT > s.previousAmount && s.changedIn !== null && s.changedIn >= addMonths(thisMonth, -1))
@@ -500,6 +508,19 @@ export default async function DashboardPage() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Safe to spend */}
+          {cash.projection && (
+            <Link href="/cashflow" className={`card card-hover rounded-2xl p-5 animate-fade-up block border ${cash.projection.safeToSpend < 0 ? "border-red-500/30" : "border-teal-500/20"}`} style={{ animationDelay: "0.078s" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <ChartLine size={14} className="text-teal-400" />
+                <h2 className="text-sm font-bold text-white">Safe to spend</h2>
+                <span className="ml-auto text-[10px] text-[#5a6380]">{cash.projection.nextPayday ? `until ${cash.projection.nextPayday.date.slice(5).replace("-", "/")}` : "next 60 days"}</span>
+              </div>
+              <p className={`text-2xl font-bold font-mono tabular-nums ${cash.projection.safeToSpend < 0 ? "text-red-400" : cash.projection.safeToSpend < cash.buffer ? "text-amber-400" : "text-teal-400"}`}>{fmt(cash.projection.safeToSpend)} €</p>
+              <p className="text-[10px] text-[#5a6380] mt-1">balance {fmt(cash.balanceToday ?? 0)} € · low point {fmt(cash.projection.lowPoint.balance)} € on {cash.projection.lowPoint.date.slice(5).replace("-", "/")}</p>
+            </Link>
+          )}
+
           {/* Plan */}
           <Link href={`/plan?month=${thisMonth}`} className="card card-hover rounded-2xl p-5 animate-fade-up block" style={{ animationDelay: "0.08s" }}>
             <div className="flex items-center gap-2 mb-3">

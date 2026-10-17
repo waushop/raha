@@ -5,6 +5,7 @@ import { CATEGORY_KEYS, GROUP_COLORS, type CategoryKey } from "@/types/expense";
 import { iconFromLegacy, type IconName } from "./icon-names";
 import { MONTH_RE, daysInMonth } from "./months";
 import { CADENCES, STATUSES, type Cadence, type SubscriptionStatus } from "./subscriptions";
+import { PAYDAY_CADENCES, type PaydayCadence } from "./cashflow";
 import { MAX_TAGS, MAX_TAG_LENGTH, formatTags, parseTags } from "./tags";
 
 export class ValidationError extends Error {
@@ -79,6 +80,20 @@ export function parseCadence(v: unknown): Cadence {
   const s = text(v) || "monthly";
   if (!(CADENCES as readonly string[]).includes(s)) throw new ValidationError("Unknown cadence");
   return s as Cadence;
+}
+
+export function parsePaydayCadence(v: unknown): PaydayCadence {
+  const s = text(v) || "monthly";
+  if (!(PAYDAY_CADENCES as readonly string[]).includes(s)) throw new ValidationError("Unknown cadence");
+  return s as PaydayCadence;
+}
+
+/** A signed amount (balances can be negative), at most 2 decimals. */
+export function parseSignedAmount(v: unknown, label = "Amount"): number {
+  const s = text(v).replace(",", ".");
+  const n = Number(s);
+  if (!s || !Number.isFinite(n) || Math.abs(n) > 1e9) throw new ValidationError(`${label} must be a number`);
+  return Math.round(n * 100) / 100;
 }
 
 export function parseSubscriptionStatus(v: unknown): SubscriptionStatus {
