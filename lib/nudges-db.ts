@@ -31,9 +31,14 @@ function ensureVapid(): boolean {
   return true;
 }
 
-export async function listInbox(ws: string, limit = 50): Promise<InboxItem[]> {
-  const [rows] = await db.execute("SELECT ID, CREATED_AT, KIND, TITLE, BODY, URL, READ_AT FROM NOTIFICATION WHERE WORKSPACE_ID = ? ORDER BY CREATED_AT DESC LIMIT ?", [ws, limit]);
+export async function listInbox(ws: string, limit = 50, offset = 0): Promise<InboxItem[]> {
+  const [rows] = await db.execute("SELECT ID, CREATED_AT, KIND, TITLE, BODY, URL, READ_AT FROM NOTIFICATION WHERE WORKSPACE_ID = ? ORDER BY CREATED_AT DESC, ID LIMIT ? OFFSET ?", [ws, limit, offset]);
   return rows as InboxItem[];
+}
+
+export async function inboxCount(ws: string): Promise<number> {
+  const [rows] = await db.execute("SELECT COUNT(*) AS N FROM NOTIFICATION WHERE WORKSPACE_ID = ?", [ws]);
+  return (rows as { N: number }[])[0]?.N ?? 0;
 }
 
 export async function unreadCount(ws: string): Promise<number> {

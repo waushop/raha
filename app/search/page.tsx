@@ -10,11 +10,14 @@ import CategoryIcon from "@/components/CategoryIcon";
 import Glyph from "@/components/Glyph";
 import { getGroups, getTags } from "@/app/actions";
 import { isValidMonth, monthLabel } from "@/lib/months";
+import { pageInfo, parsePage } from "@/lib/pagination";
+import Pagination, { pageHref } from "@/components/Pagination";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-type Params = { q?: string; kind?: string; category?: string; group?: string; tag?: string; min?: string; max?: string; from?: string; to?: string };
+type Params = { q?: string; kind?: string; category?: string; group?: string; tag?: string; min?: string; max?: string; from?: string; to?: string; page?: string };
+const PAGE_SIZE = 50;
 
 // Escape LIKE wildcards so a literal "%" or "_" in the query means itself.
 const like = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -49,25 +52,33 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const hasCriteria = where.length > 2;
   let results: Expense[] = [];
   let totalFound = 0;
+  let netTotal = 0;
+  let info = pageInfo(0, 1, PAGE_SIZE);
 
   if (hasCriteria) {
+    const [countRows] = await db.execute(
+      `SELECT COUNT(*) AS CNT, CAST(SUM(CASE WHEN e.KIND = 'income' THEN e.AMOUNT ELSE -e.AMOUNT END) AS REAL) AS NET FROM LEDGER e WHERE ${where.join(" AND ")}`, args,
+    );
+    const agg = (countRows as Array<{ CNT: number; NET: number | null }>)[0];
+    totalFound = agg?.CNT ?? 0;
+    netTotal = agg?.NET ?? 0;
+    info = pageInfo(totalFound, parsePage(p.page), PAGE_SIZE);
     const [rows] = await db.execute(
       `SELECT e.ID, e.KIND, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.NOTES, e.IS_RECURRING, e.TAGS,
               e.GROUP_ID, g.NAME AS GROUP_NAME, g.ICON AS GROUP_ICON, g.COLOR AS GROUP_COLOR
        FROM LEDGER e
        LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
        WHERE ${where.join(" AND ")}
-       ORDER BY e.MONTH DESC, e.DAY DESC, e.AMOUNT DESC
-       LIMIT 100`,
-      args,
+       ORDER BY e.MONTH DESC, e.DAY DESC, e.AMOUNT DESC, e.ID
+       LIMIT ? OFFSET ?`,
+      [...args, PAGE_SIZE, info.offset],
     );
     results = rows as Expense[];
-    const [countRows] = await db.execute(`SELECT COUNT(*) AS CNT FROM LEDGER e WHERE ${where.join(" AND ")}`, args);
-    totalFound = (countRows as Array<{ CNT: number }>)[0]?.CNT ?? 0;
   }
 
   const [groups, tags] = await Promise.all([getGroups(), getTags()]);
-  const sum = results.reduce((s, e) => s + (e.KIND === "income" ? e.AMOUNT : -e.AMOUNT), 0);
+  // Net over every match, not just this page.
+  const sum = netTotal;
 
   const byMonth = new Map<string, Expense[]>();
   for (const e of results) {
@@ -97,9 +108,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           <p className="text-xs text-[#5a6380] animate-fade-up flex items-center justify-between" style={{ animationDelay: "0.08s" }}>
             <span>
               {totalFound} result{totalFound !== 1 ? "s" : ""}{query.length >= 2 && <> for &ldquo;{query}&rdquo;</>}
-              {totalFound > 100 && <span className="text-[#5a6380]/50"> (showing first 100)</span>}
+              {info.pages > 1 && <span className="text-[#5a6380]/70"> · page {info.page} of {info.pages}</span>}
             </span>
-            {results.length > 0 && (
+            {totalFound > 0 && (
               <span className={`font-mono tabular-nums ${sum >= 0 ? "text-teal-400/80" : "text-white/60"}`}>
                 net {sum >= 0 ? "+" : ""}{fmt(sum)} €
               </span>
@@ -141,6 +152,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             </div>
           </div>
         ))}
+
+        {hasCriteria && info.pages > 1 && <Pagination info={info} href={pageHref("/search", p)} label="results" />}
 
         {hasCriteria && results.length === 0 && (
           <div className="card rounded-2xl p-8 text-center animate-fade-in">

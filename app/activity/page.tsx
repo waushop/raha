@@ -1,4 +1,6 @@
 import { connection } from "next/server";
+import { pageInfo, parsePage } from "@/lib/pagination";
+import Pagination, { pageHref } from "@/components/Pagination";
 import db from "@/lib/db";
 import { currentContext } from "@/lib/auth";
 import type { CategoryKey } from "@/types/expense";
@@ -63,9 +65,16 @@ function describeChanges(before: AuditSnapshot | null, after: AuditSnapshot | nu
   return out;
 }
 
-export default async function ActivityPage() {
+const PAGE_SIZE = 50;
+
+export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   await connection();
   const { workspaceId: ws } = await currentContext();
+  const params = await searchParams;
+  const [countRows] = await db.execute(
+    "SELECT COUNT(*) AS N FROM LEDGER_AUDIT a JOIN LEDGER e ON e.ID = a.LEDGER_ID WHERE e.WORKSPACE_ID = ?", [ws],
+  );
+  const info = pageInfo((countRows as Array<{ N: number }>)[0]?.N ?? 0, parsePage(params.page), PAGE_SIZE);
 
   // Real history from the audit table; databases from before it existed fall
   // back to a timeline derived from CREATED_AT / UPDATED_AT / DELETED_AT.
@@ -73,8 +82,8 @@ export default async function ActivityPage() {
     `SELECT a.ID, a.LEDGER_ID, a.ACTION, a.BEFORE_JSON, a.AFTER_JSON, a.AT, (e.DELETED_AT IS NOT NULL) AS IS_DELETED
      FROM LEDGER_AUDIT a JOIN LEDGER e ON e.ID = a.LEDGER_ID
      WHERE e.WORKSPACE_ID = ?
-     ORDER BY a.AT DESC, a.ROWID DESC LIMIT 60`,
-    [ws],
+     ORDER BY a.AT DESC, a.ROWID DESC LIMIT ? OFFSET ?`,
+    [ws, PAGE_SIZE, info.offset],
   );
   let events: Event[] = (auditRows as Array<{ ID: string; LEDGER_ID: string; ACTION: AuditAction; BEFORE_JSON: string | null; AFTER_JSON: string | null; AT: string; IS_DELETED: number }>).map((r) => {
     const before = r.BEFORE_JSON ? (JSON.parse(r.BEFORE_JSON) as AuditSnapshot) : null;
@@ -94,7 +103,7 @@ export default async function ActivityPage() {
     };
   });
 
-  if (events.length === 0) {
+  if (events.length === 0 && info.total === 0) {
     const [added] = await db.execute(
       "SELECT ID, NAME, CATEGORY, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT AS AT, DELETED_AT FROM LEDGER WHERE WORKSPACE_ID = ? ORDER BY CREATED_AT DESC LIMIT 30", [ws],
     );
@@ -175,6 +184,7 @@ export default async function ActivityPage() {
             </div>
           )}
         </div>
+        {info.pages > 1 && <Pagination info={info} href={pageHref("/activity", params)} label="changes" />}
       </div>
     </main>
   );

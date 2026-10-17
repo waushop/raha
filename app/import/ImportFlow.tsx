@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useTransition, useCallback } from "react";
+import { pageInfo, pageWindow } from "@/lib/pagination";
+
+const PREVIEW_PAGE = 100;
 import { importTransactions, createImportPattern } from "@/app/actions";
 import type { ImportPatternRow } from "@/app/actions";
 import type { ParsedTransaction } from "@/lib/import-parser";
@@ -13,7 +16,7 @@ import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import CategoryIcon from "@/components/CategoryIcon";
 import RulesEditor from "./RulesEditor";
-import { Check, Upload, Repeat } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Upload, Repeat } from "lucide-react";
 
 type Props = {
   patterns: ImportPatternRow[];
@@ -33,6 +36,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
   const [importedCount, setImportedCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [format, setFormat] = useState<CSVFormat>("generic");
+  const [page, setPage] = useState(1);
   const toast = useToast();
 
   const handleFile = useCallback((file: File) => {
@@ -48,6 +52,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
       // Income rows (credits) are kept and imported as income.
       const classified = classifyTransactions(parsed, patterns, model);
       setTransactions(classified);
+      setPage(1);
       setSelected(new Set(classified.map((_, i) => i)));
       setStep("preview");
     };
@@ -195,6 +200,22 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
     byMonth.set(tx.month, list);
   });
   const months = [...byMonth.keys()].sort().reverse();
+  // Large statements: render 100 rows at a time (selection still covers all rows).
+  const ordered = months.flatMap((m) => byMonth.get(m)!);
+  const info = pageInfo(ordered.length, page, PREVIEW_PAGE);
+  const visible = new Set(ordered.slice(info.offset, info.offset + PREVIEW_PAGE));
+  const pager = info.pages > 1 ? (
+    <div className="flex items-center justify-between gap-2 px-1">
+      <span className="text-[11px] text-[#5a6380] tabular-nums">Rows {info.from}–{info.to} of {info.total}</span>
+      <div className="flex items-center gap-1">
+        <button type="button" onClick={() => setPage(info.page - 1)} disabled={info.page <= 1} aria-label="Previous page" className="w-9 h-9 rounded-xl flex items-center justify-center text-[#9ca3c0] hover:text-white hover:bg-white/5 disabled:opacity-30"><ChevronLeft size={14} /></button>
+        {pageWindow(info.page, info.pages).map((n, i) => n === null
+          ? <span key={`g${i}`} className="px-1 text-xs text-[#5a6380]">…</span>
+          : <button key={n} type="button" onClick={() => setPage(n)} aria-current={n === info.page ? "page" : undefined} className={`min-w-9 h-9 px-2 rounded-xl text-xs font-semibold tabular-nums ${n === info.page ? "card text-white" : "text-[#9ca3c0] hover:text-white hover:bg-white/5"}`}>{n}</button>)}
+        <button type="button" onClick={() => setPage(info.page + 1)} disabled={info.page >= info.pages} aria-label="Next page" className="w-9 h-9 rounded-xl flex items-center justify-center text-[#9ca3c0] hover:text-white hover:bg-white/5 disabled:opacity-30"><ChevronRight size={14} /></button>
+      </div>
+    </div>
+  ) : null;
   const selectedCount = selected.size;
   const totalAmount = transactions.filter((_, i) => selected.has(i)).reduce((s, tx) => s + tx.amount, 0);
 
@@ -233,16 +254,20 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
         </div>
       </div>
 
-      {/* Transactions by month */}
+      {pager}
+
+      {/* Transactions by month (this page only) */}
       {months.map(month => {
-        const indices = byMonth.get(month)!;
+        const all = byMonth.get(month)!;
+        const indices = all.filter((i) => visible.has(i));
+        if (indices.length === 0) return null;
         const monthLabel = new Date(month + "-01").toLocaleDateString("en-US", { year: "numeric", month: "long" });
 
         return (
           <div key={month} className="card rounded-2xl overflow-hidden">
             <div className="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between">
               <h3 className="text-sm font-bold text-white">{monthLabel}</h3>
-              <span className="text-xs text-[#5a6380]">{indices.length} transactions</span>
+              <span className="text-xs text-[#5a6380]">{all.length} transactions{indices.length < all.length ? ` · ${indices.length} on this page` : ""}</span>
             </div>
 
             <div className="divide-y divide-white/[0.04]">
@@ -332,6 +357,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
         );
       })}
 
+      {pager}
       {rulesEditor}
     </div>
   );

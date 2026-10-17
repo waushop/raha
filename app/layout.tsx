@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter_Tight, Sedgwick_Ave_Display, Sora } from "next/font/google";
+import { Inter_Tight, Permanent_Marker, Sora } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
 import KeyboardHints from "@/components/KeyboardHints";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -21,8 +21,8 @@ const headline = Sora({
   variable: "--font-hand",
   display: "swap",
 });
-// The "Empty Wallet" wordmark is a graffiti tag (--font-brand).
-const brand = Sedgwick_Ave_Display({
+// The "Empty Wallet" wordmark is hand-lettered in marker (--font-brand).
+const brand = Permanent_Marker({
   subsets: ["latin"],
   weight: "400",
   variable: "--font-brand",

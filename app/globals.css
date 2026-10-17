@@ -543,7 +543,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 [style*="font-brand"] {
   font-weight: 400 !important;
   letter-spacing: 0.01em !important;
-  font-size: 1.12em;
+  font-size: 1.04em;
   line-height: 1.1;
   padding-bottom: 0.08em;
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6)) drop-shadow(0 0 14px rgba(255, 255, 255, 0.10));

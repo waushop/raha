@@ -2,14 +2,20 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { Bell, BellOff } from "lucide-react";
 import { currentContext } from "@/lib/auth";
-import { listInbox } from "@/lib/nudges-db";
+import { inboxCount, listInbox, unreadCount } from "@/lib/nudges-db";
+import { pageInfo, parsePage } from "@/lib/pagination";
+import Pagination, { pageHref } from "@/components/Pagination";
 import InboxList from "@/components/InboxList";
 
-export default async function InboxPage() {
+const PAGE_SIZE = 30;
+
+export default async function InboxPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   await connection();
   const { workspaceId: ws } = await currentContext();
-  const items = await listInbox(ws, 100);
-  const unread = items.filter((i) => i.READ_AT === null).length;
+  const params = await searchParams;
+  const [total, unread] = await Promise.all([inboxCount(ws), unreadCount(ws)]);
+  const info = pageInfo(total, parsePage(params.page), PAGE_SIZE);
+  const items = await listInbox(ws, PAGE_SIZE, info.offset);
 
   return (
     <main className="min-h-screen py-6 px-4 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-24 lg:pb-20">
@@ -20,7 +26,7 @@ export default async function InboxPage() {
             Inbox
           </h1>
           <p className="text-xs text-[#5a6380] mt-1">
-            {items.length === 0 ? "Nudges land here: bills due tomorrow, trials ending, plan lines running hot, tight weeks." : `${unread} unread · ${items.length} total`}
+            {total === 0 ? "Nudges land here: bills due tomorrow, trials ending, plan lines running hot, tight weeks." : `${unread} unread · ${total} total`}
           </p>
         </div>
 
@@ -33,7 +39,10 @@ export default async function InboxPage() {
               <InboxList items={[]} />
             </div>
           ) : (
-            <InboxList items={items} />
+            <>
+              <InboxList items={items} />
+              {info.pages > 1 && <Pagination info={info} href={pageHref("/inbox", params)} label="nudges" />}
+            </>
           )}
         </div>
 

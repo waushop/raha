@@ -10,8 +10,8 @@ import {
 type Glass = "clear" | "smoke" | "ink";
 type Font = "sora" | "grotesk" | "unbounded" | "syne";
 type Data = "mono" | "muted";
-type Brand = "tag" | "spray" | "marker";
-const BRAND: Record<Brand, string> = { tag: "var(--font-lux-tag), cursive", spray: "var(--font-lux-spray), cursive", marker: "var(--font-lux-marker), cursive" };
+type Brand = "tag" | "wild" | "spray" | "marker";
+const BRAND: Record<Brand, string> = { tag: "var(--font-lux-tag), cursive", wild: "var(--font-lux-tagwild), cursive", spray: "var(--font-lux-spray), cursive", marker: "var(--font-lux-marker), cursive" };
 
 const FONT: Record<Font, string> = {
   sora: "var(--font-lux-sora), system-ui, sans-serif",
@@ -53,7 +53,7 @@ export default function DesignPreview() {
   const [glass, setGlass] = useState<Glass>("smoke");
   const [font, setFont] = useState<Font>("sora");
   const [data, setData] = useState<Data>("muted");
-  const [brand, setBrand] = useState<Brand>("tag");
+  const [brand, setBrand] = useState<Brand>("marker");
   const [toggle, setToggle] = useState(true);
   const [tab, setTab] = useState(1);
   const c = DATA[data];
@@ -74,7 +74,7 @@ export default function DesignPreview() {
           <Seg label="Glass" value={glass} onChange={setGlass} options={[["clear", "Clear"], ["smoke", "Smoke"], ["ink", "Ink"]]} />
           <Seg label="Headline font" value={font} onChange={setFont} options={[["sora", "Sora"], ["grotesk", "Grotesk"], ["unbounded", "Unbounded"], ["syne", "Syne"]]} />
           <Seg label="Data colour" value={data} onChange={setData} options={[["mono", "Mono"], ["muted", "Muted"]]} />
-          <Seg label="Wordmark" value={brand} onChange={setBrand} options={[["tag", "Tag"], ["spray", "Spray"], ["marker", "Marker"]]} />
+          <Seg label="Wordmark" value={brand} onChange={setBrand} options={[["marker", "Marker"], ["tag", "Tag"], ["wild", "Wild tag"], ["spray", "Spray"]]} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
