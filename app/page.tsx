@@ -9,7 +9,9 @@ import { planByGroup } from "@/lib/plan-db";
 import TrendChart from "@/components/TrendChart";
 import SwipeContainer from "@/components/SwipeContainer";
 import QuickAddBar from "@/components/QuickAddBar";
-import { addMonths, currentMonth, isValidMonth } from "@/lib/months";
+import { addMonths, currentMonth, isValidMonth, monthLabel } from "@/lib/months";
+import { listMembers, settlement } from "@/lib/household";
+import SettleUpCard from "@/components/SettleUpCard";
 import { monthlyTotals } from "@/lib/queries";
 
 export default async function Page({
@@ -18,14 +20,14 @@ export default async function Page({
   searchParams: Promise<{ month?: string }>;
 }) {
   await connection();
-  const { workspaceId: ws } = await currentContext();
+  const { workspaceId: ws, workspaceKind } = await currentContext();
   const { month: monthParam } = await searchParams;
   const month = isValidMonth(monthParam) ? monthParam : currentMonth();
 
   // Fetch expenses with group info
   const [rows] = await db.execute(
     `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.GOAL_ID, e.NAME,
-            e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.SPLIT_GROUP, e.CREATED_AT,
+            e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.SPLIT_GROUP, e.PAID_BY, e.CREATED_AT,
             g.NAME AS GROUP_NAME, g.ICON AS GROUP_ICON, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
      LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL
@@ -39,6 +41,8 @@ export default async function Page({
   // Fetch groups
   const groups = await getGroups();
   const plan = await planByGroup(ws, month);
+  const members = workspaceKind === "shared" ? (await listMembers(ws)).map((m) => ({ ID: m.ID, NAME: m.NAME })) : [];
+  const settle = workspaceKind === "shared" ? await settlement(ws, month) : null;
 
   // Fetch 6-month trend data
   const trendData = await monthlyTotals(ws, "expense", addMonths(month, -5), month);
@@ -101,7 +105,8 @@ export default async function Page({
 
         {/* Expense cards */}
         <div className="animate-fade-up" style={{ animationDelay: "0.1s" }}>
-          <ExpenseTable expenses={expenses} month={month} groups={groups} plan={plan} />
+          {settle && <SettleUpCard settlement={settle} monthLabel={monthLabel(month)} />}
+          <ExpenseTable expenses={expenses} month={month} groups={groups} plan={plan} members={members} />
         </div>
 
         {/* Footer */}

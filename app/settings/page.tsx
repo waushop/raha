@@ -1,5 +1,7 @@
 import { connection } from "next/server";
 import PushSettings from "@/components/PushSettings";
+import HouseholdSettings from "@/components/HouseholdSettings";
+import { listMembers, listWorkspacesFor } from "@/lib/household";
 import Link from "next/link";
 import db from "@/lib/db";
 import { currentContext, listUsers } from "@/lib/auth";
@@ -29,6 +31,7 @@ export default async function SettingsPage() {
   const ctx = await currentContext();
   const ws = ctx.workspaceId;
   const [existingMonths, budgets, users, me, devices] = await Promise.all([listMonths(), getBudgets(ws), listUsers(), getUser(ctx.userId), listDevices(ctx.userId)]);
+  const [myWs, members] = await Promise.all([listWorkspacesFor(ctx.userId), listMembers(ws)]);
   // Stats
   const [statsRows] = await db.execute(
     `SELECT COUNT(*) AS TOTAL_EXPENSES,
@@ -197,6 +200,17 @@ export default async function SettingsPage() {
               );
             })}
           </div>
+        </div>
+
+        {/* Household */}
+        <div className="animate-fade-up" style={{ animationDelay: "0.13s" }}>
+          <HouseholdSettings
+            current={{ id: ws, name: ctx.workspaceName, kind: ctx.workspaceKind }}
+            meId={ctx.userId}
+            workspaces={myWs}
+            members={members}
+            others={users.filter((u) => u.ID !== ctx.userId).map((u) => ({ ID: u.ID, NAME: u.NAME }))}
+          />
         </div>
 
         {/* Push notifications */}

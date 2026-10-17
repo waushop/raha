@@ -12,7 +12,7 @@ import Glyph from "./Glyph";
 import { DEFAULT_GROUP_ICON } from "@/lib/icon-names";
 import { CirclePlus, Plus, Repeat, Split, X } from "lucide-react";
 
-type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; onDone: () => void };
+type Props = { month: string; editing?: Expense; groups: ExpenseGroup[]; members?: Array<{ ID: string; NAME: string }>; onDone: () => void };
 
 type Part = { category: CategoryKey; groupId: string; name: string; amount: string };
 
@@ -21,7 +21,8 @@ const partAmount = (p: Part) => { const n = parseFloat(p.amount.replace(",", "."
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const selectCls = "min-w-0 w-full border border-white/[0.08] rounded-xl px-2.5 py-2 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all";
 
-export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
+export default function ExpenseForm({ month, editing, groups, members = [], onDone }: Props) {
+  const [paidBy, setPaidBy] = useState<string>(editing?.PAID_BY ?? "");
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -106,6 +107,7 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
     const data = new FormData(formRef.current!);
     data.set("kind", kind);
     data.set("is_recurring", isRecurring ? "1" : "0");
+    if (members.length > 0) data.set("paid_by", paidBy);
     data.set("tags", tags || "");
     data.set("group_id", groupId || "");
     data.set("goal_id", showGoals ? goalId : "");
@@ -300,6 +302,21 @@ export default function ExpenseForm({ month, editing, groups, onDone }: Props) {
         </div>
       )}
       {!showExtra && <input type="hidden" name="notes" value="" />}
+
+      {/* Paid by (households) */}
+      {members.length > 1 && kind === "expense" && (
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] font-bold uppercase tracking-widest text-[#5a6380]">Paid by</label>
+          <div className="flex flex-wrap gap-1.5">
+            {[{ ID: "", NAME: "Me" }, ...members].map((m) => (
+              <button key={m.ID || "me"} type="button" onClick={() => setPaidBy(m.ID)}
+                className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-all ${paidBy === m.ID ? "border-pink-500/40 bg-pink-500/15 text-white" : "border-white/[0.06] text-[#9ca3c0] hover:text-white"}`}>
+                {m.NAME}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Toggles */}
       <div className="flex items-center gap-2">

@@ -26,6 +26,8 @@ type Props = {
   expenses: Expense[];
   month: string;
   groups: ExpenseGroup[];
+  /** Household members (shared workspaces only) for the payer picker and badges. */
+  members?: Array<{ ID: string; NAME: string }>;
 };
 
 type BulkPatch = Parameters<typeof bulkUpdateExpenses>[1];
@@ -44,7 +46,7 @@ function readHashId(): string | null {
 const barSelectCls = "h-11 min-w-0 border border-white/[0.08] rounded-xl px-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all disabled:opacity-40";
 const barBtnCls = "h-11 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all btn-press disabled:opacity-40";
 
-export default function ExpenseTable({ expenses, month, groups, plan = {} }: Props) {
+export default function ExpenseTable({ expenses, month, groups, plan = {}, members = [] }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Expense | undefined>();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -175,7 +177,8 @@ export default function ExpenseTable({ expenses, month, groups, plan = {} }: Pro
   }
   sections.sort((a, b) => b.total - a.total);
 
-  const rowProps = { highlighted: false, onEdit: openEdit, onDelete: handleDelete, onDuplicate: handleDuplicate, onToggleRecurring: handleToggleRecurring, onCreateRule: setRuleFor, selectable: selectMode, onToggleSelect: toggleSelected };
+  const payerName = (id: string | null | undefined) => (id ? members.find((m) => m.ID === id)?.NAME ?? null : null);
+  const rowProps = { payerName, highlighted: false, onEdit: openEdit, onDelete: handleDelete, onDuplicate: handleDuplicate, onToggleRecurring: handleToggleRecurring, onCreateRule: setRuleFor, selectable: selectMode, onToggleSelect: toggleSelected };
 
   return (
     <div className="space-y-4">
@@ -411,7 +414,7 @@ export default function ExpenseTable({ expenses, month, groups, plan = {} }: Pro
                   <X size={16} />
                 </button>
               </div>
-              <ExpenseForm month={month} editing={editing} groups={groups} onDone={closeForm} />
+              <ExpenseForm month={month} editing={editing} groups={groups} members={members} onDone={closeForm} />
             </div>
           </div>
         </>,
@@ -488,8 +491,9 @@ function RuleDialog({ expense: e, groups, onClose }: { expense: Expense; groups:
   );
 }
 
-function ExpenseRow({ expense: e, highlighted, onEdit, onDelete, onDuplicate, onToggleRecurring, onCreateRule, selectable, selected, onToggleSelect }: {
+function ExpenseRow({ expense: e, payerName, highlighted, onEdit, onDelete, onDuplicate, onToggleRecurring, onCreateRule, selectable, selected, onToggleSelect }: {
   expense: Expense;
+  payerName: (id: string | null | undefined) => string | null;
   highlighted: boolean;
   onEdit: (e: Expense) => void;
   onDelete: (id: string, name: string) => void;
@@ -532,6 +536,7 @@ function ExpenseRow({ expense: e, highlighted, onEdit, onDelete, onDuplicate, on
               <span className="text-[9px] font-mono tabular-nums text-[#5a6380] bg-white/5 rounded px-1 shrink-0" title={`Day ${e.DAY}`}>{e.DAY}</span>
             )}
             {e.NAME}
+            {payerName(e.PAID_BY) && <span className="text-[9px] font-bold shrink-0 w-4 h-4 rounded-full bg-pink-500/15 text-pink-300 inline-flex items-center justify-center" title={`Paid by ${payerName(e.PAID_BY)}`}>{payerName(e.PAID_BY)!.slice(0, 1).toUpperCase()}</span>}
             {e.GOAL_ID && <span className="text-[10px] shrink-0 inline-flex" title="Counts towards a goal"><Target size={10} className="text-purple-400 shrink-0" aria-hidden /></span>}
             {e.SPLIT_GROUP && <span className="text-[10px] shrink-0 inline-flex" title="Part of a split"><Split size={10} className="text-amber-400 shrink-0" aria-hidden /></span>}
             {e.IS_RECURRING === 1 && (

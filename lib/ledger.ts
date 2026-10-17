@@ -22,12 +22,13 @@ export type LedgerSource = {
   DAY: number | null;
   GOAL_ID?: string | null;
   SPLIT_GROUP?: string | null;
+  PAID_BY?: string | null;
 };
 
-export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP";
+export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY";
 
-const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** A copied row keeps its day where the target month has it (31st → 30th otherwise). */
 export function clampDay(day: number | null, month: string): number | null {
@@ -85,6 +86,12 @@ export function assertGoalExists(tx: Tx, ws: string, id: string | null | undefin
   }
 }
 
+/** A payer must be a member of the workspace (null = unassigned). */
+export function assertMember(tx: Tx, ws: string, userId: string | null | undefined): void {
+  if (!userId) return;
+  if (tx.all("SELECT 1 FROM WORKSPACE_MEMBER WHERE WORKSPACE_ID = ? AND USER_ID = ?", [ws, userId]).length === 0) throw new ValidationError("That person is not in this household");
+}
+
 export function assertGroupExists(tx: Tx, ws: string, id: string | null): void {
   if (!id) return;
   if (tx.all("SELECT 1 FROM CATEGORY_GROUP WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [id, ws]).length === 0) {
@@ -95,7 +102,7 @@ export function assertGroupExists(tx: Tx, ws: string, id: string | null): void {
 export function insertRow(tx: Tx, ws: string, row: LedgerSource, month: string): string {
   const id = randomUUID();
   const day = clampDay(row.DAY, month);
-  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null, row.SPLIT_GROUP ?? null]);
+  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null, row.SPLIT_GROUP ?? null, row.PAID_BY ?? null]);
   if (row.TAGS) syncTags(tx, id, row.TAGS);
   audit(tx, id, "create", null, { ID: id, ...row, MONTH: month, DAY: day });
   if (row.IS_RECURRING && row.KIND === "expense") linkSubscription(tx, ws, id);

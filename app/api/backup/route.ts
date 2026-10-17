@@ -30,7 +30,8 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //   v10 + paydays and balance_checkpoints sections (cash flow).
 //   v11 + SPLIT_GROUP per row; import_patterns carry the rule fields.
 //   v12 + accounts and account_snapshots sections (net worth).
-const BACKUP_VERSION = 12;
+//   v13 + PAID_BY per row (households).
+const BACKUP_VERSION = 13;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,7 +46,7 @@ export async function GET() {
   const ws = ctx.workspaceId;
 
   const [expenses] = await db.execute(
-    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, NOTES, IS_RECURRING, TAGS, CREATED_AT
+    `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, NOTES, IS_RECURRING, TAGS, CREATED_AT
      FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL ORDER BY MONTH, CREATED_AT`, [ws]
   );
   const [groups] = await db.execute(
@@ -211,6 +212,7 @@ export async function POST(request: NextRequest) {
       );
       stats.subscriptions++;
     }
+    const memberIds = new Set(tx.all<{ USER_ID: string }>("SELECT USER_ID FROM WORKSPACE_MEMBER WHERE WORKSPACE_ID = ?", [ws]).map((r) => r.USER_ID));
     const liveSubIds = new Set(
       tx.all<{ ID: string }>("SELECT ID FROM SUBSCRIPTION WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws]).map((r) => r.ID),
     );
@@ -368,13 +370,14 @@ export async function POST(request: NextRequest) {
       const goalId = str(e.GOAL_ID);
       const subId = str(e.SUBSCRIPTION_ID);
       const splitGroup = str(e.SPLIT_GROUP);
+      const paidBy = str(e.PAID_BY);
 
       tx.run(
-        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, NOTES, IS_RECURRING, TAGS)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, GOAL_ID, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, NOTES, IS_RECURRING, TAGS)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(ID) DO UPDATE SET KIND = excluded.KIND, CATEGORY = excluded.CATEGORY, GROUP_ID = excluded.GROUP_ID,
            NAME = excluded.NAME, AMOUNT = excluded.AMOUNT, MONTH = excluded.MONTH, DAY = excluded.DAY, GOAL_ID = excluded.GOAL_ID,
-           SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, SPLIT_GROUP = excluded.SPLIT_GROUP, NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
+           SUBSCRIPTION_ID = excluded.SUBSCRIPTION_ID, SPLIT_GROUP = excluded.SPLIT_GROUP, PAID_BY = excluded.PAID_BY, NOTES = excluded.NOTES, IS_RECURRING = excluded.IS_RECURRING, TAGS = excluded.TAGS, DELETED_AT = NULL`,
         [
           id,
           ws,
@@ -388,6 +391,7 @@ export async function POST(request: NextRequest) {
           goalId && liveGoalIds.has(goalId) ? goalId : null,
           subId && liveSubIds.has(subId) ? subId : null,
           splitGroup && UUID_RE.test(splitGroup) ? splitGroup : null,
+          paidBy && memberIds.has(paidBy) ? paidBy : null,
           str(e.NOTES),
           num(e.IS_RECURRING) ? 1 : 0,
           tags,

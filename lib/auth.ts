@@ -18,7 +18,18 @@ import type { UserRow } from "./users";
 // USERS + WORKSPACES
 // ============================================
 
-export type AuthContext = { userId: string; name: string; isAdmin: boolean; workspaceId: string };
+export type AuthContext = {
+  userId: string;
+  name: string;
+  isAdmin: boolean;
+  workspaceId: string;
+  workspaceName: string;
+  /** "shared" = a household with several members (rows carry PAID_BY). */
+  workspaceKind: "personal" | "shared";
+};
+
+/** Cookie naming the workspace the user is currently working in. */
+export const WORKSPACE_COOKIE = "ws";
 
 export async function listUsers(): Promise<Array<{ ID: string; NAME: string; IS_ADMIN: number; REQUIRE_2FA: number }>> {
   const [rows] = await db.execute("SELECT ID, NAME, IS_ADMIN, REQUIRE_2FA FROM USER WHERE DELETED_AT IS NULL ORDER BY SORT_ORDER, CREATED_AT");
@@ -53,13 +64,17 @@ export async function setUserPin(userId: string, pinHash: string): Promise<void>
   await db.execute("UPDATE USER SET PIN_HASH = ?, SESSION_VERSION = SESSION_VERSION + 1 WHERE ID = ?", [pinHash, userId]);
 }
 
-async function personalWorkspaceId(userId: string): Promise<string | null> {
+type WorkspacePick = { ID: string; NAME: string; KIND: "personal" | "shared" };
+
+/** The workspace named by the `ws` cookie when the user is a member of it, else their personal one. */
+async function resolveWorkspace(userId: string, preferred: string | undefined): Promise<WorkspacePick | null> {
   const [rows] = await db.execute(
-    `SELECT w.ID FROM WORKSPACE w JOIN WORKSPACE_MEMBER m ON m.WORKSPACE_ID = w.ID
-     WHERE m.USER_ID = ? ORDER BY CASE w.KIND WHEN 'personal' THEN 0 ELSE 1 END, w.CREATED_AT LIMIT 1`,
+    `SELECT w.ID, w.NAME, w.KIND FROM WORKSPACE w JOIN WORKSPACE_MEMBER m ON m.WORKSPACE_ID = w.ID
+     WHERE m.USER_ID = ? ORDER BY CASE w.KIND WHEN 'personal' THEN 0 ELSE 1 END, w.CREATED_AT`,
     [userId],
   );
-  return (rows as Array<{ ID: string }>)[0]?.ID ?? null;
+  const list = rows as WorkspacePick[];
+  return (preferred && list.find((w) => w.ID === preferred)) || list[0] || null;
 }
 
 // ============================================
@@ -102,9 +117,9 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   if (!claims) return null;
   const user = await getUser(claims.userId);
   if (!user || user.SESSION_VERSION !== claims.version) return null;
-  const workspaceId = await personalWorkspaceId(user.ID);
-  if (!workspaceId) return null;
-  return { userId: user.ID, name: user.NAME, isAdmin: user.IS_ADMIN === 1, workspaceId };
+  const workspace = await resolveWorkspace(user.ID, cookieStore.get(WORKSPACE_COOKIE)?.value);
+  if (!workspace) return null;
+  return { userId: user.ID, name: user.NAME, isAdmin: user.IS_ADMIN === 1, workspaceId: workspace.ID, workspaceName: workspace.NAME, workspaceKind: workspace.KIND };
 }
 
 export async function isAuthenticated(): Promise<boolean> {

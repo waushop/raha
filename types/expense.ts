@@ -87,6 +87,7 @@ export type Expense = {
   TAGS: string | null;
   /** Rows created by splitting one transaction share this id (the original row's). */
   SPLIT_GROUP?: string | null;
+  PAID_BY?: string | null;
   // Joined fields
   GROUP_NAME?: string;
   GROUP_ICON?: string;

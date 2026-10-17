@@ -171,6 +171,10 @@ function migrate(sqlite: DatabaseSync): void {
       sqlite.exec("ALTER TABLE LEDGER ADD COLUMN SPLIT_GROUP TEXT");
       sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
     }
+    if (!cols.includes("PAID_BY")) {
+      sqlite.exec("ALTER TABLE LEDGER ADD COLUMN PAID_BY TEXT");
+      sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
+    }
   }
   // Import patterns grew into rules (lib/rules.ts).
   if (tables.has("IMPORT_PATTERN")) {
@@ -250,7 +254,8 @@ const STATEMENTS = [
     DAY          INTEGER,
     GOAL_ID      TEXT,
     SUBSCRIPTION_ID TEXT,
-    SPLIT_GROUP  TEXT
+    SPLIT_GROUP  TEXT,
+    PAID_BY      TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_GOAL ON LEDGER(GOAL_ID)`,
   // Savings goals; contributions are LEDGER rows with GOAL_ID set.
@@ -358,7 +363,7 @@ const STATEMENTS = [
   // a non-timestamp column avoids the recursive trigger that would fire when the
   // trigger itself updates UPDATED_AT.
   `CREATE TRIGGER IF NOT EXISTS TRG_LEDGER_UPDATED_AT
-   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT, SUBSCRIPTION_ID, SPLIT_GROUP
+   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY
    ON LEDGER
    BEGIN
      UPDATE LEDGER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;

@@ -38,10 +38,10 @@ import { attempt, type ActionResult } from "@/lib/action-result";
 import { applyRules, type Rule } from "@/lib/rules";
 
 /** Name of the signed-in user, for the sidebar. Null when signed out. */
-export async function whoAmI(): Promise<{ name: string; isAdmin: boolean } | null> {
+export async function whoAmI(): Promise<{ name: string; isAdmin: boolean; workspaceName: string; workspaceKind: "personal" | "shared" } | null> {
   const { getAuthContext } = await import("@/lib/auth");
   const ctx = await getAuthContext();
-  return ctx ? { name: ctx.name, isAdmin: ctx.isAdmin } : null;
+  return ctx ? { name: ctx.name, isAdmin: ctx.isAdmin, workspaceName: ctx.workspaceName, workspaceKind: ctx.workspaceKind } : null;
 }
 
 // ============================================
@@ -68,15 +68,20 @@ function readLedgerForm(formData: FormData): { row: ledger.LedgerSource; month: 
     TAGS: parseTagsText(formData.get("tags")),
     DAY: date ? date.day : parseOptionalDay(formData.get("day"), month),
     GOAL_ID: parseOptionalId(formData.get("goal_id"), "Goal"),
+    PAID_BY: parseOptionalId(formData.get("paid_by"), "Paid by"),
   };
   return { row, month };
 }
 
 export async function createExpense(formData: FormData): Promise<ActionResult> {
-  const { workspaceId: ws } = await requireAuth();
+  const { workspaceId: ws, workspaceKind, userId } = await requireAuth();
   return attempt(() => {
     const { row, month } = readLedgerForm(formData);
+    // In a household every expense has a payer; default to whoever is adding it.
+    if (workspaceKind === "shared" && row.KIND === "expense" && !row.PAID_BY) row.PAID_BY = userId;
+    if (workspaceKind !== "shared") row.PAID_BY = null;
     db.transaction((tx) => {
+      ledger.assertMember(tx, ws, row.PAID_BY);
       ledger.assertGroupExists(tx, ws, row.GROUP_ID);
       ledger.assertGoalExists(tx, ws, row.GOAL_ID);
       // Rules only normalise the name and add tags on manual entry; the
@@ -94,17 +99,19 @@ export async function createExpense(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updateExpense(id: string, formData: FormData): Promise<ActionResult> {
-  const { workspaceId: ws } = await requireAuth();
+  const { workspaceId: ws, workspaceKind } = await requireAuth();
   return attempt(() => {
     const rowId = parseId(id);
     const { row, month } = readLedgerForm(formData);
+    if (workspaceKind !== "shared") row.PAID_BY = null;
     db.transaction((tx) => {
+      ledger.assertMember(tx, ws, row.PAID_BY);
       ledger.assertGroupExists(tx, ws, row.GROUP_ID);
       ledger.assertGoalExists(tx, ws, row.GOAL_ID);
       ledger.auditedUpdate(tx, rowId, "update", () => {
         tx.run(
-          "UPDATE LEDGER SET KIND=?, CATEGORY=?, GROUP_ID=?, NAME=?, AMOUNT=?, MONTH=?, DAY=?, NOTES=?, IS_RECURRING=?, TAGS=?, GOAL_ID=? WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL",
-          [row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.DAY, row.NOTES, row.IS_RECURRING, row.TAGS, row.GOAL_ID ?? null, rowId, ws],
+          "UPDATE LEDGER SET KIND=?, CATEGORY=?, GROUP_ID=?, NAME=?, AMOUNT=?, MONTH=?, DAY=?, NOTES=?, IS_RECURRING=?, TAGS=?, GOAL_ID=?, PAID_BY=COALESCE(?, PAID_BY) WHERE ID=? AND WORKSPACE_ID=? AND DELETED_AT IS NULL",
+          [row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.DAY, row.NOTES, row.IS_RECURRING, row.TAGS, row.GOAL_ID ?? null, workspaceKind === "shared" ? row.PAID_BY : null, rowId, ws],
         );
         ledger.syncTags(tx, rowId, row.TAGS);
       });

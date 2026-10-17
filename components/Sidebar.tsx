@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import NotificationBell from "./NotificationBell";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import { listMonths, whoAmI } from "@/app/actions";
@@ -26,6 +27,7 @@ export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const [oldestMonth, setOldestMonth] = useState<string>(currentMonth());
   const [userName, setUserName] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<{ name: string; kind: "personal" | "shared" } | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -58,7 +60,7 @@ export default function Sidebar() {
   useEffect(() => {
     if (pathname === "/login") return;
     listMonths().then((ms) => { const oldest = ms.at(-1); if (oldest) setOldestMonth(oldest); }).catch(() => {});
-    whoAmI().then((u) => setUserName(u?.name ?? null)).catch(() => {});
+    whoAmI().then((u) => { setUserName(u?.name ?? null); setWorkspace(u ? { name: u.workspaceName, kind: u.workspaceKind } : null); }).catch(() => {});
   }, [pathname]);
 
   // Hooks above this line must run on every render, including on /login.
@@ -101,6 +103,7 @@ export default function Sidebar() {
               </button>
             </div>
           </div>
+          <WorkspaceSwitcher current={workspace} />
         </div>
 
         {/* Navigation */}
