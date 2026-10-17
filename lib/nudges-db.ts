@@ -68,7 +68,10 @@ export async function runNudges(ws: string, today = isoDate(new Date())): Promis
     today, 3,
   ).map((u) => ({ id: u.sub.id, name: u.sub.name, date: u.date, amount: u.amount }));
   const month = currentMonth();
-  const [plan, cash] = await Promise.all([getPlan(ws, month), getCashflow(ws, today)]);
+  // The ledger owner's safe-to-spend buffer (household = whoever created it).
+  const [ownerRows] = await db.execute("SELECT USER_ID FROM WORKSPACE_MEMBER WHERE WORKSPACE_ID = ? ORDER BY ROLE = 'owner' DESC LIMIT 1", [ws]);
+  const ownerId = (ownerRows as { USER_ID: string }[])[0]?.USER_ID;
+  const [plan, cash] = await Promise.all([getPlan(ws, month), ownerId ? getCashflow(ws, today, { userId: ownerId }) : getCashflow(ws, today)]);
   const week = await weekSummary(ws, today);
   const nudges = evaluateNudges({ today, subscriptions: subs, upcoming: due, plan: plan.lines.length ? plan : null, projection: cash.projection, buffer: cash.buffer, week });
   const fresh: Nudge[] = [];

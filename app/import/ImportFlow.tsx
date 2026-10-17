@@ -118,6 +118,7 @@ export default function ImportFlow({ patterns: initialPatterns, groups, model }:
           // Group suggested by the matching pattern or the learned model.
           groupId: tx.groupId ?? null,
           name: tx.name ?? tx.merchant,
+          rawName: tx.description,
           amount: tx.amount,
           month: tx.month,
           notes: `Imported from ${format === "swedbank" || format === "generic" ? "bank CSV" : CSV_FORMAT_LABELS[format]} (${tx.date}): ${tx.description}`,

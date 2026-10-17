@@ -200,4 +200,14 @@ describe("ledger writes", () => {
     assert.equal(ledger.applyRulesToRows(WS), 0, "nothing left to change");
   });
 
+
+  test("importRows skips rows whose raw bank description matches an older import", async () => {
+    db.transaction((tx) => { ledger.insertRow(tx, WS, row({ NAME: "CIRCLE K TALLINN 1234", AMOUNT: 50, GROUP_ID: null }), "2026-09"); });
+    const n = ledger.importRows(WS, [
+      { category: "fuel", groupId: null, name: "Circle K", rawName: "CIRCLE K TALLINN 1234", amount: 50, month: "2026-09", notes: null },
+      { category: "fuel", groupId: null, name: "Circle K", rawName: "CIRCLE K TALLINN 9999", amount: 61, month: "2026-09", notes: null },
+    ]);
+    assert.equal(n, 1);
+  });
+
 });

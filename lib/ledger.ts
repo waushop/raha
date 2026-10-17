@@ -198,6 +198,8 @@ export type ImportRow = {
   isRecurring?: boolean;
   tags?: string | null;
   day?: number | null;
+  /** Original bank description; rows imported before merchant cleaning carry it as NAME. */
+  rawName?: string | null;
 };
 
 /** Inserts rows that don't already exist (name + amount + month). One transaction. */
@@ -209,7 +211,7 @@ export function importRows(ws: string, rows: ImportRow[]): number {
       let keys = seen.get(r.month);
       if (!keys) { keys = existingKeys(tx, ws, r.month); seen.set(r.month, keys); }
       const key = dedupKey(r.name, r.amount);
-      if (keys.has(key)) continue;
+      if (keys.has(key) || (r.rawName && keys.has(dedupKey(r.rawName, r.amount)))) continue;
       insertRow(tx, ws, {
         KIND: r.kind === "income" ? "income" : "expense",
         CATEGORY: r.category,

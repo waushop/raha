@@ -3,8 +3,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { WifiOff } from "lucide-react";
-import { createExpense } from "@/app/actions";
-import { QUEUE_CHANGED_EVENT, listQueued, replayQueue } from "@/lib/offline-queue";
+import { createExpense, whoAmI } from "@/app/actions";
+import { QUEUE_CHANGED_EVENT, listQueued, rememberOwner, replayQueue } from "@/lib/offline-queue";
 import { useToast } from "./Toast";
 
 function subscribe(cb: () => void) {
@@ -39,7 +39,11 @@ export default function OfflineSync() {
   useEffect(() => {
     if (!online || pathname === "/login") return;
     let cancelled = false;
-    replayQueue(createExpense)
+    whoAmI()
+      .then((me) => {
+        rememberOwner(me ? { userId: me.userId, workspaceId: me.workspaceId } : null);
+        return me ? replayQueue(createExpense, { userId: me.userId, workspaceId: me.workspaceId }) : { synced: 0, failed: 0 };
+      })
       .then(({ synced, failed }) => {
         if (cancelled) return;
         if (synced > 0) {

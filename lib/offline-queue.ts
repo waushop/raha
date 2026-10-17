@@ -19,7 +19,20 @@ export type QueuedEntry = {
   goal_id: string;
   paid_by: string;
   queuedAt: number;
+  /** Who queued it and in which ledger; replay only sends it back for the same pair. */
+  owner?: { userId: string; workspaceId: string } | null;
 };
+
+const OWNER_KEY = "raha-offline-owner";
+
+/** Remembers the signed-in user + workspace while online so offline entries can be tagged. */
+export function rememberOwner(owner: { userId: string; workspaceId: string } | null): void {
+  try { if (owner) localStorage.setItem(OWNER_KEY, JSON.stringify(owner)); else localStorage.removeItem(OWNER_KEY); } catch {}
+}
+
+function currentOwner(): { userId: string; workspaceId: string } | null {
+  try { const v = localStorage.getItem(OWNER_KEY); return v ? (JSON.parse(v) as { userId: string; workspaceId: string }) : null; } catch { return null; }
+}
 
 const DB_NAME = "raha-offline";
 const STORE = "entries";
@@ -59,7 +72,7 @@ export function isNetworkError(e: unknown): boolean {
 
 /** Saves the entry's fields from a create form; false when IndexedDB isn't usable. */
 export async function enqueue(data: FormData): Promise<boolean> {
-  const entry = { id: crypto.randomUUID(), queuedAt: Date.now() } as QueuedEntry;
+  const entry = { id: crypto.randomUUID(), queuedAt: Date.now(), owner: currentOwner() } as QueuedEntry;
   for (const f of FIELDS) entry[f] = String(data.get(f) ?? "");
   try {
     await withStore("readwrite", (s) => s.put(entry));
@@ -111,11 +124,16 @@ export async function submitOrQueue<R extends SendResult>(send: (data: FormData)
  * and counted in `failed`. One replay at a time across tabs (Web Locks when
  * available, so two tabs can't post the same entry twice).
  */
-export async function replayQueue(send: (data: FormData) => Promise<SendResult>): Promise<{ synced: number; failed: number }> {
+export async function replayQueue(
+  send: (data: FormData) => Promise<SendResult>,
+  me: { userId: string; workspaceId: string },
+): Promise<{ synced: number; failed: number }> {
   const run = async () => {
     let synced = 0;
     let failed = 0;
     for (const entry of await listQueued()) {
+      // Entries queued by someone else (or in another ledger) wait for them.
+      if (entry.owner && (entry.owner.userId !== me.userId || entry.owner.workspaceId !== me.workspaceId)) continue;
       let res: SendResult;
       try {
         res = await send(toFormData(entry));

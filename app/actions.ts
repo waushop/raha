@@ -38,10 +38,10 @@ import { attempt, type ActionResult } from "@/lib/action-result";
 import { applyRules, type Rule } from "@/lib/rules";
 
 /** Name of the signed-in user, for the sidebar. Null when signed out. */
-export async function whoAmI(): Promise<{ name: string; isAdmin: boolean; workspaceName: string; workspaceKind: "personal" | "shared" } | null> {
+export async function whoAmI(): Promise<{ userId: string; workspaceId: string; name: string; isAdmin: boolean; workspaceName: string; workspaceKind: "personal" | "shared" } | null> {
   const { getAuthContext } = await import("@/lib/auth");
   const ctx = await getAuthContext();
-  return ctx ? { name: ctx.name, isAdmin: ctx.isAdmin, workspaceName: ctx.workspaceName, workspaceKind: ctx.workspaceKind } : null;
+  return ctx ? { userId: ctx.userId, workspaceId: ctx.workspaceId, name: ctx.name, isAdmin: ctx.isAdmin, workspaceName: ctx.workspaceName, workspaceKind: ctx.workspaceKind } : null;
 }
 
 // ============================================
@@ -548,7 +548,7 @@ export async function deleteImportPattern(id: string) {
 const MAX_IMPORT_ROWS = 5000;
 
 export async function importTransactions(
-  transactions: Array<{ category: string; groupId: string | null; name: string; amount: number; month: string; notes: string | null; kind?: Kind; day?: number | null; tags?: string | null; isRecurring?: boolean }>,
+  transactions: Array<{ category: string; groupId: string | null; name: string; amount: number; month: string; notes: string | null; kind?: Kind; day?: number | null; tags?: string | null; isRecurring?: boolean; rawName?: string | null }>,
 ): Promise<ActionResult<{ count: number }>> {
   const { workspaceId: ws } = await requireAuth();
   return attempt(() => {
@@ -563,6 +563,7 @@ export async function importTransactions(
       month: parseMonth(t.month),
       notes: parseOptionalText(t.notes, "Notes"),
       day: parseOptionalDay(t.day ?? "", parseMonth(t.month)),
+      rawName: t.rawName ? String(t.rawName).slice(0, 300) : null,
       tags: t.tags ? parseTagsText(t.tags) : null,
       isRecurring: !!t.isRecurring,
     }));
