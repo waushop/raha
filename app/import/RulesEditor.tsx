@@ -6,6 +6,7 @@ import type { Rule } from "@/lib/rules";
 import type { ExpenseGroup, CategoryKey } from "@/types/expense";
 import { CATEGORIES, CATEGORY_KEYS } from "@/types/expense";
 import { useToast } from "@/components/Toast";
+import { useDialog } from "@/components/Dialog";
 import CategoryIcon from "@/components/CategoryIcon";
 import { Pencil, Trash2, Play, Sparkles } from "lucide-react";
 
@@ -72,6 +73,7 @@ export default function RulesEditor({ rules, groups, onChange }: Props) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
 
   const groupName = (id: string | null) => groups.find((g) => g.ID === id)?.NAME ?? null;
 
@@ -105,7 +107,9 @@ export default function RulesEditor({ rules, groups, onChange }: Props) {
     });
   }
 
-  function remove(id: string) {
+  async function remove(id: string) {
+    const rule = rules.find((r) => r.ID === id);
+    if (!(await dialog.confirm({ title: "Delete this rule?", message: rule ? <>Rows already categorised keep their values. Pattern <span className="font-mono text-white/80">{rule.PATTERN}</span> stops matching new imports.</> : undefined, confirmLabel: "Delete rule", tone: "danger", icon: Trash2 }))) return;
     startTransition(async () => {
       await deleteImportPattern(id);
       onChange(rules.filter((r) => r.ID !== id));

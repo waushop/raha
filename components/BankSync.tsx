@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, CircleAlert, Landmark, Link2, RefreshCw, Search, Unplug } from "lucide-react";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 import { connectBank, disconnectBank, reconnectBank, syncNow, updateBankAccount } from "@/app/bank/actions";
 import type { Aspsp } from "@/lib/enablebanking";
 import type { BankAccountRow, BankConnectionRow } from "@/lib/banksync-db";
@@ -47,6 +48,7 @@ export default function BankSync({ aspsps, aspspError, connections, accounts, ne
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
+  const dialog = useDialog();
   const router = useRouter();
 
   // One-shot toast from the callback redirect, then drop the query string.
@@ -104,8 +106,8 @@ export default function BankSync({ aspsps, aspspError, connections, accounts, ne
     });
   }
 
-  function disconnect(c: BankConnectionRow) {
-    if (!window.confirm(`Disconnect ${c.ASPSP_NAME}? Synced rows stay in your ledger.`)) return;
+  async function disconnect(c: BankConnectionRow) {
+    if (!(await dialog.confirm({ title: `Disconnect ${c.ASPSP_NAME}?`, message: "Syncing stops and the bank access is revoked. Rows already synced stay in your ledger.", confirmLabel: "Disconnect", tone: "danger", icon: Unplug }))) return;
     setBusy(`disconnect:${c.ID}`);
     startTransition(async () => {
       const res = await disconnectBank(c.ID);

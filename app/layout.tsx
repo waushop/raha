@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter_Tight, Permanent_Marker, Sora } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
+import { DialogProvider } from "@/components/Dialog";
 import KeyboardHints from "@/components/KeyboardHints";
 import ScrollToTop from "@/components/ScrollToTop";
 import { Suspense } from "react";
@@ -78,6 +79,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen antialiased">
         <ToastProvider>
+        <DialogProvider>
           {children}
           <Suspense><Sidebar /></Suspense>
           <Suspense><BottomNav /></Suspense>
@@ -86,6 +88,7 @@ export default function RootLayout({
           <ScrollToTop />
           <ServiceWorker />
           <OfflineSync />
+        </DialogProvider>
         </ToastProvider>
       </body>
     </html>

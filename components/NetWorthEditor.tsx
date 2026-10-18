@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Landmark, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 import { addAccount, deleteAccount, snapshotAll, updateAccount } from "@/app/networth/actions";
 import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABEL, type AccountType } from "@/lib/networth";
 import type { AccountView } from "@/lib/networth-db";
@@ -22,6 +23,7 @@ export default function NetWorthEditor({ accounts, month, monthName }: Props) {
   const [showAccount, setShowAccount] = useState(accounts.length === 0);
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
 
   function submitBalances(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -47,7 +49,8 @@ export default function NetWorthEditor({ accounts, month, monthName }: Props) {
     });
   }
 
-  function remove(a: AccountView) {
+  async function remove(a: AccountView) {
+    if (!(await dialog.confirm({ title: `Remove "${a.NAME}"?`, message: "Its balance history leaves the net worth chart.", confirmLabel: "Remove account", tone: "danger", icon: Trash2 }))) return;
     startTransition(async () => {
       const res = await deleteAccount(a.ID);
       if (!res.ok) { toast.showError(res.error); return; }

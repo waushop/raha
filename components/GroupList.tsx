@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { createGroup, updateGroup, deleteGroup, moveGroup } from "@/app/actions";
 import { ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 import type { ExpenseGroup } from "@/types/expense";
 import { GROUP_COLORS, GROUP_COLOR_CLASSES } from "@/types/expense";
 import { DEFAULT_GROUP_ICON, iconFromLegacy, type IconName } from "@/lib/icon-names";
@@ -20,6 +21,7 @@ export default function GroupList({ groups }: Props) {
   const [color, setColor] = useState("blue");
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
 
   function openCreate() {
     setEditing(null);
@@ -55,8 +57,8 @@ export default function GroupList({ groups }: Props) {
     });
   }
 
-  function handleDelete(g: ExpenseGroup) {
-    if (!confirm(`Delete group "${g.NAME}"? Expenses will become ungrouped.`)) return;
+  async function handleDelete(g: ExpenseGroup) {
+    if (!(await dialog.confirm({ title: `Delete group "${g.NAME}"?`, message: "Its expenses stay but become ungrouped, and rules pointing at it lose their group.", confirmLabel: "Delete group", tone: "danger", icon: Trash2 }))) return;
     startTransition(async () => {
       await deleteGroup(g.ID);
       toast.show(`"${g.NAME}" deleted`);

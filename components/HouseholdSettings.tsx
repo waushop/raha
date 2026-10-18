@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Plus, Trash2, UserMinus, UserPlus, Users } from "lucide-react";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
+import type { ConfirmOptions } from "./Dialog";
 import { addMember, createHousehold, deleteHousehold, leaveHousehold, removeMember, renameHousehold } from "@/app/household/actions";
 import type { MemberRow, WorkspaceRow } from "@/lib/household";
 
@@ -27,10 +29,12 @@ export default function HouseholdSettings({ current, meId, workspaces, members, 
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const dialog = useDialog();
   const amOwner = members.find((m) => m.ID === meId)?.ROLE === "owner";
   const candidates = others.filter((o) => !members.some((m) => m.ID === o.ID));
 
-  function run(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) {
+  async function run(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string, ask?: ConfirmOptions) {
+    if (ask && !(await dialog.confirm(ask))) return;
     startTransition(async () => {
       const res = await fn();
       if (!res.ok) { toast.showError(res.error); return; }
@@ -77,7 +81,7 @@ export default function HouseholdSettings({ current, meId, workspaces, members, 
                   <span className="flex-1 text-sm text-white/90">{m.NAME}{m.ID === meId && <span className="text-[#5a6380]"> (you)</span>}</span>
                   <span className="text-[10px] uppercase tracking-wider text-[#5a6380]">{m.ROLE}</span>
                   {amOwner && m.ROLE !== "owner" && (
-                    <button onClick={() => run(() => removeMember(m.ID), `${m.NAME} removed`)} disabled={isPending} aria-label={`Remove ${m.NAME}`} className="p-1.5 rounded-lg text-[#5a6380] hover:text-red-400 hover:bg-white/5"><UserMinus size={13} /></button>
+                    <button onClick={() => run(() => removeMember(m.ID), `${m.NAME} removed`, { title: `Remove ${m.NAME} from ${current.name}?`, message: "They lose access to this shared ledger. Expenses already recorded stay as they are.", confirmLabel: "Remove", tone: "danger", icon: UserMinus })} disabled={isPending} aria-label={`Remove ${m.NAME}`} className="p-1.5 rounded-lg text-[#5a6380] hover:text-red-400 hover:bg-white/5"><UserMinus size={13} /></button>
                   )}
                 </li>
               ))}
@@ -92,9 +96,9 @@ export default function HouseholdSettings({ current, meId, workspaces, members, 
           </div>
           <div className="flex flex-wrap gap-2 pt-1">
             {amOwner ? (
-              <button onClick={() => run(() => deleteHousehold(), "Household deleted")} disabled={isPending} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-xl px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50"><Trash2 size={12} /> Delete household</button>
+              <button onClick={() => run(() => deleteHousehold(), "Household deleted", { title: `Delete ${current.name}?`, message: "Every member loses this shared ledger: its months, plan, subscriptions and goals. Personal ledgers are not touched.", confirmLabel: "Delete household", tone: "danger", icon: Trash2 })} disabled={isPending} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-xl px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50"><Trash2 size={12} /> Delete household</button>
             ) : (
-              <button onClick={() => run(() => leaveHousehold(), "You left the household")} disabled={isPending} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-xl px-3 py-2 bg-white/5 text-[#9ca3c0] hover:text-white hover:bg-white/10 disabled:opacity-50"><LogOut size={12} /> Leave household</button>
+              <button onClick={() => run(() => leaveHousehold(), "You left the household", { title: `Leave ${current.name}?`, message: "You lose access to this shared ledger until an owner adds you again.", confirmLabel: "Leave", tone: "danger", icon: LogOut })} disabled={isPending} className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-xl px-3 py-2 bg-white/5 text-[#9ca3c0] hover:text-white hover:bg-white/10 disabled:opacity-50"><LogOut size={12} /> Leave household</button>
             )}
           </div>
         </div>

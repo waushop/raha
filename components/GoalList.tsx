@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { createGoal, updateGoal, deleteGoal } from "@/app/actions";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 import type { GoalProgress } from "@/lib/goals";
 import { monthLabel } from "@/lib/months";
 import { DEFAULT_GOAL_ICON, iconFromLegacy, type IconName } from "@/lib/icon-names";
@@ -43,6 +44,7 @@ export default function GoalList({ goals }: { goals: GoalProgress[] }) {
   const [icon, setIcon] = useState<IconName>(DEFAULT_GOAL_ICON);
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
 
   function openCreate() { setEditing(null); setIcon(DEFAULT_GOAL_ICON); setShowForm(true); }
   function openEdit(g: GoalProgress) { setEditing(g); setIcon(iconFromLegacy(g.ICON) ?? DEFAULT_GOAL_ICON); setShowForm(true); }
@@ -58,8 +60,8 @@ export default function GoalList({ goals }: { goals: GoalProgress[] }) {
     });
   }
 
-  function handleDelete(g: GoalProgress) {
-    if (!confirm(`Remove goal "${g.NAME}"? Contributions stay in the ledger.`)) return;
+  async function handleDelete(g: GoalProgress) {
+    if (!(await dialog.confirm({ title: `Remove goal "${g.NAME}"?`, message: "Contributions stay in the ledger as ordinary rows.", confirmLabel: "Remove goal", tone: "danger", icon: Trash2 }))) return;
     startTransition(async () => { await deleteGoal(g.ID); toast.show(`"${g.NAME}" removed`); });
   }
 

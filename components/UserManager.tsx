@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { adminDisable2fa, createUser, removeUser, renameUser, resetUserPin } from "@/app/users/actions";
+import { KeyRound, MailX, UserMinus } from "lucide-react";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
+import { pinWeakness } from "@/lib/pin-policy";
 
 type User = { ID: string; NAME: string; IS_ADMIN: number; REQUIRE_2FA?: number };
 
@@ -10,6 +13,7 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
   const [showForm, setShowForm] = useState(false);
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
   const input = "border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 placeholder:text-[#5a6380]";
 
   function handleCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -25,8 +29,8 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
     });
   }
 
-  function rename(u: User) {
-    const name = prompt("New name", u.NAME);
+  async function rename(u: User) {
+    const name = await dialog.prompt({ title: u.ID === currentUserId ? "Rename yourself" : `Rename ${u.NAME}`, label: "Name", defaultValue: u.NAME, maxLength: 40, confirmLabel: "Rename" });
     if (!name || name === u.NAME) return;
     startTransition(async () => {
       const res = await renameUser(u.ID, name);
@@ -34,8 +38,18 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
     });
   }
 
-  function resetPin(u: User) {
-    const pin = prompt(`New 6-digit PIN for ${u.NAME} (they'll be signed out everywhere)`);
+  async function resetPin(u: User) {
+    const pin = await dialog.prompt({
+      title: `Reset PIN for ${u.NAME}`,
+      message: "They'll be signed out on every device and sign in with this PIN next time. Tell it to them in person.",
+      label: "New 6-digit PIN",
+      inputMode: "numeric",
+      maxLength: 6,
+      mono: true,
+      confirmLabel: "Reset PIN",
+      icon: KeyRound,
+      validate: pinWeakness,
+    });
     if (!pin) return;
     startTransition(async () => {
       const res = await resetUserPin(u.ID, pin.trim());
@@ -43,11 +57,19 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
     });
   }
 
-  function remove(u: User) {
-    if (!confirm(`Remove ${u.NAME}? Their ledger is kept but they can no longer sign in.`)) return;
+  async function remove(u: User) {
+    if (!(await dialog.confirm({ title: `Remove ${u.NAME}?`, message: "They can no longer sign in. Their ledger is kept.", confirmLabel: "Remove user", tone: "danger", icon: UserMinus }))) return;
     startTransition(async () => {
       const res = await removeUser(u.ID);
       toast[res.ok ? "show" : "showError"](res.ok ? `${u.NAME} removed` : res.error);
+    });
+  }
+
+  async function disable2fa(u: User) {
+    if (!(await dialog.confirm({ title: `Switch off the email check for ${u.NAME}?`, message: "Use this when they lost access to their mailbox. They sign in with the PIN alone until they turn it back on.", confirmLabel: "Switch off", tone: "danger", icon: MailX }))) return;
+    startTransition(async () => {
+      const res = await adminDisable2fa(u.ID);
+      toast[res.ok ? "show" : "showError"](res.ok ? "Email check switched off" : res.error);
     });
   }
 
@@ -69,7 +91,7 @@ export default function UserManager({ users, currentUserId, isAdmin }: { users: 
               <>
                 <button onClick={() => resetPin(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-amber-400 transition-colors px-1">Reset PIN</button>
                 {u.REQUIRE_2FA === 1 && (
-                  <button onClick={() => { if (confirm(`Switch off the email check for ${u.NAME}? Use this if they lost access to their mailbox.`)) startTransition(async () => { const res = await adminDisable2fa(u.ID); toast[res.ok ? "show" : "showError"](res.ok ? "Email check switched off" : res.error); }); }} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-amber-400 transition-colors px-1">Disable email check</button>
+                  <button onClick={() => disable2fa(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-amber-400 transition-colors px-1">Disable email check</button>
                 )}
                 <button onClick={() => remove(u)} disabled={isPending} className="text-[10px] text-[#5a6380] hover:text-red-400 transition-colors px-1">Remove</button>
               </>

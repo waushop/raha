@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Check, ExternalLink, Pause, Pencil, Play, Plus, TriangleAlert, Trash2, X } from "lucide-react";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 import CategoryIcon from "./CategoryIcon";
 import Glyph from "./Glyph";
 import { createSubscription, deleteSubscription, setSubscriptionStatus, updateSubscription } from "@/app/subscriptions/actions";
@@ -33,6 +34,7 @@ export default function SubscriptionManager({ subscriptions, groups, today }: Pr
   const [cadence, setCadence] = useState<Cadence>("monthly");
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
 
   function openCreate() { setEditing(null); setCadence("monthly"); setShowForm(true); }
   function openEdit(s: SubscriptionView) { setEditing(s); setCadence(s.CADENCE); setShowForm(true); }
@@ -58,7 +60,8 @@ export default function SubscriptionManager({ subscriptions, groups, today }: Pr
     });
   }
 
-  function remove(s: SubscriptionView) {
+  async function remove(s: SubscriptionView) {
+    if (!(await dialog.confirm({ title: `Delete "${s.NAME}"?`, message: "Past charges stay in the ledger but lose their link and price history. To stop tracking it, cancelling keeps the history.", confirmLabel: "Delete", tone: "danger", icon: Trash2 }))) return;
     startTransition(async () => {
       const res = await deleteSubscription(s.ID);
       if (!res.ok) { toast.showError(res.error); return; }

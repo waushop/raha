@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { setBudget, resetAllBudgets } from "@/app/actions";
 import { CATEGORIES, CATEGORY_KEYS, type CategoryKey } from "@/types/expense";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 import CategoryIcon from "./CategoryIcon";
 
 const TOTAL_KEY = "_total";
@@ -33,6 +34,7 @@ export default function BudgetEditor({
   const [busy, setBusy] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
 
   function save(key: string, raw: string) {
     const trimmed = raw.trim();
@@ -49,8 +51,8 @@ export default function BudgetEditor({
     });
   }
 
-  function reset() {
-    if (!confirm("Reset all budgets to defaults?")) return;
+  async function reset() {
+    if (!(await dialog.confirm({ title: "Reset all budgets?", message: "Every category budget and the monthly total go back to the defaults. Past months keep their history.", confirmLabel: "Reset budgets", tone: "danger" }))) return;
     setBusy(TOTAL_KEY);
     startTransition(async () => {
       await resetAllBudgets();

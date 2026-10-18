@@ -36,6 +36,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Server actions called via `useTransition`
 - Toast notifications for user feedback (`useToast()`)
 - Haptic feedback on mobile: `navigator.vibrate?.(10)`
+- Never `window.confirm` / `prompt` / `alert`: use `useDialog()` from `components/Dialog.tsx` (`await dialog.confirm({ title, message, tone: "danger" })`, `await dialog.prompt({ title, validate })`). Destructive actions that can't be undone from a toast ask first.
 
 ## Testing & Deploy
 - Before pushing: `npm run check` (lint with zero warnings, `tsc --noEmit`, `node --test`) and `npx next build` must pass. CI runs the same gates.
