@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useNav } from "@/lib/use-nav";
 import { CATEGORIES, CATEGORY_KEYS, type ExpenseGroup } from "@/types/expense";
 
 type Props = { groups: ExpenseGroup[]; tags: string[] };
@@ -14,7 +15,7 @@ const monthInput = `${select} font-mono tabular-nums flex-1 min-w-0 sm:flex-none
 
 // Filters live in the URL so results are shareable and the back button works.
 export default function SearchFilters({ groups, tags }: Props) {
-  const router = useRouter();
+  const { go } = useNav();
   const params = useSearchParams();
   const get = (k: FilterKey) => params.get(k) ?? "";
   const active = FIELDS.filter((k) => get(k)).length;
@@ -25,12 +26,12 @@ export default function SearchFilters({ groups, tags }: Props) {
       if (v) next.set(k, v);
       else next.delete(k);
     }
-    router.push(`/search?${next.toString()}`);
+    go(`/search?${next.toString()}`);
   }
 
   function clear() {
     const q = params.get("q");
-    router.push(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
+    go(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
   }
 
   return (

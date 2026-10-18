@@ -657,3 +657,39 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   [style*="font-brand"], .add-orb, [class*="rounded-full"][style*="width:"] { animation: none !important; }
   .gradient-pink, .btn-primary { transition: none; }
 }
+
+/* Navigation in flight (lib/use-nav.ts sets <html data-nav-pending>): the old
+   page stays put instead of flashing a skeleton. A fast navigation shows
+   nothing at all; after 150 ms a thin light runs along the top and the page
+   dims a touch so the tap clearly registered. */
+main { transition: opacity 0.2s ease; }
+html[data-nav-pending] main { opacity: 0.6; transition-delay: 0.15s; }
+html[data-nav-pending] body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 100;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  opacity: 0;
+  animation: nav-line 1.1s ease-in-out 0.15s infinite, nav-line-in 0.2s ease 0.15s forwards;
+}
+html[data-theme="light"][data-nav-pending] body::before {
+  background-image: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.55), transparent);
+}
+@keyframes nav-line { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+@keyframes nav-line-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-nav-pending] body::before { animation: nav-line-in 0.2s ease 0.15s forwards; background-size: 100% 100%; }
+}
+/* Same page, new query: the remounted content appears in its final state.
+   A negative delay finishes the animation at once; when the flag goes the
+   start time stays put, so nothing replays. */
+html[data-nav-same] main *, html[data-nav-same] main *::before {
+  animation-delay: -10s !important;
+}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { splitHref, useNav } from "@/lib/use-nav";
 import { Calendar, LayoutDashboard, Menu, Plus, Search } from "lucide-react";
 
 // Thumb-reachable navigation for phones and tablets, in the same flat style
@@ -24,7 +25,8 @@ const ITEMS_RIGHT: Item[] = [
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const router = useRouter();
+  const { go, pending } = useNav();
+  const shownPath = pending ? splitHref(pending).path : pathname;
   const pendingAdd = useRef(false);
 
   // "+" pressed on another page: open the form once the month page is there.
@@ -40,13 +42,13 @@ export default function BottomNav() {
   function add() {
     navigator.vibrate?.(10);
     if (pathname === "/") window.dispatchEvent(new Event(OPEN_ADD_EVENT));
-    else { pendingAdd.current = true; router.push("/"); }
+    else { pendingAdd.current = true; go("/"); }
   }
 
   const tab = (item: Item) => {
-    const active = item.match(pathname);
+    const active = item.match(shownPath);
     return (
-      <button key={item.path} onClick={() => router.push(item.path)} aria-label={item.label} aria-current={active ? "page" : undefined}
+      <button key={item.path} onClick={() => go(item.path)} aria-label={item.label} aria-current={active ? "page" : undefined}
         className={`flex-1 flex items-center justify-center py-1.5 transition-colors ${active ? "text-white" : "text-[#5a6380] hover:text-[#9ca3c0]"}`}>
         <span className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-[18px] transition-all duration-300 ${active ? "nav-active" : ""}`}>
           {item.icon}

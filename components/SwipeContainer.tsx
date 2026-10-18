@@ -1,11 +1,11 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useNav } from "@/lib/use-nav";
 import { addMonths } from "@/lib/months";
 
 export default function SwipeContainer({ month, children }: { month: string; children: React.ReactNode }) {
-  const router = useRouter();
+  const { go } = useNav();
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const [offset, setOffset] = useState(0);
@@ -39,12 +39,12 @@ export default function SwipeContainer({ month, children }: { month: string; chi
 
     if (Math.abs(dx) > threshold * 0.3) {
       if (dx > 0) {
-        router.push(`/?month=${addMonths(month, -1)}`);
+        go(`/?month=${addMonths(month, -1)}`);
       } else if (dx < 0) {
-        router.push(`/?month=${addMonths(month, 1)}`);
+        go(`/?month=${addMonths(month, 1)}`);
       }
     }
-  }, [offset, month, router]);
+  }, [offset, month, go]);
 
   return (
     <div

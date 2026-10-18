@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useNav } from "@/lib/use-nav";
 
 type Props = {
   m1: string;
@@ -14,13 +14,13 @@ function monthLabel(month: string): string {
 }
 
 export default function MonthSelector({ m1, m2, availableMonths }: Props) {
-  const router = useRouter();
+  const { go } = useNav();
 
   function update(field: "m1" | "m2", value: string) {
     const params = new URLSearchParams();
     params.set("m1", field === "m1" ? value : m1);
     params.set("m2", field === "m2" ? value : m2);
-    router.push(`/compare?${params.toString()}`);
+    go(`/compare?${params.toString()}`);
   }
 
   return (

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import NotificationBell from "./NotificationBell";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import { listMonths, whoAmI } from "@/app/actions";
 import { myPreferences } from "@/app/settings/preferences-actions";
@@ -11,6 +11,7 @@ import { DEFAULT_PREFERENCES } from "@/lib/preferences";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
 import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks, ChartLine, Landmark, Sparkles, Building2 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import { splitHref, useNav } from "@/lib/use-nav";
 import { OPEN_MENU_EVENT } from "./BottomNav";
 
 // Current month back to the oldest month with data, newest first, capped at
@@ -32,7 +33,7 @@ export default function Sidebar() {
   const [monthLimit, setMonthLimit] = useState(DEFAULT_PREFERENCES.sidebarMonths);
   const [userName, setUserName] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<{ name: string; kind: "personal" | "shared" } | null>(null);
-  const router = useRouter();
+  const { go, pending } = useNav();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -71,8 +72,11 @@ export default function Sidebar() {
   // Hooks above this line must run on every render, including on /login.
   if (pathname === "/login") return null;
 
-  const activeMonth = searchParams.get("month") ?? currentMonth();
-  const isYearPage = pathname === "/year";
+  // While a navigation runs, its destination is already shown as selected.
+  const dest = pending ? splitHref(pending) : null;
+  const at = (path: string) => (dest?.path ?? pathname) === path;
+  const activeMonth = (dest ? dest.params.get("month") : searchParams.get("month")) ?? currentMonth();
+  const isYearPage = at("/year");
   const currentYear = searchParams.get("year") ?? String(new Date().getFullYear());
   const months = generateMonths(oldestMonth, monthLimit);
 
@@ -116,11 +120,11 @@ export default function Sidebar() {
           {/* Dashboard */}
           <div>
             <button
-              onClick={() => router.push("/dashboard")}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                pathname === "/dashboard"
+              onClick={() => go("/dashboard")}
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${
+                at("/dashboard")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <LayoutDashboard size={14} />
@@ -133,15 +137,15 @@ export default function Sidebar() {
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#5a6380] px-2 mb-2">Months</p>
             <div className="space-y-0.5">
               {months.map(({ value, label }) => {
-                const isActive = !isYearPage && activeMonth === value;
+                const isActive = at("/") && activeMonth === value;
                 return (
                   <button
                     key={value}
-                    onClick={() => router.push(`/?month=${value}`)}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                    onClick={() => go(`/?month=${value}`)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                       isActive
                         ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                        : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                        : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
                     }`}
                   >
                     <span className="capitalize">{label}</span>
@@ -155,121 +159,121 @@ export default function Sidebar() {
           <div>
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#5a6380] px-2 mb-2">Manage</p>
             <button
-              onClick={() => router.push("/search")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mb-0.5 ${
-                pathname === "/search"
+              onClick={() => go("/search")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mb-0.5 ${
+                at("/search")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Search size={14} />
               Search
             </button>
             <button
-              onClick={() => router.push("/assistant")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mb-0.5 ${
-                pathname === "/assistant"
+              onClick={() => go("/assistant")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mb-0.5 ${
+                at("/assistant")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Sparkles size={14} />
               Ask
             </button>
             <button
-              onClick={() => router.push("/activity")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mb-0.5 ${
-                pathname === "/activity"
+              onClick={() => go("/activity")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mb-0.5 ${
+                at("/activity")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Activity size={14} />
               Activity
             </button>
             <button
-              onClick={() => router.push("/subscriptions")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mb-0.5 ${
-                pathname === "/subscriptions"
+              onClick={() => go("/subscriptions")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mb-0.5 ${
+                at("/subscriptions")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Repeat size={14} strokeWidth={2.5} />
               Subscriptions
             </button>
             <button
-              onClick={() => router.push("/groups")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                pathname === "/groups"
+              onClick={() => go("/groups")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${
+                at("/groups")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Folder size={14} />
               Groups
             </button>
             <button
-              onClick={() => router.push("/plan")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
-                pathname === "/plan"
+              onClick={() => go("/plan")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mt-0.5 ${
+                at("/plan")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <ListChecks size={14} />
               Plan
             </button>
             <button
-              onClick={() => router.push("/cashflow")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
-                pathname === "/cashflow"
+              onClick={() => go("/cashflow")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mt-0.5 ${
+                at("/cashflow")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <ChartLine size={14} />
               Cash flow
             </button>
             <button
-              onClick={() => router.push("/networth")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
-                pathname === "/networth"
+              onClick={() => go("/networth")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mt-0.5 ${
+                at("/networth")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Landmark size={14} />
               Net worth
             </button>
             <button
-              onClick={() => router.push("/goals")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
-                pathname === "/goals"
+              onClick={() => go("/goals")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mt-0.5 ${
+                at("/goals")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Target size={14} />
               Goals
             </button>
             <button
-              onClick={() => router.push("/import")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
-                pathname === "/import"
+              onClick={() => go("/import")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mt-0.5 ${
+                at("/import")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Upload size={14} />
               Import
             </button>
             <button
-              onClick={() => router.push("/bank")}
-              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 mt-0.5 ${
-                pathname === "/bank"
+              onClick={() => go("/bank")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mt-0.5 ${
+                at("/bank")
                   ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                  : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
               }`}
             >
               <Building2 size={14} />
@@ -282,44 +286,44 @@ export default function Sidebar() {
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#5a6380] px-2 mb-2">Overview</p>
             <div className="space-y-0.5">
               <button
-                onClick={() => router.push("/review")}
-                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                  pathname === "/review"
+                onClick={() => go("/review")}
+                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${
+                  at("/review")
                     ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                    : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                    : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <ClipboardList size={14} />
                 Monthly review
               </button>
               <button
-                onClick={() => router.push(`/year?year=${currentYear}`)}
-                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
+                onClick={() => go(`/year?year=${currentYear}`)}
+                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${
                   isYearPage
                     ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                    : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                    : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <CalendarRange size={14} />
                 Year {currentYear}
               </button>
               <button
-                onClick={() => router.push("/analytics")}
-                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                  pathname === "/analytics"
+                onClick={() => go("/analytics")}
+                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${
+                  at("/analytics")
                     ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                    : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                    : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <ChartColumn size={14} />
                 Analytics
               </button>
               <button
-                onClick={() => router.push("/compare")}
-                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                  pathname === "/compare"
+                onClick={() => go("/compare")}
+                className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${
+                  at("/compare")
                     ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                    : "text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+                    : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
                 }`}
               >
                 <ArrowLeftRight size={14} />
@@ -333,7 +337,7 @@ export default function Sidebar() {
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#5a6380] px-2 mb-2">Export</p>
             <a
               href={`/api/export?month=${activeMonth}`}
-              className="w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+              className="w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 text-[#9ca3c0] hover:bg-white/5 hover:text-white"
             >
               <Download size={14} />
               Download CSV
@@ -344,11 +348,11 @@ export default function Sidebar() {
         {/* Footer */}
         <div className="px-3 py-4 border-t border-white/[0.06] space-y-0.5">
           <button
-            onClick={() => router.push("/settings")}
-            className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-              pathname === "/settings"
+            onClick={() => go("/settings")}
+            className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${
+              at("/settings")
                 ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
-                : "text-[#5a6380] hover:bg-white/5 hover:text-[#9ca3c0]"
+                : "border border-transparent text-[#5a6380] hover:bg-white/5 hover:text-[#9ca3c0]"
             }`}
           >
             <Settings size={14} />
@@ -357,7 +361,7 @@ export default function Sidebar() {
           <ThemeToggle />
           <button
             onClick={() => logout()}
-            className="w-full text-left px-3 py-2 rounded-xl text-sm font-medium text-[#5a6380] hover:bg-red-500/10 hover:text-red-400 transition-all flex items-center gap-2"
+            className="w-full text-left px-3 py-2 rounded-xl text-sm font-medium text-[#5a6380] hover:bg-red-500/10 hover:text-red-400 transition-colors flex items-center gap-2"
           >
             <LogOut size={14} />
             Log out{userName && <span className="text-[#5a6380]/70 font-normal ml-auto truncate max-w-[7rem]">{userName}</span>}
