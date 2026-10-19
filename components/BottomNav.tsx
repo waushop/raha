@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { CHROMELESS_PAGES } from "@/lib/public-pages";
 import { usePathname } from "next/navigation";
 import { splitHref, useNav } from "@/lib/use-nav";
 import { Calendar, LayoutDashboard, Menu, Plus, Search } from "lucide-react";
@@ -37,7 +38,7 @@ export default function BottomNav() {
     }
   }, [pathname]);
 
-  if (pathname === "/login") return null;
+  if (CHROMELESS_PAGES.has(pathname)) return null;
 
   function add() {
     navigator.vibrate?.(10);

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import NotificationBell from "./NotificationBell";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import { CHROMELESS_PAGES } from "@/lib/public-pages";
 import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/login/actions";
 import { listMonths, whoAmI } from "@/app/actions";
@@ -63,14 +64,14 @@ export default function Sidebar() {
   // Oldest month with data decides how far back the month list goes. Not on
   // /login: the action requires auth.
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (CHROMELESS_PAGES.has(pathname)) return;
     listMonths().then((ms) => { const oldest = ms.at(-1); if (oldest) setOldestMonth(oldest); }).catch(() => {});
     myPreferences().then((p) => setMonthLimit(p.sidebarMonths)).catch(() => {});
     whoAmI().then((u) => { setUserName(u?.name ?? null); setWorkspace(u ? { name: u.workspaceName, kind: u.workspaceKind } : null); }).catch(() => {});
   }, [pathname]);
 
   // Hooks above this line must run on every render, including on /login.
-  if (pathname === "/login") return null;
+  if (CHROMELESS_PAGES.has(pathname)) return null;
 
   // While a navigation runs, its destination is already shown as selected.
   const dest = pending ? splitHref(pending) : null;

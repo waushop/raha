@@ -60,6 +60,7 @@ Users create custom **groups** to organize categories (Home, Car, Kids, etc.)
 | `/review` | Monthly review narrative for a finished month (defaults to last month) |
 | `/settings` | DB stats, budgets, backup/restore |
 | `/login` | PIN authentication |
+| `/privacy`, `/terms` | Public legal pages (no session, no app chrome; `lib/public-pages.ts` + `PUBLIC_PATHS` in `proxy.ts`), linked from `/login` and registered with Enable Banking |
 
 ### APIs (4)
 - `GET /api/export?month=` or `?year=` — CSV download

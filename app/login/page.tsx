@@ -5,6 +5,7 @@ import SetupForm from "@/components/SetupForm";
 import CodeForm from "@/components/CodeForm";
 import { pendingChallenge } from "./actions";
 import { Wallet } from "lucide-react";
+import Link from "next/link";
 
 export default async function LoginPage() {
   await connection();
@@ -30,6 +31,10 @@ export default async function LoginPage() {
         </div>
         {pending ? <CodeForm email={pending.email} /> : ready ? <LoginForm /> : <SetupForm />}
       </div>
+      <p className="absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] inset-x-0 text-center text-[11px] text-[#5a6380] flex justify-center gap-4">
+        <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+        <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+      </p>
     </main>
   );
 }
