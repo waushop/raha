@@ -62,7 +62,7 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
           </h1>
           <p className="text-xs text-[#5a6380] mt-1 flex items-start gap-1.5">
             <Landmark size={12} className="mt-0.5 shrink-0" />
-            Transactions arrive by themselves every 6 hours. Rows you already typed in are matched, not duplicated; new ones are categorised by your rules.
+            Transactions arrive by themselves twice a day. Rows you already typed in are matched, not duplicated; new ones are categorised by your rules.
           </p>
         </div>
 

@@ -30,7 +30,7 @@ async function scheduleBankSync() {
   if (g.__bankSyncTimer) return;
   const { bankMode } = await import("./lib/enablebanking");
   if (bankMode() === "off") return;
-  const minutes = Math.max(30, Number(process.env.BANK_SYNC_INTERVAL_MIN ?? 360));
+  const minutes = Math.max(30, Number(process.env.BANK_SYNC_INTERVAL_MIN ?? 720));
   const tick = async () => {
     try {
       const { syncAll } = await import("./lib/banksync-db");
