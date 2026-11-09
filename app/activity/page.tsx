@@ -52,6 +52,7 @@ const DIFF_FIELDS: Array<[keyof AuditSnapshot & string, string, (v: unknown) => 
   ["NOTES", "notes", (v) => (v ? String(v) : "—")],
   ["TAGS", "tags", (v) => (v ? String(v) : "—")],
   ["GROUP_ID", "group", (v) => (v ? "changed" : "none")],
+  ["FEED_ONLY", "month view", (v) => (Number(v) ? "bank feed only" : "added")],
 ];
 
 function describeChanges(before: AuditSnapshot | null, after: AuditSnapshot | null): string[] {

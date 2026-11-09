@@ -279,6 +279,8 @@ describe("sync against the database (mock bank)", () => {
     assert.equal(hand.DAY, 12, "missing day filled from the bank");
     const inserted = rows.filter((r) => r.ID !== handId);
     assert.ok(inserted.every((r) => r.EXTERNAL_ID && r.NOTES?.startsWith("Bank: ")));
+    const feed = ((await db.execute("SELECT ID, FEED_ONLY FROM LEDGER WHERE WORKSPACE_ID = ?", [WS]))[0] as Array<{ ID: string; FEED_ONLY: number }>);
+    assert.ok(feed.every((r) => r.FEED_ONLY === (r.ID === handId ? 0 : 1)), "bank lines go to the feed; the linked bill stays in the month");
     assert.ok(inserted.some((r) => r.KIND === "income"));
     assert.ok(inserted.filter((r) => r.NAME.startsWith("Circle K")).every((r) => r.CATEGORY === "fuel"));
     assert.ok(inserted.every((r) => r.MONTH >= accounts[0].SYNC_FROM!.slice(0, 7)), "nothing before SYNC_FROM");

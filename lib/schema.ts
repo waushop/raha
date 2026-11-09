@@ -180,6 +180,14 @@ function migrate(sqlite: DatabaseSync): void {
       sqlite.exec("ALTER TABLE LEDGER ADD COLUMN EXTERNAL_ID TEXT");
       sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
     }
+    // Bank lines live in /transactions and the stats, not the month view,
+    // until the user adds them to the month. Rows sync filed by itself move
+    // there; hand-entered rows it linked stay in the month as paid bills.
+    if (!cols.includes("FEED_ONLY")) {
+      sqlite.exec("ALTER TABLE LEDGER ADD COLUMN FEED_ONLY INTEGER NOT NULL DEFAULT 0");
+      sqlite.exec("UPDATE LEDGER SET FEED_ONLY = 1 WHERE EXTERNAL_ID IS NOT NULL AND NOTES LIKE 'Bank:%'");
+      sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
+    }
   }
   // Import patterns grew into rules (lib/rules.ts).
   if (tables.has("IMPORT_PATTERN")) {
@@ -275,7 +283,8 @@ const STATEMENTS = [
     SUBSCRIPTION_ID TEXT,
     SPLIT_GROUP  TEXT,
     PAID_BY      TEXT,
-    EXTERNAL_ID  TEXT
+    EXTERNAL_ID  TEXT,
+    FEED_ONLY    INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_GOAL ON LEDGER(GOAL_ID)`,
   // Savings goals; contributions are LEDGER rows with GOAL_ID set.
@@ -383,7 +392,7 @@ const STATEMENTS = [
   // a non-timestamp column avoids the recursive trigger that would fire when the
   // trigger itself updates UPDATED_AT.
   `CREATE TRIGGER IF NOT EXISTS TRG_LEDGER_UPDATED_AT
-   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, EXTERNAL_ID
+   AFTER UPDATE OF KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, DELETED_AT, SUBSCRIPTION_ID, SPLIT_GROUP, PAID_BY, EXTERNAL_ID, FEED_ONLY
    ON LEDGER
    BEGIN
      UPDATE LEDGER SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;

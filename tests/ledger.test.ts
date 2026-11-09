@@ -49,6 +49,29 @@ describe("ledger writes", () => {
     assert.equal(await count("MONTH = '2026-02' AND KIND = 'income'"), 1, "income kind preserved");
   });
 
+  test("bank feed lines stay behind on copies and join the month only when added", async () => {
+    // Around today: recurring rows from long ago read as cancelled subscriptions.
+    const { addMonths, currentMonth } = await import("@/lib/months");
+    const m0 = addMonths(currentMonth(), -1), m1 = currentMonth(), m2 = addMonths(currentMonth(), 1);
+    let feedId = "";
+    db.transaction((tx) => {
+      ledger.insertRow(tx, WS, row({ NAME: "Rent", AMOUNT: 800, IS_RECURRING: 1 }), m0);
+      feedId = ledger.insertRow(tx, WS, row({ NAME: "Bauhof", AMOUNT: 19.9, IS_RECURRING: 1, EXTERNAL_ID: "bank-1", FEED_ONLY: 1 }), m0);
+    });
+    assert.equal(ledger.copyMonth(WS, m0, m1), 1, "only the bill is copied");
+    assert.equal(ledger.copyRecurring(WS, m2), 1, "only the recurring bill is carried");
+    assert.equal(await count("MONTH = ? AND NAME = 'Bauhof'", [m1]), 0);
+
+    assert.equal(ledger.addToMonth(OTHER, feedId), false, "other workspaces cannot move it");
+    assert.equal(ledger.addToMonth(WS, feedId), true);
+    assert.equal(ledger.addToMonth(WS, feedId), false, "already in the month");
+    assert.equal(await count("ID = ? AND FEED_ONLY = 0", [feedId]), 1);
+    const [audit] = await db.execute("SELECT ACTION, AFTER_JSON FROM LEDGER_AUDIT WHERE LEDGER_ID = ? ORDER BY AT DESC, rowid DESC LIMIT 1", [feedId]);
+    const last = (audit as Array<{ ACTION: string; AFTER_JSON: string }>)[0];
+    assert.equal(last.ACTION, "update");
+    assert.equal(JSON.parse(last.AFTER_JSON).FEED_ONLY, 0);
+  });
+
   test("copyMonth ignores soft-deleted rows and is a no-op onto itself", async () => {
     db.transaction((tx) => {
       ledger.insertRow(tx, WS, row(), "2026-03");

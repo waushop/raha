@@ -528,7 +528,7 @@ export async function bulkUpdateExpenses(ids: string[], patch: { category?: stri
     if (patch.isRecurring !== undefined) clean.isRecurring = !!patch.isRecurring;
     if (patch.month !== undefined) clean.month = parseMonth(patch.month);
     const changed = ledger.bulkUpdate(ws, ids.map((i) => parseId(i)), clean);
-    revalidatePath("/"); revalidatePath("/dashboard"); revalidatePath("/subscriptions");
+    revalidatePath("/"); revalidatePath("/dashboard"); revalidatePath("/subscriptions"); revalidatePath("/transactions");
     return { changed };
   });
 }

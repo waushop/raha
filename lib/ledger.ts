@@ -25,12 +25,14 @@ export type LedgerSource = {
   PAID_BY?: string | null;
   /** The bank's transaction id (bank sync); never copied by SOURCE_COLUMNS. */
   EXTERNAL_ID?: string | null;
+  /** 1 = a bank line shown in /transactions and the stats but not the month view. */
+  FEED_ONLY?: number;
 };
 
 export const SOURCE_COLUMNS = "KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY";
 
-const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY, EXTERNAL_ID)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_LEDGER = `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, NOTES, IS_RECURRING, TAGS, DAY, GOAL_ID, SPLIT_GROUP, PAID_BY, EXTERNAL_ID, FEED_ONLY)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 /** A copied row keeps its day where the target month has it (31st → 30th otherwise). */
 export function clampDay(day: number | null, month: string): number | null {
@@ -40,7 +42,7 @@ export function clampDay(day: number | null, month: string): number | null {
 // ---------- audit ----------
 export type AuditAction = "create" | "update" | "delete" | "restore";
 export type AuditSnapshot = Record<string, unknown>;
-const AUDIT_COLUMNS = "ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID";
+const AUDIT_COLUMNS = "ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, GOAL_ID, FEED_ONLY";
 
 /** The row as stored right now (live or deleted), or null if it doesn't exist. */
 export function snapshotRow(tx: Tx, id: string): AuditSnapshot | null {
@@ -104,7 +106,7 @@ export function assertGroupExists(tx: Tx, ws: string, id: string | null): void {
 export function insertRow(tx: Tx, ws: string, row: LedgerSource, month: string): string {
   const id = randomUUID();
   const day = clampDay(row.DAY, month);
-  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null, row.SPLIT_GROUP ?? null, row.PAID_BY ?? null, row.EXTERNAL_ID ?? null]);
+  tx.run(INSERT_LEDGER, [id, ws, row.KIND, row.CATEGORY, row.GROUP_ID, row.NAME, row.AMOUNT, month, row.NOTES, row.IS_RECURRING, row.TAGS, day, row.GOAL_ID ?? null, row.SPLIT_GROUP ?? null, row.PAID_BY ?? null, row.EXTERNAL_ID ?? null, row.FEED_ONLY ?? 0]);
   if (row.TAGS) syncTags(tx, id, row.TAGS);
   audit(tx, id, "create", null, { ID: id, ...row, MONTH: month, DAY: day });
   if (row.IS_RECURRING && row.KIND === "expense") linkSubscription(tx, ws, id);
@@ -126,12 +128,12 @@ function stoppedSubscriptionKeys(tx: Tx, ws: string): Set<string> {
 }
 const isStopped = (stopped: Set<string>, r: LedgerSource) => r.IS_RECURRING === 1 && stopped.has(`${r.NAME}\u0000${r.CATEGORY}\u0000${r.GROUP_ID ?? ""}`);
 
-/** Copies every live row of `sourceMonth` into `targetMonth`, skipping duplicates. */
+/** Copies every live month-view row of `sourceMonth` into `targetMonth` (bank lines stay behind), skipping duplicates. */
 export function copyMonth(ws: string, sourceMonth: string, targetMonth: string): number {
   if (sourceMonth === targetMonth) return 0;
   return db.transaction((tx) => {
     const rows = tx.all<LedgerSource>(
-      `SELECT ${SOURCE_COLUMNS} FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`,
+      `SELECT ${SOURCE_COLUMNS} FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL AND FEED_ONLY = 0 ORDER BY CREATED_AT`,
       [ws, sourceMonth],
     );
     const existing = existingKeys(tx, ws, targetMonth);
@@ -152,7 +154,7 @@ export function copyMonth(ws: string, sourceMonth: string, targetMonth: string):
 export function backfill(ws: string, sourceMonth: string, targetMonths: string[]): number {
   return db.transaction((tx) => {
     const source = tx.all<LedgerSource>(
-      `SELECT ${SOURCE_COLUMNS} FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL ORDER BY CREATED_AT`,
+      `SELECT ${SOURCE_COLUMNS} FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL AND FEED_ONLY = 0 ORDER BY CREATED_AT`,
       [ws, sourceMonth],
     );
     if (source.length === 0) return 0;
@@ -182,8 +184,8 @@ export function copyRecurring(ws: string, targetMonth: string): number {
   return db.transaction((tx) => {
     const rows = tx.all<LedgerSource>(
       `SELECT ${SOURCE_COLUMNS} FROM LEDGER
-       WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND DELETED_AT IS NULL AND MONTH < ?
-         AND MONTH = (SELECT MAX(MONTH) FROM LEDGER WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND DELETED_AT IS NULL AND MONTH < ?)
+       WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND DELETED_AT IS NULL AND FEED_ONLY = 0 AND MONTH < ?
+         AND MONTH = (SELECT MAX(MONTH) FROM LEDGER WHERE WORKSPACE_ID = ? AND IS_RECURRING = 1 AND DELETED_AT IS NULL AND FEED_ONLY = 0 AND MONTH < ?)
        ORDER BY CREATED_AT`,
       [ws, targetMonth, ws, targetMonth],
     );
@@ -284,7 +286,7 @@ export function splitRow(ws: string, id: string, parts: SplitPart[]): string[] {
   if (parts.length < 2) throw new ValidationError("A split needs at least two parts");
   return db.transaction((tx) => {
     const row = tx.all<LedgerSource & { ID: string; MONTH: string }>(
-      `SELECT ID, MONTH, ${SOURCE_COLUMNS} FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL`, [id, ws],
+      `SELECT ID, MONTH, FEED_ONLY, ${SOURCE_COLUMNS} FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL`, [id, ws],
     )[0];
     if (!row) throw new ValidationError("Row not found");
     const total = parts.reduce((s, p) => s + p.amount, 0);
@@ -300,6 +302,14 @@ export function splitRow(ws: string, id: string, parts: SplitPart[]): string[] {
       ids.push(insertRow(tx, ws, { ...row, CATEGORY: p.category, GROUP_ID: p.groupId, NAME: p.name?.trim() || row.NAME, AMOUNT: p.amount, IS_RECURRING: 0, GOAL_ID: null, SPLIT_GROUP: group }, row.MONTH));
     }
     return ids;
+  });
+}
+
+/** Moves a bank line from the feed into the month view. Returns false when there was nothing to move. */
+export function addToMonth(ws: string, id: string): boolean {
+  return db.transaction((tx) => {
+    const live = tx.all("SELECT 1 FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL AND FEED_ONLY = 1", [id, ws]).length > 0;
+    return live && auditedUpdate(tx, id, "update", () => tx.run("UPDATE LEDGER SET FEED_ONLY = 0 WHERE ID = ? AND WORKSPACE_ID = ?", [id, ws]));
   });
 }
 

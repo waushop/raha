@@ -10,7 +10,7 @@ import { listMonths, whoAmI } from "@/app/actions";
 import { myPreferences } from "@/app/settings/preferences-actions";
 import { DEFAULT_PREFERENCES } from "@/lib/preferences";
 import { addMonths, currentMonth, monthLabel } from "@/lib/months";
-import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks, ChartLine, Landmark, Sparkles, Building2 } from "lucide-react";
+import { Activity, ArrowLeftRight, CalendarRange, ChartColumn, ClipboardList, Download, Folder, LayoutDashboard, LogOut, Repeat, Search, Settings, Target, Upload, X, ListChecks, ChartLine, Landmark, Sparkles, Building2, ReceiptText } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { splitHref, useNav } from "@/lib/use-nav";
 import { OPEN_MENU_EVENT } from "./BottomNav";
@@ -268,6 +268,17 @@ export default function Sidebar() {
             >
               <Upload size={14} />
               Import
+            </button>
+            <button
+              onClick={() => go("/transactions")}
+              className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 mt-0.5 ${
+                at("/transactions")
+                  ? "bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-white border border-pink-500/20"
+                  : "border border-transparent text-[#9ca3c0] hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <ReceiptText size={14} />
+              Transactions
             </button>
             <button
               onClick={() => go("/bank")}

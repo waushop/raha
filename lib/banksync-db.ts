@@ -134,6 +134,7 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
       TAGS: c.tags,
       DAY: d.tx.day,
       EXTERNAL_ID: d.tx.externalId,
+      FEED_ONLY: 1,
     }, d.tx.month);
     result.inserted++;
   }

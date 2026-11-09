@@ -7,7 +7,7 @@ import { login, toast } from "./helpers";
 // connection and finds nothing new.
 const BANK = "Põhja Pank (mock)";
 
-test("connect the mock bank, rows arrive marked From bank, a second sync adds nothing", async ({ page }) => {
+test("connect the mock bank, lines arrive in Transactions, one is added to the month, a second sync adds nothing", async ({ page }) => {
   await login(page);
   await page.goto("/bank");
   await expect(page.getByRole("heading", { name: "Bank sync" })).toBeVisible();
@@ -22,10 +22,17 @@ test("connect the mock bank, rows arrive marked From bank, a second sync adds no
   await expect(connection).toContainText("EE38 •••• 5685");
   await expect(connection).toContainText(/Last sync (just now|\d+ min ago)/);
 
+  // Bank lines land in the feed, not the month view, until added.
+  await page.goto("/transactions");
+  await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible();
+  const bolt = page.getByRole("listitem").filter({ hasText: "Bolt" }).filter({ has: page.getByRole("button", { name: "Add to month" }) }).first();
+  await expect(bolt).toBeVisible();
+  await bolt.getByRole("button", { name: "Add to month" }).click();
+  await expect(toast(page)).toContainText("added to the month");
+
   await page.goto("/");
-  const fromBank = page.locator('[id^="e-"]').filter({ has: page.locator('[title="From bank"]') });
-  await expect(fromBank.first()).toBeAttached();
-  await expect(fromBank.filter({ hasText: "Bolt" }).first()).toBeAttached();
+  const paid = page.locator('[id^="e-"]').filter({ has: page.locator('[title="Paid: seen on your bank statement"]') });
+  await expect(paid.filter({ hasText: "Bolt" }).first()).toBeAttached();
 
   await page.goto("/bank");
   await page.getByRole("region", { name: BANK }).getByRole("button", { name: "Sync now" }).click();

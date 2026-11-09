@@ -15,7 +15,7 @@ import {
   Search,
   Settings,
   Target,
-  Upload, ListChecks, ChartLine, Landmark, Bell, Sparkles, Building2 } from "lucide-react";
+  Upload, ListChecks, ChartLine, Landmark, Bell, Sparkles, Building2, ReceiptText } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
@@ -36,6 +36,7 @@ const NAV_ITEMS: Array<{ label: string; path: string; icon: LucideIcon }> = [
   { label: "Compare", path: "/compare", icon: ArrowLeftRight },
   { label: "Year overview", path: `/year?year=${new Date().getFullYear()}`, icon: CalendarRange },
   { label: "Import bank CSV", path: "/import", icon: Upload },
+  { label: "Transactions", path: "/transactions", icon: ReceiptText },
   { label: "Bank sync", path: "/bank", icon: Building2 },
   { label: "Settings", path: "/settings", icon: Settings },
 ];

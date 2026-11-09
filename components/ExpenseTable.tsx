@@ -573,7 +573,7 @@ function ExpenseRow({ expense: e, payerName, highlighted, onEdit, onDelete, onDu
             {payerName(e.PAID_BY) && <span className="text-[9px] font-bold shrink-0 w-4 h-4 rounded-full bg-pink-500/15 text-pink-300 inline-flex items-center justify-center" title={`Paid by ${payerName(e.PAID_BY)}`}>{payerName(e.PAID_BY)!.slice(0, 1).toUpperCase()}</span>}
             {e.GOAL_ID && <span className="text-[10px] shrink-0 inline-flex" title="Counts towards a goal"><Target size={10} className="text-purple-400 shrink-0" aria-hidden /></span>}
             {e.SPLIT_GROUP && <span className="text-[10px] shrink-0 inline-flex" title="Part of a split"><Split size={10} className="text-amber-400 shrink-0" aria-hidden /></span>}
-            {e.EXTERNAL_ID && <span className="shrink-0 inline-flex items-center" title="From bank" aria-label="From bank"><Landmark size={10} className="text-sky-400/80 shrink-0" aria-hidden /></span>}
+            {e.EXTERNAL_ID && <span className="shrink-0 inline-flex items-center" title="Paid: seen on your bank statement" aria-label="Paid: seen on your bank statement"><Landmark size={10} className="text-emerald-400/80 shrink-0" aria-hidden /></span>}
             {e.IS_RECURRING === 1 && (
               <Repeat size={10} strokeWidth={2.5} className="text-teal-400/50 shrink-0" />
             )}
