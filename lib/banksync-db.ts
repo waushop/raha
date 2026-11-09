@@ -8,7 +8,7 @@ import db, { type Tx } from "./db";
 import { getBankApi, isSessionGone, type BankApi, type BankTransaction } from "./enablebanking";
 import { categorize, mapTransactions, pickBalance, reconcile, syncWindowStart, type ExistingRow } from "./banksync";
 import { insertRow, auditedUpdate, loadRules } from "./ledger";
-import { train } from "./classifier";
+import { TRAINING_ROWS_SQL, train } from "./classifier";
 import { currentMonth } from "./months";
 
 export type BankConnectionRow = {
@@ -118,7 +118,7 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
     }
     // Train lazily: only when something new needs a category.
     model ??= train(
-      tx.all<{ NAME: string; CATEGORY: string; GROUP_ID: string | null }>("SELECT NAME, CATEGORY, GROUP_ID FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'expense' AND DELETED_AT IS NULL", [ws])
+      tx.all<{ NAME: string; CATEGORY: string; GROUP_ID: string | null }>(TRAINING_ROWS_SQL, [ws])
         .map((r) => ({ name: r.NAME, category: r.CATEGORY, groupId: r.GROUP_ID })),
     );
     const c = categorize(d.tx, rules, model);

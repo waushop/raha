@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID, verify } from "node:crypto";
 import { categorize, daysLeft, mapTransaction, mapTransactions, maskIban, pickBalance, reconcile, syncWindowStart, type ExistingRow, type MappedTx } from "@/lib/banksync";
 import { makeJwt, mockTransactions, normalizePem, isSessionGone, EnableBankingError, type BankTransaction } from "@/lib/enablebanking";
-import { train } from "@/lib/classifier";
+import { TRAINING_ROWS_SQL, train } from "@/lib/classifier";
 import type { Rule } from "@/lib/rules";
 
 process.env.DB_PATH = ":memory:";
@@ -292,6 +292,17 @@ describe("sync against the database (mock bank)", () => {
     const [cp] = (await db.execute("SELECT AMOUNT, NOTE FROM BALANCE_CHECKPOINT WHERE WORKSPACE_ID = ?", [WS]))[0] as Array<{ AMOUNT: number; NOTE: string }>;
     assert.equal(cp.AMOUNT, eb.MOCK_BANKS[0].balance);
     assert.equal(((await db.execute("SELECT COUNT(*) AS N FROM BALANCE_CHECKPOINT WHERE WORKSPACE_ID = ?", [WS]))[0] as Array<{ N: number }>)[0].N, 1, "one checkpoint per day");
+  });
+
+  test("bank-filed rows are learned from only once the user has edited them", async () => {
+    const id = await connectMock();
+    await sync.syncConnection(WS, id);
+    const names = async () => ((await db.execute(TRAINING_ROWS_SQL, [WS]))[0] as Array<{ NAME: string }>).map((r) => r.NAME);
+    assert.deepEqual(await names(), [], "untouched bank rows are not training data");
+    const [row] = (await ledgerRows()).filter((r) => r.KIND === "expense");
+    const { auditedUpdate } = await import("@/lib/ledger");
+    db.transaction((tx) => auditedUpdate(tx, row.ID, "update", () => tx.run("UPDATE LEDGER SET CATEGORY = 'other' WHERE ID = ?", [row.ID])));
+    assert.deepEqual(await names(), [row.NAME]);
   });
 
   test("net worth link writes this month's snapshot; reconnect keeps the account and its settings", async () => {

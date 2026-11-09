@@ -7,14 +7,24 @@
 export type ClassifierModel = {
   categories: Record<string, number>;                  // category → rows seen
   tokens: Record<string, Record<string, number>>;      // token → category → count
-  groupByCategory: Record<string, Record<string, number>>; // category → group id → count
+  // token → category → group id → count. Groups come from the tokens that
+  // matched, never from the category alone: "maintenance" rows mostly living
+  // under Car must not drag a hardware store there.
+  tokenGroups: Record<string, Record<string, Record<string, number>>>;
+  // normalised name → "category|groupId" → count: exact merchants seen before.
+  merchants: Record<string, Record<string, number>>;
   vocabulary: number;
 };
 
 export type Prediction = { category: string; groupId: string | null; confidence: number };
 
 const MIN_TOKEN = 3;
-const STOP = new Set(["card", "payment", "purchase", "pos", "ee", "eesti", "tallinn", "tartu", "and", "the", "ou", "as"]);
+const STOP = new Set([
+  "card", "payment", "purchase", "pos", "ee", "eesti", "and", "the", "ou", "as",
+  // Places say where, not what: a shop and a petrol station in the same district share nothing.
+  "tallinn", "tartu", "pärnu", "parnu", "narva", "viljandi", "rakvere", "haapsalu", "kuressaare", "jõhvi", "maardu", "keila", "saue",
+  "mustamäe", "lasnamäe", "kristiine", "haabersti", "õismäe", "kesklinn", "pirita", "nõmme", "kadaka", "ülemiste", "kopli", "annelinn",
+]);
 
 export function tokenize(text: string): string[] {
   const out = new Set<string>();
@@ -25,21 +35,42 @@ export function tokenize(text: string): string[] {
   return [...out];
 }
 
+/**
+ * Rows to learn from (expenses of one workspace, bind the workspace id). Rows
+ * bank sync filed by itself and nobody has touched since are left out, so a
+ * wrong guess is not learned back and repeated on the next sync.
+ */
+export const TRAINING_ROWS_SQL = `SELECT NAME, CATEGORY, GROUP_ID FROM LEDGER L
+  WHERE L.WORKSPACE_ID = ? AND L.KIND = 'expense' AND L.DELETED_AT IS NULL
+    AND NOT (L.EXTERNAL_ID IS NOT NULL AND L.NOTES LIKE 'Bank:%'
+      AND NOT EXISTS (SELECT 1 FROM LEDGER_AUDIT A WHERE A.LEDGER_ID = L.ID AND A.ACTION = 'update'))`;
+
 export function emptyModel(): ClassifierModel {
-  return { categories: {}, tokens: {}, groupByCategory: {}, vocabulary: 0 };
+  return { categories: {}, tokens: {}, tokenGroups: {}, merchants: {}, vocabulary: 0 };
+}
+
+/** Name key for exact-merchant memory: lower case, letters and digits only. */
+export function merchantKey(name: string): string {
+  return name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 export function train(rows: Array<{ name: string; category: string; groupId: string | null }>): ClassifierModel {
   const m = emptyModel();
   for (const r of rows) {
     m.categories[r.category] = (m.categories[r.category] ?? 0) + 1;
-    if (r.groupId) {
-      const g = (m.groupByCategory[r.category] ??= {});
-      g[r.groupId] = (g[r.groupId] ?? 0) + 1;
+    const key = merchantKey(r.name);
+    if (key) {
+      const seen = (m.merchants[key] ??= {});
+      const label = `${r.category}|${r.groupId ?? ""}`;
+      seen[label] = (seen[label] ?? 0) + 1;
     }
     for (const t of tokenize(r.name)) {
       const bucket = (m.tokens[t] ??= {});
       bucket[r.category] = (bucket[r.category] ?? 0) + 1;
+      if (r.groupId) {
+        const g = ((m.tokenGroups[t] ??= {})[r.category] ??= {});
+        g[r.groupId] = (g[r.groupId] ?? 0) + 1;
+      }
     }
   }
   m.vocabulary = Object.keys(m.tokens).length;
@@ -74,7 +105,25 @@ export function predict(model: ClassifierModel, description: string, minConfiden
   const confidence = 1 / (1 + Math.exp(second - bestScore));
   if (confidence < minConfidence) return null;
 
-  const groups = model.groupByCategory[best];
-  const groupId = groups ? Object.entries(groups).sort((a, b) => b[1] - a[1])[0][0] : null;
+  const groupVotes: Record<string, number> = {};
+  for (const t of tokens) {
+    for (const [g, n] of Object.entries(model.tokenGroups[t]?.[best] ?? {})) groupVotes[g] = (groupVotes[g] ?? 0) + n;
+  }
+  const groupId = Object.entries(groupVotes).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   return { category: best, groupId, confidence };
+}
+
+/**
+ * The category and group this exact merchant had before (majority of its
+ * rows, at least two thirds of them), or null for a merchant never seen or
+ * filed inconsistently.
+ */
+export function recall(model: ClassifierModel, name: string): Prediction | null {
+  const seen = model.merchants?.[merchantKey(name)];
+  if (!seen) return null;
+  const total = Object.values(seen).reduce((a, b) => a + b, 0);
+  const [label, n] = Object.entries(seen).sort((a, b) => b[1] - a[1])[0];
+  if (n / total < 2 / 3) return null;
+  const [category, groupId] = label.split("|");
+  return { category, groupId: groupId || null, confidence: n / total };
 }

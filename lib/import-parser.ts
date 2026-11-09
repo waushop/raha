@@ -1,5 +1,5 @@
 import type { CategoryKey } from "@/types/expense";
-import { predict, type ClassifierModel } from "./classifier";
+import { predict, recall, type ClassifierModel } from "./classifier";
 import { applyRules, type Rule } from "./rules";
 import { cleanMerchant } from "./merchants";
 
@@ -337,7 +337,8 @@ export function parseRocketMoneyCSV(csv: string): ParsedTransaction[] {
 
 /**
  * Auto-categorise parsed transactions: user rules first (lib/rules.ts), then
- * the model learned from the ledger, then built-in keyword guesses.
+ * the same merchant as filed before, then built-in keyword guesses, then
+ * the model learned from the ledger.
  */
 export function classifyTransactions(
   transactions: ParsedTransaction[],
@@ -363,18 +364,24 @@ export function classifyTransactions(
     // The exporting app already categorised it: trust that over our guesses.
     if (tx.confidence === "source") return tx;
 
-    // Learned from the user's own history (beats generic keyword guesses).
-    if (model) {
-      const learned = predict(model, tx.description);
-      if (learned) {
-        return { ...tx, category: learned.category as CategoryKey, confidence: "learned", groupId: learned.groupId };
-      }
+    // The same merchant filed before: do what the user did last time.
+    const recalled = model && recall(model, tx.merchant);
+    if (recalled) {
+      return { ...tx, category: recalled.category as CategoryKey, confidence: "learned", groupId: recalled.groupId };
     }
 
-    // Guess based on common keywords
+    // Known brands (Bauhof, Circle K, …) beat a fuzzy guess from shared words.
     const guessed = guessCategory(tx.description.toLowerCase());
+    // Learned from the user's own history, on the merchant name only: the
+    // raw description's towns and references match unrelated rows.
+    const learned = model && predict(model, tx.merchant);
     if (guessed) {
-      return { ...tx, category: guessed, confidence: "guess" };
+      // Keep the learned group only when the history agrees on the category.
+      const groupId = learned?.category === guessed ? learned.groupId : undefined;
+      return { ...tx, category: guessed, confidence: "guess", ...(groupId ? { groupId } : {}) };
+    }
+    if (learned) {
+      return { ...tx, category: learned.category as CategoryKey, confidence: "learned", groupId: learned.groupId };
     }
 
     return tx;
