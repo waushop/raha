@@ -621,6 +621,18 @@ const STATEMENTS = [
    END`,
 ];
 
+/**
+ * Once: forget every bank account's sync position so the next sync reads its
+ * whole window again and turns lines it filed as income/spending into
+ * transfers where they were money moved between the user's own accounts.
+ */
+function rereadBankHistoryOnce(sqlite: DatabaseSync): void {
+  const flag = "migration:transfer-recheck";
+  if (sqlite.prepare("SELECT 1 FROM APP_SETTING WHERE NAME = ?").get(flag)) return;
+  sqlite.exec("UPDATE BANK_ACCOUNT SET LAST_BOOKING_DATE = NULL");
+  sqlite.prepare("INSERT INTO APP_SETTING (NAME, VALUE) VALUES (?, '1')").run(flag);
+}
+
 export function initSchema(sqlite: DatabaseSync): void {
   migrate(sqlite);
   migrateIcons(sqlite, tableNames(sqlite));
@@ -629,6 +641,7 @@ export function initSchema(sqlite: DatabaseSync): void {
     sqlite.exec(stmt);
   }
   backfillTags(sqlite);
+  rereadBankHistoryOnce(sqlite);
   // Recurring rows that predate SUBSCRIPTION (or were flagged by a path
   // that doesn't link) get their subscription here.
   backfillSubscriptions(

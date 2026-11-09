@@ -6,8 +6,8 @@
 import { randomUUID } from "node:crypto";
 import db, { type Tx } from "./db";
 import { getBankApi, isSessionGone, type BankApi, type BankTransaction } from "./enablebanking";
-import { categorize, mapTransactions, pickBalance, reconcile, syncWindowStart, type ExistingRow } from "./banksync";
-import { insertRow, auditedUpdate, loadRules } from "./ledger";
+import { categorize, isOwnTransfer, mapTransactions, normalizeIban, pickBalance, reconcile, syncWindowStart, transferNameKey, type ExistingRow, type MappedTx } from "./banksync";
+import { insertRow, auditedUpdate, loadRules, markTransfer } from "./ledger";
 import { TRAINING_ROWS_SQL, train } from "./classifier";
 import { currentMonth } from "./months";
 
@@ -39,7 +39,7 @@ export type BankAccountRow = {
   CREATED_AT: string;
 };
 
-export type SyncResult = { inserted: number; linked: number; skipped: number; pending: number; accounts: number; error: string | null };
+export type SyncResult = { inserted: number; linked: number; skipped: number; pending: number; transfers: number; accounts: number; error: string | null };
 
 const CONNECTION_COLUMNS = "ID, WORKSPACE_ID, USER_ID, ASPSP_NAME, COUNTRY, SESSION_ID, VALID_UNTIL, STATUS, LAST_SYNC_AT, LAST_ERROR, CREATED_AT";
 const ACCOUNT_COLUMNS = "ID, CONNECTION_ID, UID, IBAN, NAME, CURRENCY, ENABLED, SYNC_FROM, LAST_BOOKING_DATE, NETWORTH_ACCOUNT_ID, CREATED_AT";
@@ -88,7 +88,7 @@ async function fetchAll(api: BankApi, uid: string, dateFrom: string): Promise<Ba
 
 /** Ledger rows the reconciler needs: live hand-entered rows in the window's months, and every row (even deleted) that carries a bank id. */
 function existingRows(tx: Tx, ws: string, fromMonth: string, toMonth: string): ExistingRow[] {
-  return tx.all<{ ID: string; MONTH: string; DAY: number | null; AMOUNT: number; KIND: "expense" | "income"; EXTERNAL_ID: string | null; DELETED: number }>(
+  return tx.all<{ ID: string; MONTH: string; DAY: number | null; AMOUNT: number; KIND: ExistingRow["KIND"]; EXTERNAL_ID: string | null; DELETED: number }>(
     `SELECT ID, MONTH, DAY, CAST(AMOUNT AS REAL) AS AMOUNT, KIND, EXTERNAL_ID, CASE WHEN DELETED_AT IS NULL THEN 0 ELSE 1 END AS DELETED
      FROM LEDGER WHERE WORKSPACE_ID = ?
        AND (EXTERNAL_ID IS NOT NULL OR (DELETED_AT IS NULL AND MONTH >= ? AND MONTH <= ?))`,
@@ -96,19 +96,63 @@ function existingRows(tx: Tx, ws: string, fromMonth: string, toMonth: string): E
   ).map((r) => ({ ...r, DELETED: r.DELETED === 1 }));
 }
 
+/**
+ * What tells a transfer apart in this workspace: the IBANs of every connected
+ * account, and the counterparties the user marked as transfers before, keyed
+ * by direction (a lender's payout is a transfer; repaying it is spending).
+ */
+function transferContext(tx: Tx, ws: string): { ibans: Set<string>; names: Set<string> } {
+  const ibans = new Set(
+    tx.all<{ IBAN: string | null }>("SELECT IBAN FROM BANK_ACCOUNT WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL", [ws])
+      .map((r) => normalizeIban(r.IBAN)).filter((i): i is string => !!i),
+  );
+  const names = new Set(
+    tx.all<{ NAME: string; OUT: number }>("SELECT NAME, AMOUNT < 0 AS OUT FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND = 'transfer' AND DELETED_AT IS NULL", [ws])
+      .map((r) => `${r.OUT ? "expense" : "income"}:${transferNameKey(r.NAME)}`),
+  );
+  return { ibans, names };
+}
+
+const transferCheck = (ctx: { ibans: Set<string>; names: Set<string> }, t: MappedTx) =>
+  isOwnTransfer(t, ctx.ibans, new Set([...ctx.names].filter((n) => n.startsWith(`${t.kind}:`)).map((n) => n.slice(t.kind.length + 1))));
+
 /** Applies one account's transactions to the ledger. Synchronous: call inside db.transaction. */
 export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): Omit<SyncResult, "accounts" | "error"> & { lastBooking: string | null } {
   const mapped = mapTransactions(txs);
-  const result = { inserted: 0, linked: 0, skipped: 0, pending: 0, lastBooking: null as string | null };
+  const result = { inserted: 0, linked: 0, skipped: 0, pending: 0, transfers: 0, lastBooking: null as string | null };
   if (mapped.length === 0) return result;
   const months = mapped.map((m) => m.month).sort();
   const decisions = reconcile(mapped, existingRows(tx, ws, months[0], months[months.length - 1]));
   const rules = loadRules(tx, ws);
+  const transfers = transferContext(tx, ws);
   let model: ReturnType<typeof train> | null = null;
   for (const d of decisions) {
     if (d.action !== "pending" && (!result.lastBooking || d.tx.date > result.lastBooking)) result.lastBooking = d.tx.date;
     if (d.action === "pending") { result.pending++; continue; }
-    if (d.action === "skip") { result.skipped++; continue; }
+    if (d.action === "skip") {
+      // A line sync filed as income/spending that turns out to be a transfer
+      // (and nobody has touched since) is corrected on the next pass.
+      if (d.rowId && transferCheck(transfers, d.tx) && tx.all(
+        `SELECT 1 FROM LEDGER L WHERE L.ID = ? AND L.FEED_ONLY = 1 AND L.KIND <> 'transfer' AND L.DELETED_AT IS NULL
+           AND NOT EXISTS (SELECT 1 FROM LEDGER_AUDIT A WHERE A.LEDGER_ID = L.ID AND A.ACTION = 'update')`, [d.rowId],
+      ).length > 0) {
+        markTransfer(tx, ws, d.rowId, true);
+        result.transfers++;
+      }
+      result.skipped++;
+      continue;
+    }
+    if (transferCheck(transfers, d.tx)) {
+      insertRow(tx, ws, {
+        KIND: "transfer", CATEGORY: "other", GROUP_ID: null, NAME: d.tx.merchant.slice(0, 120),
+        AMOUNT: d.tx.kind === "expense" ? -d.tx.amount : d.tx.amount,
+        NOTES: `Bank: ${d.tx.rawText}`.slice(0, 1000), IS_RECURRING: 0, TAGS: null, DAY: d.tx.day,
+        EXTERNAL_ID: d.tx.externalId, FEED_ONLY: 1,
+      }, d.tx.month);
+      result.inserted++;
+      result.transfers++;
+      continue;
+    }
     if (d.action === "link") {
       auditedUpdate(tx, d.rowId, "update", () => {
         tx.run("UPDATE LEDGER SET EXTERNAL_ID = ?, DAY = COALESCE(DAY, ?) WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [d.tx.externalId, d.tx.day, d.rowId, ws]);
@@ -181,7 +225,7 @@ async function mainAccountId(ws: string): Promise<string | null> {
  * happened; on failure the error is stored on the connection and returned.
  */
 export async function syncConnection(ws: string, connectionId: string, api: BankApi | null = getBankApi()): Promise<SyncResult> {
-  const total: SyncResult = { inserted: 0, linked: 0, skipped: 0, pending: 0, accounts: 0, error: null };
+  const total: SyncResult = { inserted: 0, linked: 0, skipped: 0, pending: 0, transfers: 0, accounts: 0, error: null };
   const conn = await getConnection(ws, connectionId);
   if (!conn || !conn.SESSION_ID || conn.STATUS === "revoked" || conn.STATUS === "pending") return { ...total, error: "Connection is not active" };
   if (conn.VALID_UNTIL && Date.parse(conn.VALID_UNTIL) <= Date.now()) {
@@ -205,6 +249,7 @@ export async function syncConnection(ws: string, connectionId: string, api: Bank
         total.linked += r.linked;
         total.skipped += r.skipped;
         total.pending += r.pending;
+        total.transfers += r.transfers;
         tx.run(
           "UPDATE BANK_ACCOUNT SET LAST_BOOKING_DATE = CASE WHEN LAST_BOOKING_DATE IS NULL OR LAST_BOOKING_DATE < ? THEN ? ELSE LAST_BOOKING_DATE END WHERE ID = ? AND WORKSPACE_ID = ?",
           [r.lastBooking ?? "", r.lastBooking, a.ID, ws],

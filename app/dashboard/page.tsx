@@ -174,7 +174,7 @@ export default async function DashboardPage() {
   // Recent entries (last 5, both kinds — visual indicator below)
   const [recentRows] = await db.execute(
     `SELECT ID, NAME, CATEGORY, KIND, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, CREATED_AT
-     FROM LEDGER WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL
+     FROM LEDGER WHERE WORKSPACE_ID = ? AND KIND IN ('expense', 'income') AND DELETED_AT IS NULL
      ORDER BY CREATED_AT DESC LIMIT 5`,
     [ws]
   );

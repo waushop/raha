@@ -3,7 +3,7 @@
 // validation, call here, revalidate.
 import { randomUUID } from "node:crypto";
 import db, { type Tx } from "./db";
-import type { Kind } from "@/types/expense";
+import type { Kind, LedgerKind } from "@/types/expense";
 import { ValidationError } from "./validate";
 import { currentMonth, daysInMonth } from "./months";
 import { syncRowLink } from "./subscriptions";
@@ -11,7 +11,7 @@ import { applyRules, type Rule } from "./rules";
 import { formatTags, parseTags } from "./tags";
 
 export type LedgerSource = {
-  KIND: Kind;
+  KIND: LedgerKind;
   CATEGORY: string;
   GROUP_ID: string | null;
   NAME: string;
@@ -311,6 +311,28 @@ export function addToMonth(ws: string, id: string): boolean {
     const live = tx.all("SELECT 1 FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL AND FEED_ONLY = 1", [id, ws]).length > 0;
     return live && auditedUpdate(tx, id, "update", () => tx.run("UPDATE LEDGER SET FEED_ONLY = 0 WHERE ID = ? AND WORKSPACE_ID = ?", [id, ws]));
   });
+}
+
+/**
+ * Marks a bank feed line as a transfer (not income or spending) or back.
+ * The direction survives in the sign of AMOUNT while it is a transfer.
+ */
+export function setTransfer(ws: string, id: string, on: boolean): boolean {
+  return db.transaction((tx) => markTransfer(tx, ws, id, on));
+}
+
+/** setTransfer inside an open transaction (bank sync uses it too). */
+export function markTransfer(tx: Tx, ws: string, id: string, on: boolean): boolean {
+  const row = tx.all<{ KIND: LedgerKind; AMOUNT: number }>(
+    "SELECT KIND, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL AND FEED_ONLY = 1", [id, ws],
+  )[0];
+  if (!row || (row.KIND === "transfer") === on) return false;
+  const [kind, amount] = on
+    ? ["transfer", row.KIND === "expense" ? -row.AMOUNT : row.AMOUNT]
+    : [row.AMOUNT < 0 ? "expense" : "income", Math.abs(row.AMOUNT)];
+  return auditedUpdate(tx, id, "update", () => tx.run(
+    "UPDATE LEDGER SET KIND = ?, AMOUNT = ?, SUBSCRIPTION_ID = NULL, IS_RECURRING = 0 WHERE ID = ? AND WORKSPACE_ID = ?", [kind, amount, id, ws],
+  ));
 }
 
 /** The subset of ids that are live rows of this workspace (keeps bulk edits honest). */

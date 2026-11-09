@@ -70,6 +70,10 @@ export const GROUP_COLOR_CLASSES: Record<string, { text: string; bg: string; bor
 // LEDGER TYPE — both expenses and income live here, distinguished by KIND.
 // ============================================
 export type Kind = "expense" | "income";
+// Bank lines that moved money between the user's own accounts (or a loan
+// payout): neither income nor spending, so every KIND = 'expense' / 'income'
+// aggregate skips them. AMOUNT is signed for these: negative = money left.
+export type LedgerKind = Kind | "transfer";
 
 export type Expense = {
   ID: string;

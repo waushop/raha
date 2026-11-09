@@ -10,7 +10,7 @@ import {
 
 const LINE_COLUMNS = "ID, MONTH, KIND, CATEGORY, GROUP_ID, LABEL, CAST(PLANNED AS REAL) AS PLANNED, SORT_ORDER, SUBSCRIPTION_ID";
 const ROW_SQL = `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, SUBSCRIPTION_ID FROM LEDGER
-  WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL`;
+  WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND IN ('expense', 'income') AND DELETED_AT IS NULL`;
 
 export async function planLines(ws: string, month: string): Promise<PlanLine[]> {
   const [rows] = await db.execute(`SELECT ${LINE_COLUMNS} FROM PLAN_LINE WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL ORDER BY SORT_ORDER, CREATED_AT`, [ws, month]);
@@ -86,7 +86,7 @@ export function buildFromAverages(ws: string, month: string): number {
     const avg = tx.all<{ KIND: "income" | "expense"; CATEGORY: string; GROUP_ID: string | null; GROUP_NAME: string | null; AVG: number }>(
       `SELECT e.KIND, e.CATEGORY, e.GROUP_ID, g.NAME AS GROUP_NAME, CAST(SUM(e.AMOUNT) AS REAL) / 3.0 AS AVG
        FROM LEDGER e LEFT JOIN CATEGORY_GROUP g ON g.ID = e.GROUP_ID AND g.DELETED_AT IS NULL
-       WHERE e.WORKSPACE_ID = ? AND e.MONTH >= ? AND e.MONTH < ? AND e.DELETED_AT IS NULL AND e.SUBSCRIPTION_ID IS NULL
+       WHERE e.WORKSPACE_ID = ? AND e.MONTH >= ? AND e.MONTH < ? AND e.KIND IN ('expense', 'income') AND e.DELETED_AT IS NULL AND e.SUBSCRIPTION_ID IS NULL
        GROUP BY e.KIND, e.CATEGORY, e.GROUP_ID ORDER BY e.KIND DESC, AVG DESC`,
       [ws, start, month],
     );

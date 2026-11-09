@@ -1,16 +1,17 @@
 "use client";
 
 import { useTransition } from "react";
-import { CircleCheck, Plus } from "lucide-react";
+import { ArrowLeftRight, CircleCheck, Plus, Undo2 } from "lucide-react";
 import CategoryIcon from "./CategoryIcon";
 import { useToast } from "./Toast";
-import { CATEGORIES, CATEGORY_KEYS, type ExpenseGroup } from "@/types/expense";
+import { CATEGORIES, CATEGORY_KEYS, type ExpenseGroup, type LedgerKind } from "@/types/expense";
 import { bulkUpdateExpenses } from "@/app/actions";
-import { addToMonth } from "@/app/transactions/actions";
+import { addToMonth, setTransfer } from "@/app/transactions/actions";
 
 export type FeedRow = {
   ID: string;
-  KIND: "expense" | "income";
+  KIND: LedgerKind;
+  /** Signed for transfers (negative = money left). */
   CATEGORY: string;
   GROUP_ID: string | null;
   NAME: string;
@@ -44,6 +45,15 @@ export default function TransactionFeed({ rows, groups }: { rows: FeedRow[]; gro
     });
   }
 
+  function transfer(r: FeedRow, on: boolean) {
+    navigator.vibrate?.(10);
+    startTransition(async () => {
+      const res = await setTransfer(r.ID, on);
+      if (!res.ok) { toast.showError(res.error); return; }
+      toast.show(on ? `${r.NAME}: transfer, not counted` : `${r.NAME} counts again`);
+    });
+  }
+
   // Corrections here teach the categoriser for the next sync.
   function patch(r: FeedRow, change: { category?: string; groupId?: string | null }) {
     navigator.vibrate?.(10);
@@ -70,11 +80,24 @@ export default function TransactionFeed({ rows, groups }: { rows: FeedRow[]; gro
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm text-white/90 truncate">{r.NAME}</span>
-                      <span className={`text-sm font-semibold tabular-nums shrink-0 ${r.KIND === "income" ? "text-emerald-400" : "text-white"}`}>
-                        {r.KIND === "income" ? "+" : "−"}{fmt(r.AMOUNT)} €
+                      <span className={`text-sm font-semibold tabular-nums shrink-0 ${r.KIND === "income" ? "text-emerald-400" : r.KIND === "transfer" ? "text-[#5a6380] line-through decoration-white/20" : "text-white"}`}>
+                        {r.KIND === "income" || (r.KIND === "transfer" && r.AMOUNT > 0) ? "+" : "−"}{fmt(Math.abs(r.AMOUNT))} €
                       </span>
                     </div>
                     {r.NOTES && <p className="text-[10px] text-[#5a6380] mt-0.5 truncate">{r.NOTES.replace(/^Bank:\s*/, "")}</p>}
+                    {r.KIND === "transfer" ? (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#9ca3c0]"><ArrowLeftRight size={12} /> Transfer · not counted</span>
+                        <span className="flex-1" />
+                        <button
+                          onClick={() => transfer(r, false)}
+                          disabled={isPending}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-lg px-2 py-1 bg-white/5 text-[#9ca3c0] hover:text-white hover:bg-white/10 transition-colors btn-press disabled:opacity-50"
+                        >
+                          <Undo2 size={12} /> Count it
+                        </button>
+                      </div>
+                    ) : (
                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
                       <select
                         aria-label="Category"
@@ -96,6 +119,16 @@ export default function TransactionFeed({ rows, groups }: { rows: FeedRow[]; gro
                         {groups.map((g) => <option key={g.ID} value={g.ID}>{g.NAME}</option>)}
                       </select>
                       <span className="flex-1" />
+                      {r.FEED_ONLY === 1 && (
+                        <button
+                          onClick={() => transfer(r, true)}
+                          disabled={isPending}
+                          title="Money moved between your own accounts, or a loan payout: not income or spending"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-lg px-2 py-1 bg-white/5 text-[#9ca3c0] hover:text-white hover:bg-white/10 transition-colors btn-press disabled:opacity-50"
+                        >
+                          <ArrowLeftRight size={12} /> Transfer
+                        </button>
+                      )}
                       {r.FEED_ONLY ? (
                         <button
                           onClick={() => move(r)}
@@ -110,6 +143,7 @@ export default function TransactionFeed({ rows, groups }: { rows: FeedRow[]; gro
                         </span>
                       )}
                     </div>
+                    )}
                   </div>
                 </li>
               ))}

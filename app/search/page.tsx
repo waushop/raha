@@ -57,7 +57,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   if (hasCriteria) {
     const [countRows] = await db.execute(
-      `SELECT COUNT(*) AS CNT, CAST(SUM(CASE WHEN e.KIND = 'income' THEN e.AMOUNT ELSE -e.AMOUNT END) AS REAL) AS NET FROM LEDGER e WHERE ${where.join(" AND ")}`, args,
+      `SELECT COUNT(*) AS CNT, CAST(SUM(CASE e.KIND WHEN 'income' THEN e.AMOUNT WHEN 'expense' THEN -e.AMOUNT ELSE 0 END) AS REAL) AS NET FROM LEDGER e WHERE ${where.join(" AND ")}`, args,
     );
     const agg = (countRows as Array<{ CNT: number; NET: number | null }>)[0];
     totalFound = agg?.CNT ?? 0;
@@ -125,7 +125,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 {monthLabel(month)}
               </Link>
               <span className="text-xs text-[#5a6380] font-mono tabular-nums">
-                {fmt(items.filter((e) => e.KIND !== "income").reduce((s, e) => s + e.AMOUNT, 0))} €
+                {fmt(items.filter((e) => e.KIND === "expense").reduce((s, e) => s + e.AMOUNT, 0))} €
               </span>
             </div>
             <div className="divide-y divide-white/[0.04]">

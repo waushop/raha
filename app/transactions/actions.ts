@@ -15,3 +15,13 @@ export async function addToMonth(id: string): Promise<ActionResult> {
     return {};
   });
 }
+
+/** Marks a feed line as a transfer (own accounts, a loan payout: not income or spending) or counts it again. */
+export async function setTransfer(id: string, on: boolean): Promise<ActionResult> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(() => {
+    if (!ledger.setTransfer(ws, parseId(id), !!on)) throw new ValidationError("Nothing to change on that line");
+    revalidatePath("/"); revalidatePath("/transactions"); revalidatePath("/dashboard"); revalidatePath("/activity");
+    return {};
+  });
+}

@@ -50,7 +50,7 @@ async function weekSummary(ws: string, today: string) {
   const from = addDays(today, -7);
   const [rows] = await db.execute(
     `SELECT KIND, CATEGORY, CAST(SUM(AMOUNT) AS REAL) AS TOTAL, COUNT(*) AS N FROM LEDGER
-     WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND DAY IS NOT NULL
+     WHERE WORKSPACE_ID = ? AND KIND IN ('expense', 'income') AND DELETED_AT IS NULL AND DAY IS NOT NULL
        AND (MONTH || '-' || printf('%02d', DAY)) > ? AND (MONTH || '-' || printf('%02d', DAY)) <= ?
      GROUP BY KIND, CATEGORY`, [ws, from, today],
   );

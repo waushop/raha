@@ -33,6 +33,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const connected = ((conn as Array<{ N: number }>)[0]?.N ?? 0) > 0;
   const out = lines.filter((r) => r.KIND === "expense").reduce((s, r) => s + r.AMOUNT, 0);
   const into = lines.filter((r) => r.KIND === "income").reduce((s, r) => s + r.AMOUNT, 0);
+  const moved = lines.filter((r) => r.KIND === "transfer").reduce((s, r) => s + Math.abs(r.AMOUNT), 0);
 
   return (
     <main className="min-h-screen py-6 px-4 lg:pl-[19.5rem] lg:pr-6 sm:py-10 pb-24 lg:pb-20">
@@ -58,8 +59,8 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                 <p className="text-sm font-semibold text-emerald-400 tabular-nums">{fmt(into)} €</p>
               </div>
               <div className="surface rounded-xl px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wider text-[#5a6380]">Lines</p>
-                <p className="text-sm font-semibold text-white tabular-nums">{lines.length}</p>
+                <p className="text-[10px] uppercase tracking-wider text-[#5a6380]">Transfers</p>
+                <p className="text-sm font-semibold text-[#9ca3c0] tabular-nums">{fmt(moved)} €</p>
               </div>
             </div>
           )}
@@ -80,7 +81,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
         </div>
 
         <p className="text-[10px] text-[#5a6380] px-1">
-          These count in the dashboard and analytics. The month view keeps your own entries and bills; a bill that matched a bank line shows as paid there.
+          These count in the dashboard and analytics. The month view keeps your own entries and bills; a bill that matched a bank line shows as paid there. Transfers (between your own accounts, a loan payout) count nowhere: mark one with Transfer and later lines from the same sender follow.
         </p>
       </div>
     </main>

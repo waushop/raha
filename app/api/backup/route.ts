@@ -37,6 +37,7 @@ import { CATEGORY_KEYS, GROUP_COLORS } from "@/types/expense";
 //       for one consent, which expires anyway; reconnect after a restore.
 //   v15 + FEED_ONLY per row (bank lines kept out of the month view). Older
 //       files derive it: a bank id plus "Bank: …" notes means sync filed it.
+//       Rows may also have KIND 'transfer' (own-account moves) with a signed AMOUNT.
 const BACKUP_VERSION = 15;
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -361,7 +362,9 @@ export async function POST(request: NextRequest) {
       const name = str(e.NAME);
       const amount = num(e.AMOUNT);
       const month = str(e.MONTH);
-      if (!name || amount === null || amount <= 0 || !month || !MONTH_RE.test(month)) { stats.skipped++; continue; }
+      const kind = e.KIND === "income" || e.KIND === "transfer" ? e.KIND : "expense";
+      // Transfers are signed (negative = money left); everything else is positive.
+      if (!name || amount === null || amount === 0 || (amount < 0 && kind !== "transfer") || !month || !MONTH_RE.test(month)) { stats.skipped++; continue; }
 
       const givenId = str(e.ID);
       let id = givenId && UUID_RE.test(givenId) ? givenId : randomUUID();
@@ -394,7 +397,7 @@ export async function POST(request: NextRequest) {
         [
           id,
           ws,
-          e.KIND === "income" ? "income" : "expense",
+          kind,
           isCategory(e.CATEGORY) ? e.CATEGORY : "other",
           groupId && liveGroupIds.has(groupId) ? groupId : null,
           name,

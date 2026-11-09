@@ -260,7 +260,7 @@ export async function getTags(): Promise<{ TAG: string; N: number }[]> {
 export async function exportCsv(month?: string, year?: string): Promise<string> {
   const { workspaceId: ws } = await requireAuth();
   let query = `SELECT e.MONTH, e.KIND, e.CATEGORY, e.NAME, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.NOTES, e.IS_RECURRING, e.CREATED_AT, e.DAY, g.NAME AS GROUP_NAME
-     FROM LEDGER e LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL WHERE e.WORKSPACE_ID = ? AND e.DELETED_AT IS NULL`;
+     FROM LEDGER e LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL WHERE e.WORKSPACE_ID = ? AND e.KIND IN ('expense', 'income') AND e.DELETED_AT IS NULL`;
   const params: string[] = [ws];
   if (month) { query += " AND e.MONTH = ?"; params.push(parseMonth(month)); }
   else if (year) { const y = parseYear(year); query += " AND e.MONTH >= ? AND e.MONTH <= ?"; params.push(`${y}-01`, `${y}-12`); }

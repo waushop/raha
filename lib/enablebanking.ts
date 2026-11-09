@@ -14,6 +14,7 @@ import { createHash, createPrivateKey, sign, type KeyObject } from "node:crypto"
 // ---------- API shapes (the subset we use) ----------
 export type AmountType = { currency: string; amount: string };
 export type PartyIdentification = { name?: string | null } | null;
+export type AccountIdentification = { iban?: string | null; other?: { identification?: string | null } | null } | null;
 
 export type Aspsp = {
   name: string;
@@ -48,6 +49,8 @@ export type BankTransaction = {
   transaction_date?: string | null;
   creditor?: PartyIdentification;
   debtor?: PartyIdentification;
+  creditor_account?: AccountIdentification;
+  debtor_account?: AccountIdentification;
   remittance_information?: string[] | null;
   merchant_category_code?: string | null;
   note?: string | null;

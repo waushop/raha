@@ -35,7 +35,8 @@ const ROW_DATE = "(MONTH || '-' || printf('%02d', COALESCE(DAY, 1)))";
 /** Ledger movements after the checkpoint and up to today (rows dated later are not money that moved yet). */
 async function movementsSince(ws: string, date: string, today: string): Promise<number> {
   const [rows] = await db.execute(
-    `SELECT CAST(SUM(CASE WHEN KIND = 'income' THEN AMOUNT ELSE -AMOUNT END) AS REAL) AS NET FROM LEDGER
+    // Transfers carry their own sign (negative = money left).
+    `SELECT CAST(SUM(CASE KIND WHEN 'income' THEN AMOUNT WHEN 'transfer' THEN AMOUNT ELSE -AMOUNT END) AS REAL) AS NET FROM LEDGER
      WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND ${ROW_DATE} > ? AND ${ROW_DATE} <= ?`,
     [ws, date, today],
   );
@@ -46,7 +47,7 @@ async function movementsSince(ws: string, date: string, today: string): Promise<
 async function futureRows(ws: string, today: string, until: string): Promise<Array<{ date: string; name: string; amount: number; kind: "income" | "expense" }>> {
   const [rows] = await db.execute(
     `SELECT ${ROW_DATE} AS D, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, KIND FROM LEDGER
-     WHERE WORKSPACE_ID = ? AND DELETED_AT IS NULL AND DAY IS NOT NULL AND ${ROW_DATE} > ? AND ${ROW_DATE} <= ?`,
+     WHERE WORKSPACE_ID = ? AND KIND IN ('expense', 'income') AND DELETED_AT IS NULL AND DAY IS NOT NULL AND ${ROW_DATE} > ? AND ${ROW_DATE} <= ?`,
     [ws, today, until],
   );
   return (rows as { D: string; NAME: string; AMOUNT: number; KIND: "income" | "expense" }[]).map((r) => ({ date: r.D, name: r.NAME, amount: r.AMOUNT, kind: r.KIND }));

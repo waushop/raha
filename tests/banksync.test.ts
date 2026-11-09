@@ -1,7 +1,7 @@
 import { test, describe, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID, verify } from "node:crypto";
-import { categorize, daysLeft, mapTransaction, mapTransactions, maskIban, pickBalance, reconcile, syncWindowStart, type ExistingRow, type MappedTx } from "@/lib/banksync";
+import { categorize, daysLeft, isOwnTransfer, mapTransaction, mapTransactions, maskIban, pickBalance, reconcile, syncWindowStart, type ExistingRow, type MappedTx } from "@/lib/banksync";
 import { makeJwt, mockTransactions, normalizePem, isSessionGone, EnableBankingError, type BankTransaction } from "@/lib/enablebanking";
 import { TRAINING_ROWS_SQL, train } from "@/lib/classifier";
 import type { Rule } from "@/lib/rules";
@@ -25,7 +25,7 @@ const btx = (o: Partial<BankTransaction> = {}): BankTransaction => ({
 
 const mapped = (o: Partial<MappedTx> = {}): MappedTx => ({
   externalId: "x1", date: "2026-10-14", month: "2026-10", day: 14, amount: 12.34, currency: "EUR", kind: "expense",
-  rawText: "RIMI — card", merchant: "Rimi", pending: false, ...o,
+  rawText: "RIMI — card", merchant: "Rimi", pending: false, counterpartyIban: null, counterpartyName: "RIMI", ownName: "", ...o,
 });
 
 const existing = (o: Partial<ExistingRow> & { ID: string }): ExistingRow => ({ MONTH: "2026-10", DAY: 14, AMOUNT: 12.34, KIND: "expense", EXTERNAL_ID: null, ...o });
@@ -86,6 +86,33 @@ describe("mapTransaction", () => {
     const m = mapTransaction(btx({ creditor: null, remittance_information: null, note: "ATM" }))!;
     assert.equal(m.rawText, "ATM");
     assert.equal(mapTransaction(btx({ creditor: null, remittance_information: [] }))!.rawText, "Bank transaction");
+  });
+});
+
+describe("own transfers", () => {
+  const OWN = "EE382200221020145685";
+  const none = new Set<string>();
+  test("the other side is one of my accounts (IBAN, spaces and case ignored)", () => {
+    const t = mapTransaction(btx({ credit_debit_indicator: "CRDT", debtor: { name: "Someone" }, creditor: { name: "Siim" }, debtor_account: { iban: "ee38 2200 2210 2014 5685" } }))!;
+    assert.equal(t.counterpartyIban, OWN);
+    assert.equal(isOwnTransfer(t, new Set([OWN]), none), true);
+    assert.equal(isOwnTransfer(t, new Set(["EE001234567890123456"]), none), false);
+  });
+
+  test("payer and payee are the same person, in any word order", () => {
+    const t = mapTransaction(btx({ debtor: { name: "SIIM VAUS" }, creditor: { name: "Vaus Siim" } }))!;
+    assert.equal(isOwnTransfer(t, none, none), true);
+    const shop = mapTransaction(btx({ debtor: { name: "SIIM VAUS" }, creditor: { name: "RIMI EESTI FOOD AS" } }))!;
+    assert.equal(isOwnTransfer(shop, none, none), false);
+    const oneWord = mapTransaction(btx({ debtor: { name: "Siim" }, creditor: { name: "SIIM" } }))!;
+    assert.equal(isOwnTransfer(oneWord, none, none), false, "a single shared word is too weak");
+  });
+
+  test("the bank's own-account wording, and senders marked as transfers before", () => {
+    assert.equal(isOwnTransfer(mapTransaction(btx({ creditor: { name: "x" }, remittance_information: ["Oma kontode vaheline ülekanne"] }))!, none, none), true);
+    const loan = mapTransaction(btx({ credit_debit_indicator: "CRDT", debtor: { name: "LHV Pank AS" }, remittance_information: ["Laenu väljamakse"] }))!;
+    assert.equal(isOwnTransfer(loan, none, none), false);
+    assert.equal(isOwnTransfer(loan, none, new Set(["as lhv pank"])), true);
   });
 });
 
@@ -305,6 +332,36 @@ describe("sync against the database (mock bank)", () => {
     const { auditedUpdate } = await import("@/lib/ledger");
     db.transaction((tx) => auditedUpdate(tx, row.ID, "update", () => tx.run("UPDATE LEDGER SET CATEGORY = 'other' WHERE ID = ?", [row.ID])));
     assert.deepEqual(await names(), [row.NAME]);
+  });
+
+  test("own transfers are filed as transfers, old lines are corrected, and a marked sender is remembered per direction", async () => {
+    const { applyTransactions } = sync;
+    const ledger = await import("@/lib/ledger");
+    const OWN = "EE111111111111111111";
+    await db.execute("INSERT INTO BANK_ACCOUNT (ID, WORKSPACE_ID, CONNECTION_ID, UID, IBAN, ENABLED) VALUES (?, ?, ?, ?, ?, 1)", [randomUUID(), WS, randomUUID(), "uid-own", OWN]);
+    const move = btx({ entry_reference: "t-1", credit_debit_indicator: "DBIT", transaction_amount: { currency: "EUR", amount: "500" }, creditor: { name: "Savings" }, creditor_account: { iban: OWN } });
+    const lunch = btx({ entry_reference: "t-2", creditor: { name: "Kohvik" } });
+    const loan = btx({ entry_reference: "t-3", credit_debit_indicator: "CRDT", transaction_amount: { currency: "EUR", amount: "3000" }, debtor: { name: "LHV Pank AS" } });
+    db.transaction((tx) => applyTransactions(tx, WS, [move, lunch, loan]));
+    const rows = async () => Object.fromEntries(((await db.execute("SELECT EXTERNAL_ID, KIND, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE WORKSPACE_ID = ?", [WS]))[0] as Array<{ EXTERNAL_ID: string; KIND: string; AMOUNT: number }>).map((r) => [r.EXTERNAL_ID, `${r.KIND} ${r.AMOUNT}`]));
+    assert.deepEqual(await rows(), { "t-1": "transfer -500", "t-2": "expense 12.34", "t-3": "income 3000" });
+
+    // The user marks the loan payout; the next payout from that lender follows, a repayment does not.
+    const [loanRow] = (await db.execute("SELECT ID FROM LEDGER WHERE EXTERNAL_ID = 't-3'"))[0] as Array<{ ID: string }>;
+    assert.equal(ledger.setTransfer(WS, loanRow.ID, true), true);
+    const again = btx({ ...loan, entry_reference: "t-4" });
+    const repay = btx({ entry_reference: "t-5", credit_debit_indicator: "DBIT", transaction_amount: { currency: "EUR", amount: "90" }, creditor: { name: "LHV Pank AS" } });
+    db.transaction((tx) => applyTransactions(tx, WS, [again, repay]));
+    assert.deepEqual(await rows(), { "t-1": "transfer -500", "t-2": "expense 12.34", "t-3": "transfer 3000", "t-4": "transfer 3000", "t-5": "expense 90" });
+
+    // Counting it again restores income.
+    assert.equal(ledger.setTransfer(WS, loanRow.ID, false), true);
+    assert.equal((await rows())["t-3"], "income 3000");
+
+    // A line filed as spending before detection existed is corrected on re-read; one the user edited is not.
+    await db.execute("UPDATE LEDGER SET KIND = 'expense', AMOUNT = 500 WHERE EXTERNAL_ID = 't-1'");
+    db.transaction((tx) => applyTransactions(tx, WS, [move]));
+    assert.equal((await rows())["t-1"], "transfer -500");
   });
 
   test("net worth link writes this month's snapshot; reconnect keeps the account and its settings", async () => {

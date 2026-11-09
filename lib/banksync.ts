@@ -4,7 +4,7 @@
 // The database side lives in lib/banksync-db.ts.
 import { createHash } from "node:crypto";
 import type { BankBalance, BankTransaction } from "./enablebanking";
-import type { Kind, CategoryKey } from "@/types/expense";
+import type { Kind, LedgerKind, CategoryKey } from "@/types/expense";
 import { cleanMerchant } from "./merchants";
 import { applyRules, type Rule } from "./rules";
 import { classifyTransactions, type ParsedTransaction } from "./import-parser";
@@ -24,6 +24,10 @@ export type MappedTx = {
   rawText: string;
   merchant: string;
   pending: boolean;
+  /** The other side's IBAN and name, and this account holder's own name, when the bank says. */
+  counterpartyIban: string | null;
+  counterpartyName: string;
+  ownName: string;
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}/;
@@ -36,6 +40,8 @@ export function mapTransaction(tx: BankTransaction): MappedTx | null {
   const kind: Kind = tx.credit_debit_indicator === "CRDT" ? "income" : tx.credit_debit_indicator === "DBIT" ? "expense" : signed < 0 ? "expense" : "income";
   const amount = Math.round(Math.abs(signed) * 100) / 100;
   const counterparty = (kind === "expense" ? tx.creditor?.name : tx.debtor?.name)?.trim() || "";
+  const ownName = (kind === "expense" ? tx.debtor?.name : tx.creditor?.name)?.trim() || "";
+  const counterpartyIban = normalizeIban((kind === "expense" ? tx.creditor_account : tx.debtor_account)?.iban);
   const remittance = (tx.remittance_information ?? []).map((s) => s.trim()).filter(Boolean).join(" ");
   const rawText = [counterparty, remittance].filter(Boolean).join(" — ") || (tx.note ?? "").trim() || "Bank transaction";
   const externalId = tx.transaction_id?.trim() || tx.entry_reference?.trim()
@@ -44,8 +50,37 @@ export function mapTransaction(tx: BankTransaction): MappedTx | null {
   return {
     externalId, date, month: date.slice(0, 7), day: Number(date.slice(8, 10)), amount,
     currency: tx.transaction_amount.currency || "EUR", kind, rawText, merchant: cleanMerchant(counterparty || rawText), pending,
+    counterpartyIban, counterpartyName: counterparty, ownName,
   };
 }
+
+export function normalizeIban(iban: string | null | undefined): string | null {
+  const s = (iban ?? "").replace(/\s+/g, "").toUpperCase();
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(s) ? s : null;
+}
+
+/** Name as a set of words, order and accents ignored: "VAUS SIIM" = "Siim Vaus". */
+function nameKey(name: string): string {
+  return name.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1).sort().join(" ");
+}
+
+const OWN_TRANSFER_TEXT = /\b(oma kontode? vahel|kontode vaheline|own accounts?|between (my|own) accounts|internal transfer|sisene [üu]lekanne)\b/i;
+
+/**
+ * Money moved between the user's own accounts is neither income nor
+ * spending: the other side is one of their connected accounts, the payer
+ * and payee are the same person, the bank calls it an own-account transfer,
+ * or the user has marked this counterparty as a transfer before.
+ */
+export function isOwnTransfer(tx: MappedTx, ownIbans: Set<string>, transferNames: Set<string>): boolean {
+  if (tx.counterpartyIban && ownIbans.has(tx.counterpartyIban)) return true;
+  const other = nameKey(tx.counterpartyName);
+  if (other && other === nameKey(tx.ownName) && other.includes(" ")) return true;
+  if (OWN_TRANSFER_TEXT.test(tx.rawText)) return true;
+  return !!other && transferNames.has(other);
+}
+
+export { nameKey as transferNameKey };
 
 /**
  * Maps a batch. Transactions without a bank id get a content hash; two
@@ -74,7 +109,7 @@ export type ExistingRow = {
   MONTH: string;
   DAY: number | null;
   AMOUNT: number;
-  KIND: Kind;
+  KIND: LedgerKind;
   EXTERNAL_ID: string | null;
   /** Soft-deleted rows still own their EXTERNAL_ID (a deleted bank row stays deleted) but are never linked. */
   DELETED?: boolean;
