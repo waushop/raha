@@ -7,8 +7,7 @@ import { randomUUID } from "node:crypto";
 import db, { type Tx } from "./db";
 import { getBankApi, isSessionGone, type BankApi, type BankTransaction } from "./enablebanking";
 import { categorize, isOwnTransfer, mapTransactions, normalizeIban, pickBalance, reconcile, syncWindowStart, transferNameKey, type ExistingRow, type MappedTx } from "./banksync";
-import { insertRow, auditedUpdate, learnedBill, loadRules, markTransfer, payBill, rememberBillMatch } from "./ledger";
-import { merchantKey } from "./classifier";
+import { insertRow, auditedUpdate, billMatchKey, learnedBill, loadRules, markTransfer, payBill, rememberBillMatch } from "./ledger";
 import { TRAINING_ROWS_SQL, train } from "./classifier";
 import { currentMonth } from "./months";
 
@@ -159,7 +158,7 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
         tx.run("UPDATE LEDGER SET EXTERNAL_ID = ?, DAY = COALESCE(DAY, ?) WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [d.tx.externalId, d.tx.day, d.rowId, ws]);
       });
       const bill = tx.all<{ NAME: string; FEED_ONLY: number }>("SELECT NAME, FEED_ONLY FROM LEDGER WHERE ID = ?", [d.rowId])[0];
-      if (bill && bill.FEED_ONLY === 0) rememberBillMatch(tx, ws, merchantKey(d.tx.merchant), d.tx.kind, bill.NAME);
+      if (bill && bill.FEED_ONLY === 0) rememberBillMatch(tx, ws, billMatchKey(d.tx.rawText), d.tx.kind, bill.NAME);
       result.linked++;
       continue;
     }
@@ -184,7 +183,7 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
       FEED_ONLY: 1,
     }, d.tx.month);
     // A merchant matched to a bill before pays this month's open bill of that name, whatever the amount.
-    const billId = learnedBill(tx, ws, merchantKey(d.tx.merchant), d.tx.kind, d.tx.month);
+    const billId = learnedBill(tx, ws, billMatchKey(d.tx.rawText), d.tx.kind, d.tx.month);
     if (billId) { payBill(tx, ws, billId, lineId); result.linked++; continue; }
     result.inserted++;
   }

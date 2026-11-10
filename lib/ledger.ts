@@ -350,10 +350,21 @@ export const BILL_PAID_SQL = "(SELECT COALESCE(SUM(p.AMOUNT), 0) FROM LEDGER p W
 /** A month-view row still waiting for its money (alias `e`). */
 export const BILL_OPEN_SQL = `e.FEED_ONLY = 0 AND e.EXTERNAL_ID IS NULL AND e.KIND IN ('expense', 'income') AND e.DELETED_AT IS NULL AND ${BILL_PAID_SQL} < e.AMOUNT - 0.005`;
 
-/** The merchant key of a bank line, from the "Bank: …" text sync keeps in NOTES. */
+/**
+ * What identifies "the same payee" across months: the cleaned merchant, plus
+ * the contract number when the text has one (two loans from the same bank,
+ * paid to the same short name, are different bills).
+ */
+export function billMatchKey(rawText: string): string {
+  const base = merchantKey(cleanMerchant(rawText));
+  const contract = rawText.match(/\b\d{2}-\d{6}-[A-Z]{2}\b/)?.[0];
+  return contract ? `${base} ${contract.toLowerCase()}` : base;
+}
+
+/** billMatchKey of a stored bank line, from the "Bank: …" text sync keeps in NOTES. */
 export function bankMerchantKey(notes: string | null, fallbackName: string): string {
   const raw = notes?.startsWith("Bank:") ? notes.slice(5).trim() : "";
-  return merchantKey(cleanMerchant(raw || fallbackName));
+  return billMatchKey(raw || fallbackName);
 }
 
 export function rememberBillMatch(tx: Tx, ws: string, key: string, kind: Kind, billName: string): void {

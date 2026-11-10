@@ -409,6 +409,12 @@ describe("sync against the database (mock bank)", () => {
     db.transaction((tx) => applyTransactions(tx, WS, [pay("e-11", "2026-11-17", "63.10", "EESTI ENERGIA AS"), pay("l-3", "2026-11-11", "405.00", "TAMM", "Laenu põhiosa: 25-000456-EL"), pay("l-4", "2026-11-11", "802.97", "", "Kogunenud intress: 25-000456-EL")]));
     assert.deepEqual(await live("2026-11"), [{ ID: novBill, NAME: "Electricity", AMOUNT: 63.1, DAY: 17 }, { ID: novLoan, NAME: "Mortgage", AMOUNT: 1207.97, DAY: 11 }]);
 
+    // A second loan paid to the same short name stays out of the mortgage.
+    const decBill = bill("2026-12", "Mortgage", 1207.97);
+    db.transaction((tx) => applyTransactions(tx, WS, [pay("l-5", "2026-12-04", "250.00", "TAMM", "Laenu põhiosa: 26-000123-VL")]));
+    assert.equal((await live("2026-12")).length, 2, "the other loan's line stays in the feed");
+    assert.equal((await live("2026-12")).find((r) => r.ID === decBill)!.AMOUNT, 1207.97);
+
     // Unmatch puts the line back in the feed.
     assert.equal(ledger.unmatchLine(WS, await lineId("e-11")), true);
     assert.equal((await live("2026-11")).length, 3);
