@@ -31,16 +31,18 @@ async function scheduleBankSync() {
   const { bankMode } = await import("./lib/enablebanking");
   if (bankMode() === "off") return;
   const minutes = Math.max(30, Number(process.env.BANK_SYNC_INTERVAL_MIN ?? 720));
+  // Wake every 30 min but only sync connections not tried for `minutes`, so
+  // restarts and deploys don't use up the bank's unattended reads.
   const tick = async () => {
     try {
       const { syncAll } = await import("./lib/banksync-db");
-      const r = await syncAll();
-      if (r.connections > 0) console.log(`[bank] synced ${r.connections} connection(s): ${r.inserted} new row(s), ${r.failed} failed`);
+      const r = await syncAll(minutes);
+      if (r.connections > 0) console.log(`[bank] synced ${r.connections} connection(s): ${r.inserted} new row(s) (${r.transfers} transfer(s)), ${r.failed} failed${r.errors.length ? ` — ${r.errors.join("; ")}` : ""}`);
     } catch (e) {
       console.error("[bank] sync failed:", (e as Error).message);
     }
   };
-  g.__bankSyncTimer = setInterval(tick, minutes * 60_000);
+  g.__bankSyncTimer = setInterval(tick, 30 * 60_000);
   g.__bankSyncTimer.unref?.();
   setTimeout(tick, 120_000).unref?.();
 }

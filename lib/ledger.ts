@@ -9,6 +9,8 @@ import { currentMonth, daysInMonth } from "./months";
 import { syncRowLink } from "./subscriptions";
 import { applyRules, type Rule } from "./rules";
 import { formatTags, parseTags } from "./tags";
+import { merchantKey } from "./classifier";
+import { cleanMerchant } from "./merchants";
 
 export type LedgerSource = {
   KIND: LedgerKind;
@@ -333,6 +335,66 @@ export function markTransfer(tx: Tx, ws: string, id: string, on: boolean): boole
   return auditedUpdate(tx, id, "update", () => tx.run(
     "UPDATE LEDGER SET KIND = ?, AMOUNT = ?, SUBSCRIPTION_ID = NULL, IS_RECURRING = 0 WHERE ID = ? AND WORKSPACE_ID = ?", [kind, amount, id, ws],
   ));
+}
+
+// ---------- bank line ↔ bill ----------
+
+/** The merchant key of a bank line, from the "Bank: …" text sync keeps in NOTES. */
+export function bankMerchantKey(notes: string | null, fallbackName: string): string {
+  const raw = notes?.startsWith("Bank:") ? notes.slice(5).trim() : "";
+  return merchantKey(cleanMerchant(raw || fallbackName));
+}
+
+export function rememberBillMatch(tx: Tx, ws: string, key: string, kind: Kind, billName: string): void {
+  if (!key) return;
+  tx.run(
+    `INSERT INTO BILL_MATCH (WORKSPACE_ID, MERCHANT_KEY, KIND, BILL_NAME) VALUES (?, ?, ?, ?)
+     ON CONFLICT(WORKSPACE_ID, MERCHANT_KEY, KIND) DO UPDATE SET BILL_NAME = excluded.BILL_NAME, UPDATED_AT = CURRENT_TIMESTAMP`,
+    [ws, key, kind, billName],
+  );
+}
+
+/**
+ * The bill (a month-view row nothing has paid yet) that this bank line pays,
+ * via a pairing learned before; null when there is none this month.
+ */
+export function learnedBill(tx: Tx, ws: string, key: string, kind: Kind, month: string): string | null {
+  const name = tx.all<{ BILL_NAME: string }>("SELECT BILL_NAME FROM BILL_MATCH WHERE WORKSPACE_ID = ? AND MERCHANT_KEY = ? AND KIND = ?", [ws, key, kind])[0]?.BILL_NAME;
+  if (!name) return null;
+  return tx.all<{ ID: string }>(
+    `SELECT ID FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = ? AND NAME = ? AND EXTERNAL_ID IS NULL AND FEED_ONLY = 0 AND DELETED_AT IS NULL
+     ORDER BY CREATED_AT LIMIT 1`, [ws, month, kind, name],
+  )[0]?.ID ?? null;
+}
+
+/** Marks a bill paid by a bank transaction: it takes the bank's amount and day, keeps its own name, category and group. */
+export function payBill(tx: Tx, ws: string, billId: string, externalId: string, amount: number, day: number | null): void {
+  auditedUpdate(tx, billId, "update", () => tx.run(
+    "UPDATE LEDGER SET EXTERNAL_ID = ?, AMOUNT = ?, DAY = COALESCE(?, DAY) WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL",
+    [externalId, amount, day, billId, ws],
+  ));
+}
+
+/**
+ * "Match to bill": the bank line in the feed pays a bill in the month view.
+ * The bill takes over the bank id (so it shows as paid and the line is never
+ * re-imported) and the feed line is removed, so the money counts once. The
+ * pairing is remembered for next month.
+ */
+export function matchToBill(ws: string, feedId: string, billId: string): void {
+  db.transaction((tx) => {
+    type R = { ID: string; KIND: LedgerKind; AMOUNT: number; MONTH: string; DAY: number | null; NAME: string; NOTES: string | null; EXTERNAL_ID: string | null; FEED_ONLY: number };
+    const get = (id: string) => tx.all<R>("SELECT ID, KIND, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, NAME, NOTES, EXTERNAL_ID, FEED_ONLY FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [id, ws])[0];
+    const line = get(feedId);
+    const bill = get(billId);
+    if (!line || line.FEED_ONLY !== 1 || !line.EXTERNAL_ID || line.KIND === "transfer") throw new ValidationError("That bank line can't be matched");
+    if (!bill || bill.FEED_ONLY !== 0 || bill.EXTERNAL_ID) throw new ValidationError("That bill is already paid or gone");
+    if (bill.KIND !== line.KIND || bill.MONTH !== line.MONTH) throw new ValidationError("Pick a bill of the same month and kind");
+    const externalId = line.EXTERNAL_ID;
+    auditedUpdate(tx, line.ID, "delete", () => tx.run("UPDATE LEDGER SET EXTERNAL_ID = NULL, DELETED_AT = CURRENT_TIMESTAMP WHERE ID = ?", [line.ID]));
+    payBill(tx, ws, bill.ID, externalId, line.AMOUNT, line.DAY);
+    rememberBillMatch(tx, ws, bankMerchantKey(line.NOTES, line.NAME), line.KIND, bill.NAME);
+  });
 }
 
 /** The subset of ids that are live rows of this workspace (keeps bulk edits honest). */

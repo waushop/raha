@@ -1,12 +1,13 @@
 "use client";
 
 import { useTransition } from "react";
-import { ArrowLeftRight, CircleCheck, Plus, Undo2 } from "lucide-react";
+import { ArrowLeftRight, CircleCheck, Link2, Plus, Undo2 } from "lucide-react";
 import CategoryIcon from "./CategoryIcon";
 import { useToast } from "./Toast";
+import { useDialog } from "./Dialog";
 import { CATEGORIES, CATEGORY_KEYS, type ExpenseGroup, type LedgerKind } from "@/types/expense";
 import { bulkUpdateExpenses } from "@/app/actions";
-import { addToMonth, setTransfer } from "@/app/transactions/actions";
+import { addToMonth, matchBill, setTransfer } from "@/app/transactions/actions";
 
 export type FeedRow = {
   ID: string;
@@ -21,12 +22,32 @@ export type FeedRow = {
   FEED_ONLY: number;
 };
 
+export type OpenBill = { ID: string; KIND: "expense" | "income"; NAME: string; AMOUNT: number };
+
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const selectClass = "bg-white/[0.03] border border-white/[0.06] rounded-lg px-1.5 py-1 text-[11px] text-[#9ca3c0] hover:text-white focus:outline-none focus:border-pink-500/40 max-w-[9rem] disabled:opacity-50";
 
-export default function TransactionFeed({ rows, groups }: { rows: FeedRow[]; groups: ExpenseGroup[] }) {
+export default function TransactionFeed({ rows, groups, bills }: { rows: FeedRow[]; groups: ExpenseGroup[]; bills: OpenBill[] }) {
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const dialog = useDialog();
+
+  async function pay(r: FeedRow, billId: string) {
+    const bill = bills.find((b) => b.ID === billId);
+    if (!bill) return;
+    const ok = await dialog.confirm({
+      title: `Match to ${bill.NAME}?`,
+      message: `The bill takes the bank amount (${fmt(r.AMOUNT)} € instead of ${fmt(bill.AMOUNT)} €) and shows as paid; this bank line folds into it. Next month ${r.NAME} pays ${bill.NAME} by itself.`,
+      confirmLabel: "Match",
+    });
+    if (!ok) return;
+    navigator.vibrate?.(10);
+    startTransition(async () => {
+      const res = await matchBill(r.ID, billId);
+      if (!res.ok) { toast.showError(res.error); return; }
+      toast.show(`${bill.NAME} paid`);
+    });
+  }
 
   // Rows arrive newest day first; keep that order while bucketing by day.
   const days: Array<{ day: number | null; rows: FeedRow[] }> = [];
@@ -118,6 +139,23 @@ export default function TransactionFeed({ rows, groups }: { rows: FeedRow[]; gro
                         <option value="">No group</option>
                         {groups.map((g) => <option key={g.ID} value={g.ID}>{g.NAME}</option>)}
                       </select>
+                      {r.FEED_ONLY === 1 && bills.some((b) => b.KIND === r.KIND) && (
+                        <label className="inline-flex items-center gap-1 text-[11px] text-[#5a6380]">
+                          <Link2 size={12} aria-hidden />
+                          <select
+                            aria-label="Match to bill"
+                            value=""
+                            disabled={isPending}
+                            onChange={(e) => { if (e.target.value) void pay(r, e.target.value); }}
+                            className={selectClass}
+                          >
+                            <option value="">Match bill…</option>
+                            {bills.filter((b) => b.KIND === r.KIND)
+                              .sort((a, b) => Math.abs(a.AMOUNT - r.AMOUNT) - Math.abs(b.AMOUNT - r.AMOUNT))
+                              .map((b) => <option key={b.ID} value={b.ID}>{b.NAME} · {fmt(b.AMOUNT)} €</option>)}
+                          </select>
+                        </label>
+                      )}
                       <span className="flex-1" />
                       {r.FEED_ONLY === 1 && (
                         <button

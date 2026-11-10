@@ -596,6 +596,17 @@ const STATEMENTS = [
    BEGIN
      UPDATE BANK_CONNECTION SET UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = NEW.ID;
    END`,
+  // Learned pairings "bank merchant → bill in the month view": once a bank
+  // line is matched to a bill (by hand or by exact amount), next month's line
+  // from that merchant pays the bill of that name even when the amount moved.
+  `CREATE TABLE IF NOT EXISTS BILL_MATCH (
+    WORKSPACE_ID TEXT NOT NULL,
+    MERCHANT_KEY TEXT NOT NULL,
+    KIND         TEXT NOT NULL,
+    BILL_NAME    TEXT NOT NULL,
+    UPDATED_AT   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (WORKSPACE_ID, MERCHANT_KEY, KIND)
+  )`,
   `CREATE TABLE IF NOT EXISTS BANK_ACCOUNT (
     ID                  TEXT NOT NULL PRIMARY KEY,
     CREATED_AT          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -622,12 +633,16 @@ const STATEMENTS = [
 ];
 
 /**
- * Once: forget every bank account's sync position so the next sync reads its
+ * Bank connection bookkeeping added after the table, and once: forget every bank account's sync position so the next sync reads its
  * whole window again and turns lines it filed as income/spending into
  * transfers where they were money moved between the user's own accounts.
  */
 function rereadBankHistoryOnce(sqlite: DatabaseSync): void {
   const flag = "migration:transfer-recheck";
+  const cols = (sqlite.prepare("PRAGMA table_info(BANK_CONNECTION)").all() as Array<{ name: string }>).map((c) => c.name);
+  // When the scheduler last tried this connection, success or not, so a
+  // restart doesn't spend one of the bank's few unattended reads a day.
+  if (!cols.includes("LAST_ATTEMPT_AT")) sqlite.exec("ALTER TABLE BANK_CONNECTION ADD COLUMN LAST_ATTEMPT_AT TEXT");
   if (sqlite.prepare("SELECT 1 FROM APP_SETTING WHERE NAME = ?").get(flag)) return;
   sqlite.exec("UPDATE BANK_ACCOUNT SET LAST_BOOKING_DATE = NULL");
   sqlite.prepare("INSERT INTO APP_SETTING (NAME, VALUE) VALUES (?, '1')").run(flag);

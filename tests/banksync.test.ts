@@ -263,7 +263,7 @@ describe("sync against the database (mock bank)", () => {
   });
 
   beforeEach(async () => {
-    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "BANK_CONNECTION", "BANK_ACCOUNT", "BALANCE_CHECKPOINT", "ACCOUNT", "ACCOUNT_SNAPSHOT", "WORKSPACE_MEMBER", "IMPORT_PATTERN"]) await db.execute(`DELETE FROM ${t}`);
+    for (const t of ["LEDGER", "LEDGER_TAG", "LEDGER_AUDIT", "BILL_MATCH", "BANK_CONNECTION", "BANK_ACCOUNT", "BALANCE_CHECKPOINT", "ACCOUNT", "ACCOUNT_SNAPSHOT", "WORKSPACE_MEMBER", "IMPORT_PATTERN"]) await db.execute(`DELETE FROM ${t}`);
     await db.execute("INSERT INTO WORKSPACE_MEMBER (WORKSPACE_ID, USER_ID, ROLE) VALUES (?, ?, 'owner')", [WS, USER]);
   });
 
@@ -362,6 +362,40 @@ describe("sync against the database (mock bank)", () => {
     await db.execute("UPDATE LEDGER SET KIND = 'expense', AMOUNT = 500 WHERE EXTERNAL_ID = 't-1'");
     db.transaction((tx) => applyTransactions(tx, WS, [move]));
     assert.equal((await rows())["t-1"], "transfer -500");
+  });
+
+  test("a bank line matched to a bill pays it, counts once, and next month's line pays that bill by itself", async () => {
+    const { applyTransactions } = sync;
+    const ledger = await import("@/lib/ledger");
+    const bill = (month: string) => {
+      let id = "";
+      db.transaction((tx) => { id = ledger.insertRow(tx, WS, { KIND: "expense", CATEGORY: "utilities", GROUP_ID: null, NAME: "Electricity", AMOUNT: 60, NOTES: null, IS_RECURRING: 0, TAGS: null, DAY: 20 }, month); });
+      return id;
+    };
+    const octBill = bill("2026-10");
+    const power = (ref: string, date: string, amount: string) => btx({ entry_reference: ref, booking_date: date, value_date: date, transaction_amount: { currency: "EUR", amount }, creditor: { name: "EESTI ENERGIA AS" } });
+    db.transaction((tx) => applyTransactions(tx, WS, [power("e-10", "2026-10-18", "57.30")]));
+    const [line] = (await db.execute("SELECT ID FROM LEDGER WHERE EXTERNAL_ID = 'e-10'"))[0] as Array<{ ID: string }>;
+    assert.notEqual(line.ID, octBill, "57.30 does not match 60.00 by amount");
+
+    ledger.matchToBill(WS, line.ID, octBill);
+    const live = async (month: string) => (await db.execute("SELECT ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, DAY, EXTERNAL_ID FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL", [WS, month]))[0] as Array<{ ID: string; NAME: string; AMOUNT: number; DAY: number; EXTERNAL_ID: string | null }>;
+    assert.deepEqual(await live("2026-10"), [{ ID: octBill, NAME: "Electricity", AMOUNT: 57.3, DAY: 18, EXTERNAL_ID: "e-10" }]);
+    db.transaction((tx) => applyTransactions(tx, WS, [power("e-10", "2026-10-18", "57.30")]));
+    assert.equal((await live("2026-10")).length, 1, "a re-read does not bring the line back");
+
+    const novBill = bill("2026-11");
+    db.transaction((tx) => applyTransactions(tx, WS, [power("e-11", "2026-11-17", "63.10")]));
+    assert.deepEqual(await live("2026-11"), [{ ID: novBill, NAME: "Electricity", AMOUNT: 63.1, DAY: 17, EXTERNAL_ID: "e-11" }]);
+  });
+
+  test("the scheduler skips connections it tried within the interval (restarts don't spend bank reads)", async () => {
+    await connectMock();
+    const first = await sync.syncAll(720);
+    assert.equal(first.connections, 1);
+    assert.equal(first.failed, 0);
+    assert.equal((await sync.syncAll(720)).connections, 0);
+    assert.equal((await sync.syncAll(0)).connections, 1, "no minimum: sync again");
   });
 
   test("net worth link writes this month's snapshot; reconnect keeps the account and its settings", async () => {

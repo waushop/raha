@@ -6,7 +6,7 @@ import { currentContext } from "@/lib/auth";
 import { getGroups } from "@/app/actions";
 import { currentMonth, isValidMonth, monthLabel } from "@/lib/months";
 import MonthNav from "@/components/MonthNav";
-import TransactionFeed, { type FeedRow } from "@/components/TransactionFeed";
+import TransactionFeed, { type FeedRow, type OpenBill } from "@/components/TransactionFeed";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -19,7 +19,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   const params = await searchParams;
   const month = isValidMonth(params.month) ? params.month : currentMonth();
 
-  const [[rows], groups, [conn]] = await Promise.all([
+  const [[rows], groups, [conn], [billRows]] = await Promise.all([
     db.execute(
       `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, DAY, NOTES, FEED_ONLY
        FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL AND EXTERNAL_ID IS NOT NULL
@@ -28,6 +28,13 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     ),
     getGroups(),
     db.execute("SELECT COUNT(*) AS N FROM BANK_CONNECTION WHERE WORKSPACE_ID = ? AND STATUS = 'active'", [ws]),
+    // Bills in the month view no bank line has paid yet: what "Match bill" offers.
+    db.execute(
+      `SELECT ID, KIND, NAME, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER
+       WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL AND FEED_ONLY = 0 AND EXTERNAL_ID IS NULL AND KIND IN ('expense', 'income')
+       ORDER BY NAME`,
+      [ws, month],
+    ),
   ]);
   const lines = rows as FeedRow[];
   const connected = ((conn as Array<{ N: number }>)[0]?.N ?? 0) > 0;
@@ -76,7 +83,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
               </p>
             </div>
           ) : (
-            <TransactionFeed rows={lines} groups={groups} />
+            <TransactionFeed rows={lines} groups={groups} bills={billRows as OpenBill[]} />
           )}
         </div>
 

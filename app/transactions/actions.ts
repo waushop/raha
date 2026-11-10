@@ -16,6 +16,16 @@ export async function addToMonth(id: string): Promise<ActionResult> {
   });
 }
 
+/** "Match to bill": the bank line pays a bill in the month view (and pairs that merchant with it for next month). */
+export async function matchBill(feedId: string, billId: string): Promise<ActionResult> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(() => {
+    ledger.matchToBill(ws, parseId(feedId), parseId(billId));
+    revalidatePath("/"); revalidatePath("/transactions"); revalidatePath("/dashboard"); revalidatePath("/activity");
+    return {};
+  });
+}
+
 /** Marks a feed line as a transfer (own accounts, a loan payout: not income or spending) or counts it again. */
 export async function setTransfer(id: string, on: boolean): Promise<ActionResult> {
   const { workspaceId: ws } = await requireAuth();

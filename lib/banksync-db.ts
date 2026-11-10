@@ -7,7 +7,8 @@ import { randomUUID } from "node:crypto";
 import db, { type Tx } from "./db";
 import { getBankApi, isSessionGone, type BankApi, type BankTransaction } from "./enablebanking";
 import { categorize, isOwnTransfer, mapTransactions, normalizeIban, pickBalance, reconcile, syncWindowStart, transferNameKey, type ExistingRow, type MappedTx } from "./banksync";
-import { insertRow, auditedUpdate, loadRules, markTransfer } from "./ledger";
+import { insertRow, auditedUpdate, learnedBill, loadRules, markTransfer, payBill, rememberBillMatch } from "./ledger";
+import { merchantKey } from "./classifier";
 import { TRAINING_ROWS_SQL, train } from "./classifier";
 import { currentMonth } from "./months";
 
@@ -142,6 +143,13 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
       result.skipped++;
       continue;
     }
+    // A merchant matched to a bill before pays this month's bill of that name, whatever the amount.
+    const billId = learnedBill(tx, ws, merchantKey(d.tx.merchant), d.tx.kind, d.tx.month);
+    if (billId && !transferCheck(transfers, d.tx)) {
+      payBill(tx, ws, billId, d.tx.externalId, d.tx.amount, d.tx.day);
+      result.linked++;
+      continue;
+    }
     if (transferCheck(transfers, d.tx)) {
       insertRow(tx, ws, {
         KIND: "transfer", CATEGORY: "other", GROUP_ID: null, NAME: d.tx.merchant.slice(0, 120),
@@ -157,6 +165,8 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
       auditedUpdate(tx, d.rowId, "update", () => {
         tx.run("UPDATE LEDGER SET EXTERNAL_ID = ?, DAY = COALESCE(DAY, ?) WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [d.tx.externalId, d.tx.day, d.rowId, ws]);
       });
+      const bill = tx.all<{ NAME: string; FEED_ONLY: number }>("SELECT NAME, FEED_ONLY FROM LEDGER WHERE ID = ?", [d.rowId])[0];
+      if (bill && bill.FEED_ONLY === 0) rememberBillMatch(tx, ws, merchantKey(d.tx.merchant), d.tx.kind, bill.NAME);
       result.linked++;
       continue;
     }
@@ -275,19 +285,23 @@ export async function syncConnection(ws: string, connectionId: string, api: Bank
 }
 
 /** Every live connection (scheduler). Connections whose consent ran out are marked expired. */
-export async function syncAll(): Promise<{ connections: number; inserted: number; failed: number }> {
+export async function syncAll(minMinutesBetween = 0): Promise<{ connections: number; inserted: number; transfers: number; failed: number; errors: string[] }> {
+  const cutoff = new Date(Date.now() - minMinutesBetween * 60_000).toISOString().slice(0, 19).replace("T", " ");
   const [rows] = await db.execute(
-    "SELECT ID, WORKSPACE_ID FROM BANK_CONNECTION WHERE DELETED_AT IS NULL AND STATUS IN ('active', 'error') AND SESSION_ID IS NOT NULL",
+    `SELECT ID, WORKSPACE_ID, ASPSP_NAME FROM BANK_CONNECTION WHERE DELETED_AT IS NULL AND STATUS IN ('active', 'error') AND SESSION_ID IS NOT NULL
+       AND (LAST_ATTEMPT_AT IS NULL OR LAST_ATTEMPT_AT <= ?)`, [cutoff],
   );
   const api = getBankApi();
-  let inserted = 0;
-  let failed = 0;
-  for (const r of rows as { ID: string; WORKSPACE_ID: string }[]) {
+  const out = { connections: 0, inserted: 0, transfers: 0, failed: 0, errors: [] as string[] };
+  for (const r of rows as { ID: string; WORKSPACE_ID: string; ASPSP_NAME: string }[]) {
+    db.transaction((tx) => { tx.run("UPDATE BANK_CONNECTION SET LAST_ATTEMPT_AT = ? WHERE ID = ?", [nowSql(), r.ID]); });
     const res = await syncConnection(r.WORKSPACE_ID, r.ID, api);
-    inserted += res.inserted;
-    if (res.error) failed++;
+    out.connections++;
+    out.inserted += res.inserted;
+    out.transfers += res.transfers;
+    if (res.error) { out.failed++; out.errors.push(`${r.ASPSP_NAME}: ${res.error}`.slice(0, 200)); }
   }
-  return { connections: (rows as unknown[]).length, inserted, failed };
+  return out;
 }
 
 /** Inputs for the bank nudges (lib/nudges.ts). */
