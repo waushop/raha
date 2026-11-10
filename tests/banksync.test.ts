@@ -415,6 +415,16 @@ describe("sync against the database (mock bank)", () => {
     assert.equal((await live("2026-12")).length, 2, "the other loan's line stays in the feed");
     assert.equal((await live("2026-12")).find((r) => r.ID === decBill)!.AMOUNT, 1207.97);
 
+    // One line paying two bills of the same name (an internet bill per person): first gets its amount, the last the rest.
+    const net1 = bill("2026-12", "Internet", 36.16);
+    const net2 = bill("2026-12", "Internet", 27.9);
+    db.transaction((tx) => ledger.rememberBillMatch(tx, WS, ledger.billMatchKey("TELIA EESTI AS — e-arve 1"), "expense", "Internet"));
+    db.transaction((tx) => applyTransactions(tx, WS, [pay("t-12", "2026-12-12", "62.92", "TELIA EESTI AS", "e-arve 202612")]));
+    const dec = await live("2026-12");
+    assert.equal(dec.find((r) => r.ID === net1)!.AMOUNT, 36.16);
+    assert.equal(dec.find((r) => r.ID === net2)!.AMOUNT, 26.76);
+    assert.equal(dec.length, 4, "mortgage, the other loan's line and both internet bills; the Telia line is folded in");
+
     // Unmatch puts the line back in the feed.
     assert.equal(ledger.unmatchLine(WS, await lineId("e-11")), true);
     assert.equal((await live("2026-11")).length, 3);

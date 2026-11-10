@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import db, { type Tx } from "./db";
 import { getBankApi, isSessionGone, type BankApi, type BankTransaction } from "./enablebanking";
 import { categorize, isOwnTransfer, mapTransactions, normalizeIban, pickBalance, reconcile, syncWindowStart, transferNameKey, type ExistingRow, type MappedTx } from "./banksync";
-import { insertRow, auditedUpdate, billMatchKey, learnedBill, loadRules, markTransfer, payBill, rememberBillMatch } from "./ledger";
+import { insertRow, auditedUpdate, billMatchKey, learnedBills, loadRules, markTransfer, payBills, rememberBillMatch } from "./ledger";
 import { TRAINING_ROWS_SQL, train } from "./classifier";
 import { currentMonth } from "./months";
 
@@ -183,8 +183,8 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
       FEED_ONLY: 1,
     }, d.tx.month);
     // A merchant matched to a bill before pays this month's open bill of that name, whatever the amount.
-    const billId = learnedBill(tx, ws, billMatchKey(d.tx.rawText), d.tx.kind, d.tx.month);
-    if (billId) { payBill(tx, ws, billId, lineId); result.linked++; continue; }
+    const billIds = learnedBills(tx, ws, billMatchKey(d.tx.rawText), d.tx.kind, d.tx.month);
+    if (billIds.length > 0) { payBills(tx, ws, billIds, lineId); result.linked++; continue; }
     result.inserted++;
   }
   return result;

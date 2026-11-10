@@ -376,14 +376,41 @@ export function rememberBillMatch(tx: Tx, ws: string, key: string, kind: Kind, b
   );
 }
 
-/** The open bill of this month that a merchant paid before (learned pairing), or null. */
-export function learnedBill(tx: Tx, ws: string, key: string, kind: Kind, month: string): string | null {
+/**
+ * This month's open bills a merchant paid before (learned pairing), oldest
+ * first. Several when bills share a name (one internet bill per person, paid
+ * by one bank line).
+ */
+export function learnedBills(tx: Tx, ws: string, key: string, kind: Kind, month: string): string[] {
   const name = tx.all<{ BILL_NAME: string }>("SELECT BILL_NAME FROM BILL_MATCH WHERE WORKSPACE_ID = ? AND MERCHANT_KEY = ? AND KIND = ?", [ws, key, kind])[0]?.BILL_NAME;
-  if (!name) return null;
+  if (!name) return [];
   return tx.all<{ ID: string }>(
-    `SELECT e.ID FROM LEDGER e WHERE e.WORKSPACE_ID = ? AND e.MONTH = ? AND e.KIND = ? AND e.NAME = ? AND ${BILL_OPEN_SQL} ORDER BY e.CREATED_AT LIMIT 1`,
+    `SELECT e.ID FROM LEDGER e WHERE e.WORKSPACE_ID = ? AND e.MONTH = ? AND e.KIND = ? AND e.NAME = ? AND ${BILL_OPEN_SQL} ORDER BY e.CREATED_AT, e.rowid`,
     [ws, month, kind, name],
-  )[0]?.ID ?? null;
+  ).map((r) => r.ID);
+}
+
+/**
+ * One bank line paying several bills: each bill but the last gets what is
+ * left on it (split off the line as its own part), the last gets the rest.
+ */
+export function payBills(tx: Tx, ws: string, billIds: string[], lineId: string): void {
+  for (const [i, billId] of billIds.entries()) {
+    const line = tx.all<{ AMOUNT: number }>("SELECT CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE ID = ? AND DELETED_AT IS NULL", [lineId])[0];
+    if (!line) return;
+    const bill = tx.all<{ LEFT: number }>(`SELECT CAST(e.AMOUNT - ${BILL_PAID_SQL} AS REAL) AS LEFT FROM LEDGER e WHERE e.ID = ?`, [billId])[0];
+    const portion = Math.round((bill?.LEFT ?? 0) * 100) / 100;
+    if (i === billIds.length - 1 || portion <= 0 || line.AMOUNT <= portion + 0.005) { payBill(tx, ws, billId, lineId); return; }
+    const partId = randomUUID();
+    tx.run(
+      `INSERT INTO LEDGER (ID, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, AMOUNT, MONTH, DAY, NOTES, IS_RECURRING, TAGS, FEED_ONLY, SPLIT_GROUP)
+       SELECT ?, WORKSPACE_ID, KIND, CATEGORY, GROUP_ID, NAME, ?, MONTH, DAY, NOTES, 0, TAGS, FEED_ONLY, ID FROM LEDGER WHERE ID = ?`,
+      [partId, portion, lineId],
+    );
+    audit(tx, partId, "create", null, snapshotRow(tx, partId));
+    auditedUpdate(tx, lineId, "update", () => tx.run("UPDATE LEDGER SET AMOUNT = ?, SPLIT_GROUP = ID WHERE ID = ?", [Math.round((line.AMOUNT - portion) * 100) / 100, lineId]));
+    payBill(tx, ws, billId, partId);
+  }
 }
 
 /** A line within this share of what is left on the bill settles it (variable bills); smaller lines are parts. */
