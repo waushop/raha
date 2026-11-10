@@ -4,6 +4,7 @@ import { Building2 } from "lucide-react";
 import db from "@/lib/db";
 import { currentContext } from "@/lib/auth";
 import { getGroups } from "@/app/actions";
+import { BILL_OPEN_SQL, BILL_PAID_SQL } from "@/lib/ledger";
 import { currentMonth, isValidMonth, monthLabel } from "@/lib/months";
 import MonthNav from "@/components/MonthNav";
 import TransactionFeed, { type FeedRow, type OpenBill } from "@/components/TransactionFeed";
@@ -21,18 +22,19 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
 
   const [[rows], groups, [conn], [billRows]] = await Promise.all([
     db.execute(
-      `SELECT ID, KIND, CATEGORY, GROUP_ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, DAY, NOTES, FEED_ONLY
-       FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL AND EXTERNAL_ID IS NOT NULL
-       ORDER BY COALESCE(DAY, 0) DESC, CREATED_AT DESC`,
+      `SELECT l.ID, l.KIND, l.CATEGORY, l.GROUP_ID, l.NAME, CAST(l.AMOUNT AS REAL) AS AMOUNT, l.DAY, l.NOTES, l.FEED_ONLY, b.NAME AS BILL_NAME
+       FROM LEDGER l LEFT JOIN LEDGER b ON b.ID = l.BILL_ID AND b.WORKSPACE_ID = l.WORKSPACE_ID
+       WHERE l.WORKSPACE_ID = ? AND l.MONTH = ? AND l.EXTERNAL_ID IS NOT NULL AND (l.DELETED_AT IS NULL OR l.BILL_ID IS NOT NULL)
+       ORDER BY COALESCE(l.DAY, 0) DESC, l.CREATED_AT DESC`,
       [ws, month],
     ),
     getGroups(),
     db.execute("SELECT COUNT(*) AS N FROM BANK_CONNECTION WHERE WORKSPACE_ID = ? AND STATUS = 'active'", [ws]),
     // Bills in the month view no bank line has paid yet: what "Match bill" offers.
     db.execute(
-      `SELECT ID, KIND, NAME, CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER
-       WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL AND FEED_ONLY = 0 AND EXTERNAL_ID IS NULL AND KIND IN ('expense', 'income')
-       ORDER BY NAME`,
+      `SELECT e.ID, e.KIND, e.NAME, CAST(e.AMOUNT - ${BILL_PAID_SQL} AS REAL) AS AMOUNT FROM LEDGER e
+       WHERE e.WORKSPACE_ID = ? AND e.MONTH = ? AND ${BILL_OPEN_SQL}
+       ORDER BY e.NAME`,
       [ws, month],
     ),
   ]);

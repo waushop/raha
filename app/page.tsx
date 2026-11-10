@@ -15,6 +15,7 @@ import { listMembers, settlement } from "@/lib/household";
 import SettleUpCard from "@/components/SettleUpCard";
 import { monthlyTotals } from "@/lib/queries";
 import { aiEnabled } from "@/lib/claude";
+import { BILL_PAID_SQL } from "@/lib/ledger";
 
 export default async function Page({
   searchParams,
@@ -32,7 +33,7 @@ export default async function Page({
   // Fetch expenses with group info
   const [rows] = await db.execute(
     `SELECT e.ID, e.KIND, e.CATEGORY, CAST(e.AMOUNT AS REAL) AS AMOUNT, e.MONTH, e.DAY, e.GOAL_ID, e.NAME,
-            e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.SPLIT_GROUP, e.PAID_BY, e.EXTERNAL_ID, e.CREATED_AT,
+            e.NOTES, e.IS_RECURRING, e.TAGS, e.GROUP_ID, e.SPLIT_GROUP, e.PAID_BY, e.EXTERNAL_ID, e.CREATED_AT, CAST(${BILL_PAID_SQL} AS REAL) AS BANK_PAID,
             g.NAME AS GROUP_NAME, g.ICON AS GROUP_ICON, g.COLOR AS GROUP_COLOR
      FROM LEDGER e
      LEFT JOIN CATEGORY_GROUP g ON e.GROUP_ID = g.ID AND g.DELETED_AT IS NULL

@@ -7,7 +7,7 @@ import { useToast } from "./Toast";
 import { useDialog } from "./Dialog";
 import { CATEGORIES, CATEGORY_KEYS, type ExpenseGroup, type LedgerKind } from "@/types/expense";
 import { bulkUpdateExpenses } from "@/app/actions";
-import { addToMonth, matchBill, setTransfer } from "@/app/transactions/actions";
+import { addToMonth, matchBill, setTransfer, unmatch } from "@/app/transactions/actions";
 
 export type FeedRow = {
   ID: string;
@@ -20,8 +20,11 @@ export type FeedRow = {
   DAY: number | null;
   NOTES: string | null;
   FEED_ONLY: number;
+  /** Set when the line was folded into a bill ("Match bill"). */
+  BILL_NAME: string | null;
 };
 
+/** A month-view bill still waiting for money; AMOUNT is what is left to pay. */
 export type OpenBill = { ID: string; KIND: "expense" | "income"; NAME: string; AMOUNT: number };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,7 +40,9 @@ export default function TransactionFeed({ rows, groups, bills }: { rows: FeedRow
     if (!bill) return;
     const ok = await dialog.confirm({
       title: `Match to ${bill.NAME}?`,
-      message: `The bill takes the bank amount (${fmt(r.AMOUNT)} € instead of ${fmt(bill.AMOUNT)} €) and shows as paid; this bank line folds into it. Next month ${r.NAME} pays ${bill.NAME} by itself.`,
+      message: r.AMOUNT >= bill.AMOUNT * 0.75
+        ? `${bill.NAME} is paid with the bank amount (${fmt(r.AMOUNT)} €; ${fmt(bill.AMOUNT)} € was left) and this line folds into it. Next month ${r.NAME} pays ${bill.NAME} by itself.`
+        : `This pays ${fmt(r.AMOUNT)} € of the ${fmt(bill.AMOUNT)} € left on ${bill.NAME}; match the other parts too. Next month ${r.NAME} pays ${bill.NAME} by itself.`,
       confirmLabel: "Match",
     });
     if (!ok) return;
@@ -63,6 +68,14 @@ export default function TransactionFeed({ rows, groups, bills }: { rows: FeedRow
       const res = await addToMonth(r.ID);
       if (!res.ok) { toast.showError(res.error); return; }
       toast.show(`${r.NAME} added to the month`);
+    });
+  }
+
+  function undo(r: FeedRow) {
+    startTransition(async () => {
+      const res = await unmatch(r.ID);
+      if (!res.ok) { toast.showError(res.error); return; }
+      toast.show(`${r.NAME} is back in the feed`);
     });
   }
 
@@ -106,7 +119,19 @@ export default function TransactionFeed({ rows, groups, bills }: { rows: FeedRow
                       </span>
                     </div>
                     {r.NOTES && <p className="text-[10px] text-[#5a6380] mt-0.5 truncate">{r.NOTES.replace(/^Bank:\s*/, "")}</p>}
-                    {r.KIND === "transfer" ? (
+                    {r.BILL_NAME ? (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400/90"><CircleCheck size={12} /> Pays {r.BILL_NAME}</span>
+                        <span className="flex-1" />
+                        <button
+                          onClick={() => undo(r)}
+                          disabled={isPending}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-lg px-2 py-1 bg-white/5 text-[#9ca3c0] hover:text-white hover:bg-white/10 transition-colors btn-press disabled:opacity-50"
+                        >
+                          <Undo2 size={12} /> Unmatch
+                        </button>
+                      </div>
+                    ) : r.KIND === "transfer" ? (
                       <div className="flex flex-wrap items-center gap-1.5 mt-2">
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#9ca3c0]"><ArrowLeftRight size={12} /> Transfer · not counted</span>
                         <span className="flex-1" />
@@ -152,7 +177,7 @@ export default function TransactionFeed({ rows, groups, bills }: { rows: FeedRow
                             <option value="">Match bill…</option>
                             {bills.filter((b) => b.KIND === r.KIND)
                               .sort((a, b) => Math.abs(a.AMOUNT - r.AMOUNT) - Math.abs(b.AMOUNT - r.AMOUNT))
-                              .map((b) => <option key={b.ID} value={b.ID}>{b.NAME} · {fmt(b.AMOUNT)} €</option>)}
+                              .map((b) => <option key={b.ID} value={b.ID}>{b.NAME} · {fmt(b.AMOUNT)} € left</option>)}
                           </select>
                         </label>
                       )}

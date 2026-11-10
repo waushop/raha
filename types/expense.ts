@@ -96,6 +96,8 @@ export type Expense = {
   PAID_BY?: string | null;
   /** Set when the row came from (or was matched to) a bank transaction. */
   EXTERNAL_ID?: string | null;
+  /** Sum of bank lines folded into this bill ("Match bill"); 0 when none. */
+  BANK_PAID?: number;
   // Joined fields
   GROUP_NAME?: string;
   GROUP_ICON?: string;

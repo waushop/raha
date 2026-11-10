@@ -188,6 +188,8 @@ function migrate(sqlite: DatabaseSync): void {
       sqlite.exec("UPDATE LEDGER SET FEED_ONLY = 1 WHERE EXTERNAL_ID IS NOT NULL AND NOTES LIKE 'Bank:%'");
       sqlite.exec("DROP TRIGGER IF EXISTS TRG_LEDGER_UPDATED_AT");
     }
+    // The bill a bank line was folded into ("Match bill"; the line itself is soft-deleted).
+    if (!cols.includes("BILL_ID")) sqlite.exec("ALTER TABLE LEDGER ADD COLUMN BILL_ID TEXT");
   }
   // Import patterns grew into rules (lib/rules.ts).
   if (tables.has("IMPORT_PATTERN")) {
@@ -284,8 +286,10 @@ const STATEMENTS = [
     SPLIT_GROUP  TEXT,
     PAID_BY      TEXT,
     EXTERNAL_ID  TEXT,
-    FEED_ONLY    INTEGER NOT NULL DEFAULT 0
+    FEED_ONLY    INTEGER NOT NULL DEFAULT 0,
+    BILL_ID      TEXT
   )`,
+  `CREATE INDEX IF NOT EXISTS IDX_LEDGER_BILL ON LEDGER(BILL_ID) WHERE BILL_ID IS NOT NULL`,
   `CREATE INDEX IF NOT EXISTS IDX_LEDGER_GOAL ON LEDGER(GOAL_ID)`,
   // Savings goals; contributions are LEDGER rows with GOAL_ID set.
   `CREATE TABLE IF NOT EXISTS SAVINGS_GOAL (

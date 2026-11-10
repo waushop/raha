@@ -26,6 +26,16 @@ export async function matchBill(feedId: string, billId: string): Promise<ActionR
   });
 }
 
+/** Undoes "Match bill": the line returns to the feed. */
+export async function unmatch(id: string): Promise<ActionResult> {
+  const { workspaceId: ws } = await requireAuth();
+  return attempt(() => {
+    if (!ledger.unmatchLine(ws, parseId(id))) throw new ValidationError("That line isn't matched to a bill");
+    revalidatePath("/"); revalidatePath("/transactions"); revalidatePath("/dashboard"); revalidatePath("/activity");
+    return {};
+  });
+}
+
 /** Marks a feed line as a transfer (own accounts, a loan payout: not income or spending) or counts it again. */
 export async function setTransfer(id: string, on: boolean): Promise<ActionResult> {
   const { workspaceId: ws } = await requireAuth();

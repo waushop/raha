@@ -64,19 +64,25 @@ function nameKey(name: string): string {
   return name.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1).sort().join(" ");
 }
 
-const OWN_TRANSFER_TEXT = /\b(oma kontode? vahel|kontode vaheline|own accounts?|between (my|own) accounts|internal transfer|sisene [üu]lekanne)\b/i;
+// Own-account wording, Swedbank's savings pot (Rahakoguja) and round-up
+// investing, and cash paid in at an ATM: all money that was already yours.
+const OWN_TRANSFER_TEXT = /(oma kontode? vahel|kontode vaheline|own accounts?|between (my|own) accounts|internal transfer|sisene [üu]lekanne|rahakoguja|mikroinvesteeri|^sissemakse\b)/i;
+// A loan payout: incoming money with a loan contract number ("26-000123-VL … Väljamakse").
+const LOAN_PAYOUT_TEXT = /\b\d{2}-\d{6}-[A-Z]{2}\b.*v[äa]ljamaks|v[äa]ljamaks.*\b\d{2}-\d{6}-[A-Z]{2}\b/i;
 
 /**
  * Money moved between the user's own accounts is neither income nor
  * spending: the other side is one of their connected accounts, the payer
- * and payee are the same person, the bank calls it an own-account transfer,
- * or the user has marked this counterparty as a transfer before.
+ * and payee are the same person, the bank calls it an own-account transfer
+ * (or savings pot, round-up investing, cash paid in), a loan is paid out, or
+ * the user has marked this counterparty as a transfer before.
  */
 export function isOwnTransfer(tx: MappedTx, ownIbans: Set<string>, transferNames: Set<string>): boolean {
   if (tx.counterpartyIban && ownIbans.has(tx.counterpartyIban)) return true;
   const other = nameKey(tx.counterpartyName);
   if (other && other === nameKey(tx.ownName) && other.includes(" ")) return true;
   if (OWN_TRANSFER_TEXT.test(tx.rawText)) return true;
+  if (tx.kind === "income" && LOAN_PAYOUT_TEXT.test(tx.rawText)) return true;
   return !!other && transferNames.has(other);
 }
 

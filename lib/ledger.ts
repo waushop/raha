@@ -338,6 +338,17 @@ export function markTransfer(tx: Tx, ws: string, id: string, on: boolean): boole
 }
 
 // ---------- bank line ↔ bill ----------
+//
+// A bill is a month-view row; bank lines pay it. A paying line is folded into
+// the bill: soft-deleted with BILL_ID pointing at it (it keeps its bank id, so
+// a re-sync never brings it back, and the money counts once, as the bill).
+// Bills paid in parts (a loan's principal + interest) collect several lines;
+// the bill is settled at the real total once the parts reach it.
+
+/** Amount of bank lines folded into each bill (SQL fragment, alias `e` = the bill). */
+export const BILL_PAID_SQL = "(SELECT COALESCE(SUM(p.AMOUNT), 0) FROM LEDGER p WHERE p.BILL_ID = e.ID AND p.WORKSPACE_ID = e.WORKSPACE_ID)";
+/** A month-view row still waiting for its money (alias `e`). */
+export const BILL_OPEN_SQL = `e.FEED_ONLY = 0 AND e.EXTERNAL_ID IS NULL AND e.KIND IN ('expense', 'income') AND e.DELETED_AT IS NULL AND ${BILL_PAID_SQL} < e.AMOUNT - 0.005`;
 
 /** The merchant key of a bank line, from the "Bank: …" text sync keeps in NOTES. */
 export function bankMerchantKey(notes: string | null, fallbackName: string): string {
@@ -354,46 +365,58 @@ export function rememberBillMatch(tx: Tx, ws: string, key: string, kind: Kind, b
   );
 }
 
-/**
- * The bill (a month-view row nothing has paid yet) that this bank line pays,
- * via a pairing learned before; null when there is none this month.
- */
+/** The open bill of this month that a merchant paid before (learned pairing), or null. */
 export function learnedBill(tx: Tx, ws: string, key: string, kind: Kind, month: string): string | null {
   const name = tx.all<{ BILL_NAME: string }>("SELECT BILL_NAME FROM BILL_MATCH WHERE WORKSPACE_ID = ? AND MERCHANT_KEY = ? AND KIND = ?", [ws, key, kind])[0]?.BILL_NAME;
   if (!name) return null;
   return tx.all<{ ID: string }>(
-    `SELECT ID FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND KIND = ? AND NAME = ? AND EXTERNAL_ID IS NULL AND FEED_ONLY = 0 AND DELETED_AT IS NULL
-     ORDER BY CREATED_AT LIMIT 1`, [ws, month, kind, name],
+    `SELECT e.ID FROM LEDGER e WHERE e.WORKSPACE_ID = ? AND e.MONTH = ? AND e.KIND = ? AND e.NAME = ? AND ${BILL_OPEN_SQL} ORDER BY e.CREATED_AT LIMIT 1`,
+    [ws, month, kind, name],
   )[0]?.ID ?? null;
 }
 
-/** Marks a bill paid by a bank transaction: it takes the bank's amount and day, keeps its own name, category and group. */
-export function payBill(tx: Tx, ws: string, billId: string, externalId: string, amount: number, day: number | null): void {
-  auditedUpdate(tx, billId, "update", () => tx.run(
-    "UPDATE LEDGER SET EXTERNAL_ID = ?, AMOUNT = ?, DAY = COALESCE(?, DAY) WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL",
-    [externalId, amount, day, billId, ws],
-  ));
-}
+/** A line within this share of what is left on the bill settles it (variable bills); smaller lines are parts. */
+const SETTLE_SHARE = 0.75;
 
 /**
- * "Match to bill": the bank line in the feed pays a bill in the month view.
- * The bill takes over the bank id (so it shows as paid and the line is never
- * re-imported) and the feed line is removed, so the money counts once. The
- * pairing is remembered for next month.
+ * Folds a bank line into a bill. The bill keeps its name, category and
+ * group; once paid in full (or by one line close to what was left) it takes
+ * the real total and the latest payment day.
  */
-export function matchToBill(ws: string, feedId: string, billId: string): void {
+export function payBill(tx: Tx, ws: string, billId: string, lineId: string): void {
+  const bill = tx.all<{ AMOUNT: number }>("SELECT CAST(AMOUNT AS REAL) AS AMOUNT FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [billId, ws])[0];
+  const line = tx.all<{ AMOUNT: number; DAY: number | null }>("SELECT CAST(AMOUNT AS REAL) AS AMOUNT, DAY FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [lineId, ws])[0];
+  if (!bill || !line) throw new ValidationError("Bill or bank line not found");
+  const paidBefore = tx.all<{ S: number }>("SELECT COALESCE(SUM(AMOUNT), 0) AS S FROM LEDGER WHERE BILL_ID = ? AND WORKSPACE_ID = ?", [billId, ws])[0].S;
+  const left = bill.AMOUNT - paidBefore;
+  auditedUpdate(tx, lineId, "delete", () => tx.run("UPDATE LEDGER SET BILL_ID = ?, DELETED_AT = CURRENT_TIMESTAMP WHERE ID = ?", [billId, lineId]));
+  const paid = paidBefore + line.AMOUNT;
+  if (paid >= bill.AMOUNT - 0.005 || line.AMOUNT >= left * SETTLE_SHARE) {
+    auditedUpdate(tx, billId, "update", () => tx.run("UPDATE LEDGER SET AMOUNT = ?, DAY = COALESCE(?, DAY) WHERE ID = ?", [Math.round(paid * 100) / 100, line.DAY, billId]));
+  } else if (line.DAY !== null) {
+    tx.run("UPDATE LEDGER SET DAY = COALESCE(DAY, ?) WHERE ID = ?", [line.DAY, billId]);
+  }
+}
+
+/** "Match bill": the feed line pays a month-view bill; the merchant is remembered for next month. */
+export function matchToBill(ws: string, lineId: string, billId: string): void {
   db.transaction((tx) => {
-    type R = { ID: string; KIND: LedgerKind; AMOUNT: number; MONTH: string; DAY: number | null; NAME: string; NOTES: string | null; EXTERNAL_ID: string | null; FEED_ONLY: number };
-    const get = (id: string) => tx.all<R>("SELECT ID, KIND, CAST(AMOUNT AS REAL) AS AMOUNT, MONTH, DAY, NAME, NOTES, EXTERNAL_ID, FEED_ONLY FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [id, ws])[0];
-    const line = get(feedId);
-    const bill = get(billId);
+    type R = { ID: string; KIND: LedgerKind; MONTH: string; NAME: string; NOTES: string | null; EXTERNAL_ID: string | null; FEED_ONLY: number };
+    const line = tx.all<R>("SELECT ID, KIND, MONTH, NAME, NOTES, EXTERNAL_ID, FEED_ONLY FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [lineId, ws])[0];
+    const bill = tx.all<R>(`SELECT e.ID, e.KIND, e.MONTH, e.NAME, e.NOTES, e.EXTERNAL_ID, e.FEED_ONLY FROM LEDGER e WHERE e.ID = ? AND e.WORKSPACE_ID = ? AND ${BILL_OPEN_SQL}`, [billId, ws])[0];
     if (!line || line.FEED_ONLY !== 1 || !line.EXTERNAL_ID || line.KIND === "transfer") throw new ValidationError("That bank line can't be matched");
-    if (!bill || bill.FEED_ONLY !== 0 || bill.EXTERNAL_ID) throw new ValidationError("That bill is already paid or gone");
+    if (!bill) throw new ValidationError("That bill is already paid or gone");
     if (bill.KIND !== line.KIND || bill.MONTH !== line.MONTH) throw new ValidationError("Pick a bill of the same month and kind");
-    const externalId = line.EXTERNAL_ID;
-    auditedUpdate(tx, line.ID, "delete", () => tx.run("UPDATE LEDGER SET EXTERNAL_ID = NULL, DELETED_AT = CURRENT_TIMESTAMP WHERE ID = ?", [line.ID]));
-    payBill(tx, ws, bill.ID, externalId, line.AMOUNT, line.DAY);
-    rememberBillMatch(tx, ws, bankMerchantKey(line.NOTES, line.NAME), line.KIND, bill.NAME);
+    payBill(tx, ws, bill.ID, line.ID);
+    rememberBillMatch(tx, ws, bankMerchantKey(line.NOTES, line.NAME), line.KIND as Kind, bill.NAME);
+  });
+}
+
+/** Undoes "Match bill": the line is back in the feed; the bill keeps its amount (edit it if needed). */
+export function unmatchLine(ws: string, lineId: string): boolean {
+  return db.transaction((tx) => {
+    const line = tx.all<{ ID: string }>("SELECT ID FROM LEDGER WHERE ID = ? AND WORKSPACE_ID = ? AND BILL_ID IS NOT NULL AND DELETED_AT IS NOT NULL", [lineId, ws])[0];
+    return !!line && auditedUpdate(tx, lineId, "restore", () => tx.run("UPDATE LEDGER SET BILL_ID = NULL, DELETED_AT = NULL WHERE ID = ?", [lineId]));
   });
 }
 

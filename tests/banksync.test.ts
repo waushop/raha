@@ -108,6 +108,17 @@ describe("own transfers", () => {
     assert.equal(isOwnTransfer(oneWord, none, none), false, "a single shared word is too weak");
   });
 
+  test("Swedbank wording: savings pot, round-up investing, cash in, loan payout", () => {
+    const t = (o: Partial<BankTransaction>) => isOwnTransfer(mapTransaction(btx(o))!, none, none);
+    assert.equal(t({ creditor: { name: "MARI TAMM" }, debtor: null, remittance_information: ["Ülekanne Rahakogujasse seoses kaardimaksega 0.79"] }), true);
+    assert.equal(t({ credit_debit_indicator: "CRDT", debtor: { name: "MARI TAMM" }, creditor: null, remittance_information: ["Väljamakse Rahakogujast"] }), true);
+    assert.equal(t({ creditor: null, remittance_information: ["Mikroinvesteerimine 10000001 EXAMPLE FUND"] }), true);
+    assert.equal(t({ credit_debit_indicator: "CRDT", debtor: null, remittance_information: ["SISSEMAKSE 400000******1234 05.10.26 12:00 150.00 EUR (000001) PAEVA 1 TALLINN EE"] }), true);
+    assert.equal(t({ credit_debit_indicator: "CRDT", debtor: { name: "TAMM" }, remittance_information: ["26-000123-VL Väljamaks"] }), true);
+    assert.equal(t({ creditor: null, remittance_information: ["Lepingutasu: 26-000123-VL"] }), false, "the loan's fee is real spending");
+    assert.equal(t({ credit_debit_indicator: "CRDT", debtor: { name: "ACME OÜ" }, remittance_information: ["October salary 2026"] }), false);
+  });
+
   test("the bank's own-account wording, and senders marked as transfers before", () => {
     assert.equal(isOwnTransfer(mapTransaction(btx({ creditor: { name: "x" }, remittance_information: ["Oma kontode vaheline ülekanne"] }))!, none, none), true);
     const loan = mapTransaction(btx({ credit_debit_indicator: "CRDT", debtor: { name: "LHV Pank AS" }, remittance_information: ["Laenu väljamakse"] }))!;
@@ -367,26 +378,40 @@ describe("sync against the database (mock bank)", () => {
   test("a bank line matched to a bill pays it, counts once, and next month's line pays that bill by itself", async () => {
     const { applyTransactions } = sync;
     const ledger = await import("@/lib/ledger");
-    const bill = (month: string) => {
+    const bill = (month: string, name = "Electricity", amount = 60) => {
       let id = "";
-      db.transaction((tx) => { id = ledger.insertRow(tx, WS, { KIND: "expense", CATEGORY: "utilities", GROUP_ID: null, NAME: "Electricity", AMOUNT: 60, NOTES: null, IS_RECURRING: 0, TAGS: null, DAY: 20 }, month); });
+      db.transaction((tx) => { id = ledger.insertRow(tx, WS, { KIND: "expense", CATEGORY: "utilities", GROUP_ID: null, NAME: name, AMOUNT: amount, NOTES: null, IS_RECURRING: 0, TAGS: null, DAY: null }, month); });
       return id;
     };
-    const octBill = bill("2026-10");
-    const power = (ref: string, date: string, amount: string) => btx({ entry_reference: ref, booking_date: date, value_date: date, transaction_amount: { currency: "EUR", amount }, creditor: { name: "EESTI ENERGIA AS" } });
-    db.transaction((tx) => applyTransactions(tx, WS, [power("e-10", "2026-10-18", "57.30")]));
-    const [line] = (await db.execute("SELECT ID FROM LEDGER WHERE EXTERNAL_ID = 'e-10'"))[0] as Array<{ ID: string }>;
-    assert.notEqual(line.ID, octBill, "57.30 does not match 60.00 by amount");
+    const pay = (ref: string, date: string, amount: string, who: string, text?: string) => btx({ entry_reference: ref, booking_date: date, value_date: date, transaction_amount: { currency: "EUR", amount }, creditor: { name: who }, remittance_information: text ? [text] : [] });
+    const live = async (month: string) => (await db.execute("SELECT ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, DAY FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL ORDER BY NAME", [WS, month]))[0] as Array<{ ID: string; NAME: string; AMOUNT: number; DAY: number }>;
+    const lineId = async (ref: string) => ((await db.execute("SELECT ID FROM LEDGER WHERE EXTERNAL_ID = ?", [ref]))[0] as Array<{ ID: string }>)[0].ID;
 
-    ledger.matchToBill(WS, line.ID, octBill);
-    const live = async (month: string) => (await db.execute("SELECT ID, NAME, CAST(AMOUNT AS REAL) AS AMOUNT, DAY, EXTERNAL_ID FROM LEDGER WHERE WORKSPACE_ID = ? AND MONTH = ? AND DELETED_AT IS NULL", [WS, month]))[0] as Array<{ ID: string; NAME: string; AMOUNT: number; DAY: number; EXTERNAL_ID: string | null }>;
-    assert.deepEqual(await live("2026-10"), [{ ID: octBill, NAME: "Electricity", AMOUNT: 57.3, DAY: 18, EXTERNAL_ID: "e-10" }]);
-    db.transaction((tx) => applyTransactions(tx, WS, [power("e-10", "2026-10-18", "57.30")]));
+    // A variable bill: 57.30 against 60.00 settles it at 57.30.
+    const octBill = bill("2026-10");
+    db.transaction((tx) => applyTransactions(tx, WS, [pay("e-10", "2026-10-18", "57.30", "EESTI ENERGIA AS")]));
+    ledger.matchToBill(WS, await lineId("e-10"), octBill);
+    assert.deepEqual(await live("2026-10"), [{ ID: octBill, NAME: "Electricity", AMOUNT: 57.3, DAY: 18 }]);
+    db.transaction((tx) => applyTransactions(tx, WS, [pay("e-10", "2026-10-18", "57.30", "EESTI ENERGIA AS")]));
     assert.equal((await live("2026-10")).length, 1, "a re-read does not bring the line back");
 
+    // A loan paid in two parts: open until both are in, then settled at the total.
+    const loan = bill("2026-10", "Mortgage", 1207.97);
+    db.transaction((tx) => applyTransactions(tx, WS, [pay("l-1", "2026-10-11", "403.07", "TAMM", "Laenu põhiosa: 25-000456-EL"), pay("l-2", "2026-10-11", "804.90", "", "Kogunenud intress: 25-000456-EL")]));
+    ledger.matchToBill(WS, await lineId("l-1"), loan);
+    assert.equal((await live("2026-10")).find((r) => r.ID === loan)!.AMOUNT, 1207.97, "still the planned total while partly paid");
+    ledger.matchToBill(WS, await lineId("l-2"), loan);
+    assert.deepEqual((await live("2026-10")).map((r) => r.NAME), ["Electricity", "Mortgage"], "both lines folded in");
+
+    // Next month both pay by themselves, whatever the amounts.
     const novBill = bill("2026-11");
-    db.transaction((tx) => applyTransactions(tx, WS, [power("e-11", "2026-11-17", "63.10")]));
-    assert.deepEqual(await live("2026-11"), [{ ID: novBill, NAME: "Electricity", AMOUNT: 63.1, DAY: 17, EXTERNAL_ID: "e-11" }]);
+    const novLoan = bill("2026-11", "Mortgage", 1207.97);
+    db.transaction((tx) => applyTransactions(tx, WS, [pay("e-11", "2026-11-17", "63.10", "EESTI ENERGIA AS"), pay("l-3", "2026-11-11", "405.00", "TAMM", "Laenu põhiosa: 25-000456-EL"), pay("l-4", "2026-11-11", "802.97", "", "Kogunenud intress: 25-000456-EL")]));
+    assert.deepEqual(await live("2026-11"), [{ ID: novBill, NAME: "Electricity", AMOUNT: 63.1, DAY: 17 }, { ID: novLoan, NAME: "Mortgage", AMOUNT: 1207.97, DAY: 11 }]);
+
+    // Unmatch puts the line back in the feed.
+    assert.equal(ledger.unmatchLine(WS, await lineId("e-11")), true);
+    assert.equal((await live("2026-11")).length, 3);
   });
 
   test("the scheduler skips connections it tried within the interval (restarts don't spend bank reads)", async () => {

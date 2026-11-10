@@ -143,13 +143,6 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
       result.skipped++;
       continue;
     }
-    // A merchant matched to a bill before pays this month's bill of that name, whatever the amount.
-    const billId = learnedBill(tx, ws, merchantKey(d.tx.merchant), d.tx.kind, d.tx.month);
-    if (billId && !transferCheck(transfers, d.tx)) {
-      payBill(tx, ws, billId, d.tx.externalId, d.tx.amount, d.tx.day);
-      result.linked++;
-      continue;
-    }
     if (transferCheck(transfers, d.tx)) {
       insertRow(tx, ws, {
         KIND: "transfer", CATEGORY: "other", GROUP_ID: null, NAME: d.tx.merchant.slice(0, 120),
@@ -177,7 +170,7 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
     );
     const c = categorize(d.tx, rules, model);
     const ownGroup = c.groupId && tx.all("SELECT 1 FROM CATEGORY_GROUP WHERE ID = ? AND WORKSPACE_ID = ? AND DELETED_AT IS NULL", [c.groupId, ws]).length > 0 ? c.groupId : null;
-    insertRow(tx, ws, {
+    const lineId = insertRow(tx, ws, {
       KIND: d.tx.kind,
       CATEGORY: c.category,
       GROUP_ID: ownGroup,
@@ -190,6 +183,9 @@ export function applyTransactions(tx: Tx, ws: string, txs: BankTransaction[]): O
       EXTERNAL_ID: d.tx.externalId,
       FEED_ONLY: 1,
     }, d.tx.month);
+    // A merchant matched to a bill before pays this month's open bill of that name, whatever the amount.
+    const billId = learnedBill(tx, ws, merchantKey(d.tx.merchant), d.tx.kind, d.tx.month);
+    if (billId) { payBill(tx, ws, billId, lineId); result.linked++; continue; }
     result.inserted++;
   }
   return result;
